@@ -17,19 +17,27 @@ const Backpack = preload("res://river_backpack.gd")
 const Cheats = preload("res://river_cheats.gd")
 const LawnMower = preload("res://lawn_mower.gd")
 const ShannonJob = preload("res://shannon_job.gd")
-const PublicWorks = preload("res://public_works.gd")
+const PauseMenu = preload("res://river_pause.gd")
+const Safety = preload("res://river_safety.gd")
+const RiverChart = preload("res://river_chart.gd")
+const MenuTheme = preload("res://river_menu_theme.gd")
+const Lobby = preload("res://river_lobby.gd")
 const JOURNAL := "user://ottawa_catches.json"
+const CREW_JOURNAL := "user://ottawa_multiplayer_catches.json"
 const WINDUP := 0.19
 const SWIM_ENTRY_DEPTH := 1.16
 const SWIM_EXIT_DEPTH := .95
 const SWIM_FEET_DEPTH := 1.22
 enum Fishing { READY, CASTING, WAITING, BITE, FIGHT, RETRIEVING, NET_READY, LANDING, DISPLAY, RELEASING }
-enum ChartDestination { MARINA, SWISHA, CHALK_RIVER, LAMURE, BOAT }
+enum ChartDestination { MARINA, SWISHA, CHALK_RIVER, LAMURE, BOAT, PINE, BIRCH, CAMP }
 const TELEPORT_NAMES := {
 	ChartDestination.MARINA: "Deep River Marina",
 	ChartDestination.SWISHA: "Swisha Dam",
 	ChartDestination.CHALK_RIVER: "Chalk River Labs",
 	ChartDestination.LAMURE: "Lamure Beach",
+	ChartDestination.PINE: "Pine Beach / Pine Reach",
+	ChartDestination.BIRCH: "Birch Beach / Birch Point",
+	ChartDestination.CAMP: "Pine Reach campfire",
 	ChartDestination.BOAT: "Return to boat",
 }
 
@@ -47,8 +55,8 @@ var campaign: Campaign
 var marina_cars: MarinaCars
 var backpack: Backpack
 var cheats: Cheats
-var cheat_mouse_mode := Input.MOUSE_MODE_CONFINED
-var backpack_mouse_mode := Input.MOUSE_MODE_CONFINED
+var cheat_mouse_mode := Input.MOUSE_MODE_VISIBLE
+var backpack_mouse_mode := Input.MOUSE_MODE_VISIBLE
 var rig_slot := 0
 var strike_depth := .45
 var fight_profile: Dictionary = {}
@@ -93,14 +101,9 @@ var live_label: Label
 var tension_fill: StyleBoxFlat
 var random := RandomNumberGenerator.new()
 var journal: Array = []
-var chart: Control
-var chart_map: TextureRect
-var boat_dot: Label
-var journal_label: Label
+var chart := RiverChart.new()
 var graphics := preload("res://river_graphics.gd").new()
 var teleport_dialog: ConfirmationDialog
-var teleport_status: Label
-var return_button: Button
 var teleport_destination: ChartDestination
 var can_return_to_boat := false
 var swimming := false
@@ -108,10 +111,14 @@ var target_index := -1
 var rod_pressed := false
 var interact_pressed := false
 var mower := LawnMower.new()
-var spare_mower := LawnMower.new()
 var shannon_job := ShannonJob.new()
-var public_works := PublicWorks.new()
 var flying := false
+var pause_menu := PauseMenu.new()
+var safety := Safety.new()
+var jump_was_held := false
+var multiplayer_trip := false
+var lobby: Lobby
+var leaving_trip := false
 
 
 func _ready() -> void:
@@ -165,7 +172,6 @@ func _ready() -> void:
 	cabin.spill_overboard.connect(register_slick)
 	cabin.message.connect(notify_angling)
 	read_journal()
-	river.meta.places.append({"name": "Public Works", "point": [PublicWorks.SITE.x, PublicWorks.SITE.y]})
 	make_chart()
 	stock = Stock.new(river)
 	stock.update(vessel.center)
@@ -177,6 +183,7 @@ func _ready() -> void:
 	campaign = Campaign.new()
 	add_child(campaign)
 	campaign.setup(self)
+	make_waypoints()
 	marina_cars = MarinaCars.new()
 	marina_cars.name = "MarinaCars"
 	add_child(marina_cars)
@@ -188,16 +195,83 @@ func _ready() -> void:
 	cheats = Cheats.new()
 	cheat_center.add_child(cheats)
 	cheats.dismissed.connect(close_cheats)
-	add_child(public_works)
-	public_works.build(river)
 	add_child(mower)
-	mower.setup(river, public_works.at_ground(PublicWorks.PARKING[0]), PublicWorks.HEADING + PI)
-	add_child(spare_mower)
-	spare_mower.setup(river, public_works.at_ground(PublicWorks.PARKING[1]), PublicWorks.HEADING + PI, mower)
+	mower.setup(river)
 	add_child(shannon_job)
-	shannon_job.setup(self, mower, public_works.to_global(Vector3(PublicWorks.SHANNON.x, public_works.office_floor, PublicWorks.SHANNON.y)),
-		PublicWorks.HEADING, public_works.monitor_focus)
-	Input.mouse_mode = Input.MOUSE_MODE_CONFINED
+	shannon_job.setup(self)
+	safety.setup(self)
+	hud.add_child(pause_menu)
+	pause_menu.setup(self)
+	for menu in [pause_menu, chart, campaign.board]:
+		menu.visibility_changed.connect(update_menu_hud)
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	if multiplayer_trip:
+		open_multiplayer_lobby()
+
+
+func open_multiplayer_lobby() -> void:
+	var layer := CanvasLayer.new()
+	layer.layer = 20
+	add_child(layer)
+	lobby = Lobby.new()
+	layer.add_child(lobby)
+	lobby.setup(campaign.crew)
+	lobby.dismissed.connect(return_to_title.bind(""))
+	campaign.crew.changed.connect(session_changed)
+	hud.hide()
+	get_tree().paused = true
+
+
+func session_changed() -> void:
+	if is_instance_valid(lobby):
+		if campaign.crew.started:
+			if campaign.crew.is_guest():
+				campaign.tick_client_ship(1.0)
+			lobby.get_parent().queue_free()
+			lobby = null
+			hud.show()
+			get_tree().paused = false
+	elif campaign.crew.mode == "solo" and not leaving_trip:
+		return_to_title(campaign.crew.status)
+
+
+func save_trip() -> String:
+	pause_menu.persist()
+	if campaign.crew.is_guest():
+		return ""
+	campaign.ledger.save_file()
+	return campaign.ledger.error
+
+
+func leave_trip() -> String:
+	if leaving_trip:
+		return ""
+	var error := save_trip()
+	if error.is_empty():
+		return_to_title("")
+	return error
+
+
+func return_to_title(message: String) -> void:
+	if leaving_trip:
+		return
+	leaving_trip = true
+	finish_return_to_title.call_deferred(message)
+
+
+func finish_return_to_title(message: String) -> void:
+	campaign.crew.stop()
+	get_tree().paused = false
+	var title := (load("res://title_screen.tscn") as PackedScene).instantiate()
+	title.arrival_message = message
+	get_tree().change_scene_to_node(title)
+
+
+func update_menu_hud() -> void:
+	var show_hud: bool = not (pause_menu.visible or chart.visible or campaign.board.visible)
+	(objective.get_parent() as Control).visible = show_hud
+	marker.self_modulate.a = 1.0 if show_hud else 0.0
+	campaign.info.self_modulate.a = marker.self_modulate.a
 
 
 func build_tension_display() -> void:
@@ -216,6 +290,13 @@ func build_tension_display() -> void:
 
 
 func _input(event: InputEvent) -> void:
+	if pause_menu.visible:
+		return
+	if event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_ESCAPE \
+			and not teleport_dialog.visible and not menu_blocks_play():
+		pause_menu.open()
+		get_viewport().set_input_as_handled()
+		return
 	if teleport_dialog.visible:
 		return
 	if not event is InputEventKey or not event.pressed or event.echo:
@@ -232,7 +313,7 @@ func _input(event: InputEvent) -> void:
 			cheat_mouse_mode = Input.mouse_mode
 			sonar_overlay.hide()
 			cheats.show()
-			Input.mouse_mode = Input.MOUSE_MODE_CONFINED
+			Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 		else:
 			notify_angling("Cheats are available in solo play.", 3.0)
 		get_viewport().set_input_as_handled()
@@ -273,11 +354,7 @@ func _input(event: InputEvent) -> void:
 		if fish_guide.visible:
 			close_guide()
 		else:
-			chart.hide()
-			sonar_overlay.hide()
-			release_line()
-			fish_guide.show()
-			Input.mouse_mode = Input.MOUSE_MODE_CONFINED
+			open_fish_guide()
 		get_viewport().set_input_as_handled()
 		return
 	if fish_guide.visible:
@@ -286,18 +363,15 @@ func _input(event: InputEvent) -> void:
 			get_viewport().set_input_as_handled()
 		return
 	if key == KEY_TAB or key == KEY_M or (key == KEY_ESCAPE and chart.visible):
-		chart.visible = not chart.visible
 		if chart.visible:
-			sonar_overlay.hide()
-			Input.mouse_mode = Input.MOUSE_MODE_CONFINED
-			release_line()
-		elif DisplayServer.get_name() != "headless":
-			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+			close_chart()
+		else:
+			open_chart()
 		get_viewport().set_input_as_handled()
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if fish_guide.visible or teleport_dialog.visible or backpack.inventory.visible or cheats.visible:
+	if pause_menu.visible or fish_guide.visible or teleport_dialog.visible or backpack.inventory.visible or cheats.visible:
 		return
 	if flying or mower.rider != null:
 		if event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_F4:
@@ -338,7 +412,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:
 		var hotbar_slot := Backpack.HOTBAR_KEYS.find(event.physical_keycode)
 		if hotbar_slot >= 0 and not chart.visible:
-			backpack.reveal_hotbar()
+			backpack.flash_slot(hotbar_slot)
 			var gear := backpack.shortcuts[hotbar_slot]
 			equip_gear(Backpack.NONE if gear == backpack.equipped else gear)
 			return
@@ -346,7 +420,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			KEY_F4:
 				change_draw_distance()
 				return
-			KEY_1, KEY_2, KEY_3, KEY_4, KEY_5:
+			KEY_1, KEY_2, KEY_3, KEY_4:
 				var place := int(event.physical_keycode - KEY_1)
 				if chart.visible and place < river.meta.places.size():
 					target_index = place
@@ -395,28 +469,17 @@ func _physics_process(delta: float) -> void:
 	campaign.run_shortcuts(has_input and not flying and mower.rider == null and marina_cars.active < 0)
 	has_input = play_input()
 	var use_cabin: bool = has_input and not flying and mower.rider == null and marina_cars.active < 0 and aboard() and not vessel.skiff and not driving and absf(vessel.speed) <= 1.20
+	use_cabin = use_cabin and not campaign.crewplay.hands_busy()
 	var did_use := cabin.update(delta, clock, use_cabin, interact_pressed, Input.is_physical_key_pressed(KEY_E))
-	var can_use_yard := interact_pressed and has_input and can_talk_to_shannon()
-	var office_leaf := public_works.office_handle(eye) if can_use_yard else -1
-	var bay := public_works.nearby_door(eye) if can_use_yard else null
-	public_works.advance(delta, player, mower, spare_mower)
 	if interact_pressed and has_input and not did_use and not cabin.busy():
 		if marina_cars.active >= 0:
 			marina_cars.interact()
 		elif mower.rider != null:
 			if not mower.dismount():
 				notify_angling("Move to clear, level ground to get off the mower.", 2.4)
-		elif office_leaf >= 0:
-			public_works.toggle_office(office_leaf, eye)
 		elif can_talk_to_shannon() and shannon_job.in_range():
 			shannon_job.interact()
-		elif bay != null:
-			bay.toggle()
 		elif can_mount_mower():
-			if not mower.near(player, eye):
-				var previous := mower
-				mower = spare_mower
-				spare_mower = previous
 			release_line()
 			sonar_overlay.hide()
 			mower.mount(player)
@@ -471,22 +534,29 @@ func _physics_process(delta: float) -> void:
 	var lift := free_hands and Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT) and fishing == Fishing.FIGHT
 	tick_fishing(delta, free_hands and Input.is_physical_key_pressed(KEY_R), lift)
 	render_fishing(delta, lift)
-	var fists_raised := fists_available()
-	var empty_handed := backpack.equipped == Backpack.NONE and not menu_blocks_play() and hands_available()
-	rig.update_hands(delta, clock, empty_handed or fists_raised, fists_raised)
 	campaign.tick(delta, has_input)
 	marina_cars.hide_drivers()
 	shannon_job.tick(delta, play_input() and can_talk_to_shannon())
 	update_hud()
 	campaign.mark_world()
+	safety.tick(delta)
 
 
 func play_input() -> bool:
 	return Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and not menu_blocks_play()
 
 
+func _process(delta: float) -> void:
+	if not is_instance_valid(campaign) or not is_instance_valid(rig.fists):
+		return
+	var fists_raised := fists_available()
+	var empty_handed := backpack.equipped == Backpack.NONE and not menu_blocks_play() and hands_available()
+	var visual_clock := clock + Engine.get_physics_interpolation_fraction() / float(Engine.physics_ticks_per_second)
+	rig.update_hands(delta, visual_clock, empty_handed or fists_raised, fists_raised)
+
+
 func menu_blocks_play() -> bool:
-	return chart.visible or fish_guide.visible or backpack.inventory.visible or cheats.visible or campaign.controls_blocked()
+	return pause_menu.visible or chart.visible or fish_guide.visible or backpack.inventory.visible or cheats.visible or campaign.controls_blocked()
 
 
 func close_cheats() -> void:
@@ -510,7 +580,7 @@ func open_backpack() -> void:
 		backpack.select_gear(backpack.equipped)
 	sonar_overlay.hide()
 	backpack.inventory.show()
-	Input.mouse_mode = Input.MOUSE_MODE_CONFINED
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 
 
 func close_backpack() -> void:
@@ -565,7 +635,9 @@ func move_on_foot(delta: float, walk: Vector3, jump: bool) -> void:
 	if not swimming:
 		if depth > 0.0:
 			walk *= lerpf(1.0, .46, smoothstep(.04, .96, -at.y))
-		super.move_on_foot(delta, walk, jump)
+		var jump_pressed := jump and not jump_was_held
+		jump_was_held = jump
+		super.move_on_foot(delta, walk, jump_pressed)
 		return
 	var current := river.downstream(at, clock) * .35
 	var speed := 2.05 * walk_multiplier
@@ -1131,7 +1203,8 @@ func accept_crew_scoop(serial: int, helper: int, display_name: String) -> void:
 
 
 func read_journal() -> void:
-	var saved: Variant = JSON.parse_string(FileAccess.get_file_as_string(JOURNAL)) if FileAccess.file_exists(JOURNAL) else null
+	var path := CREW_JOURNAL if multiplayer_trip else JOURNAL
+	var saved: Variant = JSON.parse_string(FileAccess.get_file_as_string(path)) if FileAccess.file_exists(path) else null
 	if saved is Array:
 		for entry: Variant in saved:
 			if entry is String:
@@ -1147,7 +1220,7 @@ func record_catch() -> void:
 	journal.push_front(catch_note)
 	if journal.size() > 25:
 		journal.resize(25)
-	var file := FileAccess.open(JOURNAL, FileAccess.WRITE)
+	var file := FileAccess.open(CREW_JOURNAL if multiplayer_trip else JOURNAL, FileAccess.WRITE)
 	if file:
 		file.store_string(JSON.stringify(journal))
 	refresh_journal()
@@ -1158,100 +1231,81 @@ func make_chart() -> void:
 	var layer := CanvasLayer.new()
 	layer.layer = 2
 	add_child(layer)
-	chart = Control.new()
 	layer.add_child(chart)
-	chart.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	var mask := ColorRect.new()
-	mask.color = Color("#141d24f5")
-	chart.add_child(mask)
-	mask.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	var title := label("OTTAWA RIVER CHART", 28, Color("#f6e8ca"))
-	title.position = Vector2(35, 24)
-	chart.add_child(title)
-	var locations := "1 Swisha     2 Deep River     3 Chalk River Labs"
-	if river.meta.has("lamure"):
-		locations += "     4 Lamure Beach"
-	locations += "     %d Public Works" % river.meta.places.size()
-	var help := label(locations + "     J Fish guide     Tab Close", 16, Color("#c3d5ce"))
-	help.position = Vector2(37, 62)
-	chart.add_child(help)
-	chart_map = TextureRect.new()
-	chart_map.texture = river.chart_texture
-	chart_map.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	chart_map.position = Vector2(36, 105)
-	chart_map.size = Vector2(844, 585)
-	chart.add_child(chart_map)
-	for index in river.meta.places.size():
-		var text := label(river.meta.places[index].name, 17, Color("#f7dfac"))
-		var label_offset := Vector2(8, 4 if index == 3 else -24)
-		if river.meta.places[index].name == "Public Works":
-			label_offset = Vector2(-110, 6)
-		text.position = chart_screen(river.point(index)) + label_offset
-		chart.add_child(text)
-		var spot := label("●", 17, Color("#e9b97b"))
-		spot.position = chart_screen(river.point(index)) + Vector2(-7, -10)
-		chart.add_child(spot)
-	boat_dot = label("◆", 20, Color("#fff4d2"))
-	chart.add_child(boat_dot)
-	make_teleport_menu()
-	var catches_title := label("CATCH JOURNAL", 20, Color("#e6bd85"))
-	catches_title.position = Vector2(912, 392)
-	chart.add_child(catches_title)
-	var journal_scroll := ScrollContainer.new()
-	journal_scroll.position = Vector2(912, 427)
-	journal_scroll.size = Vector2(332, 204)
-	journal_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	chart.add_child(journal_scroll)
-	journal_label = label("", 17, Color("#e2ebdf"))
-	journal_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	journal_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	journal_scroll.add_child(journal_label)
-	var credits := label("© OpenStreetMap contributors\nElevation: Natural Resources Canada", 13, Color("#a3b1aa"))
-	credits.position = Vector2(912, 647)
-	chart.add_child(credits)
-	refresh_journal()
-	chart.hide()
-
-
-func make_teleport_menu() -> void:
-	var heading := label("TELEPORT", 20, Color("#e6bd85"))
-	heading.position = Vector2(912, 105)
-	chart.add_child(heading)
-	var destinations := VBoxContainer.new()
-	destinations.position = Vector2(912, 142)
-	destinations.custom_minimum_size.x = 332
-	destinations.add_theme_constant_override("separation", 6)
-	chart.add_child(destinations)
-	for destination: ChartDestination in TELEPORT_NAMES:
-		if destination == ChartDestination.LAMURE and not river.meta.has("lamure"):
-			continue
-		var button := Button.new()
-		button.text = TELEPORT_NAMES[destination]
-		button.custom_minimum_size.y = 34
-		button.pressed.connect(ask_to_teleport.bind(destination))
-		destinations.add_child(button)
-		if destination == ChartDestination.BOAT:
-			return_button = button
-	teleport_status = label("", 15, Color("#f7dfac"))
-	teleport_status.position = Vector2(912, 343)
-	teleport_status.size.x = 332
-	teleport_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	chart.add_child(teleport_status)
+	chart.setup(river.chart_texture, river.extent)
+	chart.travel_requested.connect(ask_to_teleport)
+	chart.close_requested.connect(close_chart)
+	chart.guide_requested.connect(open_fish_guide)
 	teleport_dialog = ConfirmationDialog.new()
 	teleport_dialog.title = "Confirm teleport"
 	teleport_dialog.ok_button_text = "Yes"
 	teleport_dialog.cancel_button_text = "No"
+	MenuTheme.style_confirmation(teleport_dialog)
 	teleport_dialog.confirmed.connect(teleport_from_chart)
+	teleport_dialog.canceled.connect(func():
+		if chart.visible:
+			chart.travel_button.grab_focus())
 	chart.add_child(teleport_dialog)
-	chart.visibility_changed.connect(update_teleport_menu)
+	refresh_journal()
 
 
-func update_teleport_menu() -> void:
-	teleport_status.text = ""
-	if chart.visible:
-		return_button.visible = can_return_to_boat and not aboard()
-	else:
-		teleport_dialog.hide()
+func make_waypoints() -> void:
+	chart.add_waypoint(ChartDestination.SWISHA, "Swisha Dam", "Swisha / Des Joachims Dam",
+		"Swisha / Des Joachims Dam", "Arrive at the tailwater landing.",
+		river.point(0), Vector2(16, -44), Color("#bd512d"))
+	chart.add_waypoint(ChartDestination.PINE, "Pine Beach / Pine Reach", "Pine Beach",
+		"Pine Beach / Pine Reach", "Arrive on shore at Pine Reach.",
+		campaign.landings.sites[1].stand, Vector2(-143, -59), Color("#417440"))
+	chart.add_waypoint(ChartDestination.CAMP, "Pine Reach Campfire", "Campfire",
+		"Pine Reach Campfire", "Arrive by the stove at the fishing camp.",
+		campaign.crewplay.camp.stove.global_position, Vector2(-110, 25), Color("#ac5923"))
+	chart.add_waypoint(ChartDestination.MARINA, "Deep River Marina", "Deep River Marina",
+		"Deep River Marina", "Arrive on the public wharf.",
+		river.point(1), Vector2(27, -78), Color("#215d8e"))
+	if river.meta.has("lamure"):
+		chart.add_waypoint(ChartDestination.LAMURE, "Lamure Beach", "Lamure Beach",
+			"Lamure Beach", "Arrive on the beach near the swim raft.",
+			river.point(3), Vector2(-60, 66), Color("#247d76"))
+	chart.add_waypoint(ChartDestination.BIRCH, "Birch Beach / Birch Point", "Birch Point",
+		"Birch Beach / Birch Point", "Arrive on shore at Birch Point.",
+		campaign.landings.sites[2].stand, Vector2(95, 18), Color("#75569b"))
+	chart.add_waypoint(ChartDestination.CHALK_RIVER, "Chalk River Labs", "Chalk River Labs",
+		"Chalk River Labs", "Arrive near the research landing and lookout trail.",
+		river.point(2), Vector2(-129, 36), Color("#a44864"))
+	chart.add_waypoint(ChartDestination.BOAT, "Return to boat", "Boat",
+		"Return to boat", "Rejoin the boat at its current position.",
+		vessel.center, Vector2.ZERO, MenuTheme.BLUE, true)
+
+
+func open_chart(show_catches := false) -> void:
+	sonar_overlay.hide()
+	release_line()
+	chart.set_status("")
+	chart.set_return_available(can_return_to_boat and not aboard())
+	chart.update_boat(vessel.center)
+	chart.open(show_catches)
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+
+
+func close_chart() -> void:
+	teleport_dialog.hide()
+	chart.hide()
+	if DisplayServer.get_name() != "headless":
+		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+
+
+func open_fish_guide() -> void:
+	chart.hide()
+	sonar_overlay.hide()
+	release_line()
+	var catches: Dictionary = campaign.ledger.state.records.duplicate()
+	for entry: String in journal:
+		catches[entry.get_slice("  ·  ", 0)] = true
+	if catches.has("Trophy muskellunge"):
+		catches["Muskellunge"] = true
+	fish_guide.set_catches(catches)
+	fish_guide.show()
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 
 
 func teleport_blocker() -> String:
@@ -1269,8 +1323,9 @@ func teleport_blocker() -> String:
 
 
 func ask_to_teleport(destination: ChartDestination) -> void:
-	teleport_status.text = teleport_blocker()
-	if not teleport_status.text.is_empty():
+	var blocker := teleport_blocker()
+	chart.set_status(blocker)
+	if not blocker.is_empty():
 		return
 	teleport_destination = destination
 	if destination == ChartDestination.BOAT:
@@ -1284,8 +1339,9 @@ func ask_to_teleport(destination: ChartDestination) -> void:
 func teleport_from_chart() -> void:
 	if not chart.visible or campaign.controls_blocked():
 		return
-	teleport_status.text = teleport_blocker()
-	if not teleport_status.text.is_empty():
+	var blocker := teleport_blocker()
+	chart.set_status(blocker)
+	if not blocker.is_empty():
 		return
 	release_line()
 	set_swimming(false)
@@ -1311,27 +1367,32 @@ func teleport_from_chart() -> void:
 				arrival = river.point(3)
 				arrival.y = river.ground_height(arrival.x, arrival.z)
 				view_target = river.lamure.raft_anchor
-		player.global_position = arrival + Vector3.UP * .10
+			ChartDestination.PINE, ChartDestination.BIRCH:
+				var index := 1 if teleport_destination == ChartDestination.PINE else 2
+				arrival = campaign.landings.sites[index].stand
+				view_target = campaign.landings.sites[index].berth
+			ChartDestination.CAMP:
+				arrival = campaign.crewplay.camp.stove.global_position + campaign.landings.sites[1].right * 2.3
+				view_target = campaign.crewplay.camp.stove.global_position
+		var safe := safety.find_near(arrival, 4.0)
+		if not safe.is_finite():
+			chart.set_status("No clear arrival point. Try another waypoint.")
+			return
+		player.global_position = safe
 		player.velocity = Vector3.ZERO
 		player.reset_physics_interpolation()
 		yaw = atan2(arrival.x - view_target.x, arrival.z - view_target.z)
 		can_return_to_boat = true
 	pitch = -.12
 	update_view()
-	chart.hide()
-	if DisplayServer.get_name() != "headless":
-		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
-
-
-func chart_screen(point: Vector3) -> Vector2:
-	return chart_map.position + Vector2(point.x, point.z) / river.extent * chart_map.size
+	close_chart()
 
 
 func refresh_journal() -> void:
 	var entries := PackedStringArray()
 	for i in mini(9, journal.size()):
 		entries.append(journal[i])
-	journal_label.text = "\n\n".join(entries) if not entries.is_empty() else "No catches yet."
+	chart.journal_label.text = "\n\n".join(entries) if not entries.is_empty() else "No catches yet."
 
 
 func update_hud() -> void:
@@ -1374,7 +1435,7 @@ func update_hud() -> void:
 		campaign.info.hide()
 		return
 	if chart.visible:
-		boat_dot.position = chart_screen(vessel.center) + Vector2(-7, -11)
+		chart.update_boat(vessel.center)
 	if Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
 		instruction.text = "Click to play  ·  Hold F1 for controls"
 	elif cabin.hands_in_use() or cabin.focus >= 0:
@@ -1401,7 +1462,7 @@ func update_hud() -> void:
 		instruction.text = "Lifting the net…"
 	elif fishing == Fishing.DISPLAY:
 		objective.text = catch_note
-		instruction.text = "R  Release    •    H  Keep for the grill"
+		instruction.text = "R  Release    •    H  Hold fish   ·   E at ice chest to store"
 	elif fishing == Fishing.RELEASING:
 		instruction.text = "Lowering it back into the river…"
 	elif clock < note_until:
@@ -1436,17 +1497,10 @@ func update_hud() -> void:
 			instruction.text = "WASD  Fly   ·   Space  Up   ·   Ctrl/Shift  Down   ·   F2  Cheats"
 		elif mower.rider != null and clock >= note_until:
 			instruction.text = "W/S  Drive   ·   A/D  Turn   ·   Q/R  Throttle   ·   X  Blades %s   ·   C  View   ·   E  Dismount" % ("on" if mower.blades else "off")
-		elif can_talk_to_shannon():
-			var office_leaf := public_works.office_handle(eye)
-			var bay := public_works.nearby_door(eye)
-			if office_leaf >= 0:
-				instruction.text = public_works.office_prompt(office_leaf, eye)
-			elif shannon_job.in_range() and clock >= note_until:
-				instruction.text = shannon_job.prompt()
-			elif bay != null:
-				instruction.text = bay.prompt()
-			elif can_mount_mower():
-				instruction.text = "E  Mount lawn mower"
+		elif can_talk_to_shannon() and shannon_job.in_range() and clock >= note_until:
+			instruction.text = shannon_job.prompt()
+		elif can_mount_mower():
+			instruction.text = "E  Mount lawn mower"
 	backpack.waypoint.visible = target_index >= 0
 	if target_index >= 0:
 		var target: Vector3 = river.point(target_index)
@@ -1502,9 +1556,33 @@ func fly(delta: float, has_input: bool) -> void:
 func can_mount_mower() -> bool:
 	return not flying and not swimming and marina_cars.active < 0 and mower.rider == null and not aboard() and not driving \
 		and not cabin.busy() and not campaign.dive.active and campaign.preview_id.is_empty() \
-		and not campaign.crewplay.hands_busy() and (mower.near(player, eye) or spare_mower.near(player, eye))
+		and not campaign.crewplay.hands_busy() and mower.near(player, eye)
 
 
 func can_talk_to_shannon() -> bool:
 	return mower.rider == null and not flying and not swimming and marina_cars.active < 0 and not aboard() and not driving \
 		and not cabin.busy() and not campaign.dive.active and campaign.preview_id.is_empty()
+
+
+func unstuck() -> void:
+	release_line()
+	interact_pressed = false
+	rod_pressed = false
+	cheats.flight.button_pressed = false
+	if flying:
+		update_flight_mode(false)
+	if mower.rider != null:
+		mower.leave_for_flight()
+	if campaign.dive.active:
+		campaign.dive.stow()
+	if driving:
+		campaign.relinquish_helm()
+	if cabin.active >= 0:
+		cabin.finish_use()
+	cabin.clean_target = null
+	campaign.cancel_preview(false)
+	set_swimming(false)
+	if marina_cars.active >= 0:
+		marina_cars.request_rescue()
+		return
+	safety.rescue()

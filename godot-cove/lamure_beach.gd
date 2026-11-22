@@ -113,7 +113,7 @@ func build_guard_stand(parent: Node3D, at: Vector3, timber: Material) -> void:
 
 
 func build_entry(parent: Node3D, at: Vector3, timber: Material) -> void:
-	var entry := fixture(parent, parent.get_parent().roadside_sign_foot(at, 1.05), "LamureBeachSign")
+	var entry := fixture(parent, at, "LamureBeachSign")
 	entry.rotate_y(-1.28)
 	var post := Kit.paint(Color("#6e5a42"))
 	for x: float in [-.83, .83]:

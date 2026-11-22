@@ -16,8 +16,7 @@ func build(parent: Node3D, layout: Dictionary, elevation: Callable, marina: Mari
 	var blue := Kit.paint(Color("#27467e"), .70, .12)
 	build_school_sign(campus, at(layout.sign), blue)
 	for entry: Array in layout.wayfinding:
-		var location: Array = [18053.5, 12882.0] if entry[2] == "MARINA & RIVERBANK PARK" else entry[0]
-		var sign := signpost(campus, at(location), Vector3(entry[1][0], 0, entry[1][1]),
+		var sign := signpost(campus, at(entry[0]), Vector3(entry[1][0], 0, entry[1][1]),
 			Vector3(1.75, .48, .09), 1.42, Kit.paint(Color("#2c4c44")))
 		letter_panel(sign, entry[2], Vector3(0, 1.52, .051), .00235, Color("#f7f1e6"))
 		letter_panel(sign, entry[3], Vector3(0, 1.32, .051), .00235, Color("#dedccb"))
@@ -52,8 +51,7 @@ func signpost(parent: Node3D, foot: Vector3, face: Vector3, size: Vector3, cente
 		material: Material) -> Node3D:
 	var root := Node3D.new()
 	parent.add_child(root)
-	foot = parent.get_parent().roadside_sign_foot(foot, size.x * .5 + .1)
-	root.global_position = foot
+	root.position = foot
 	root.basis = Basis.looking_at(face, Vector3.UP, true)
 	for side: float in [-1.0, 1.0]:
 		var base := root.to_global(Vector3(side * (size.x * .5 + .027), 0, 0))

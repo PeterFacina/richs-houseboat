@@ -1,7 +1,6 @@
 shader_type spatial;
 
 #include "res://river_surfaces.gdshaderinc"
-#include "res://riverbank_grass.gdshaderinc"
 #include "res://lamure_surface.gdshaderinc"
 
 uniform sampler2D town_ground : source_color, filter_linear_mipmap_anisotropic, repeat_disable;
@@ -140,10 +139,7 @@ void fragment() {
 			grass *= 1.0 - max(max(gravel, pavers), shoulder);
 		}
 	}
-	float park_lawn = park_grass_mask(p);
-	ALBEDO = mix(ALBEDO, park_grass_color(grass_scan, p), park_lawn);
-	NORMAL = normalize(mix(NORMAL, (VIEW_MATRIX * vec4(0.0, 1.0, 0.0, 0.0)).xyz, park_lawn));
-	float detail = grass * (1.0 - park_lawn) * (1.0 - smoothstep(42.0, 110.0, length(VERTEX)));
+	float detail = grass * (1.0 - smoothstep(42.0, 110.0, length(VERTEX)));
 	if (detail > .005) {
 		vec2 relief = texture(grass_normal, region / 1.85).rg * 2.0 - 1.0;
 		vec3 tangent = normalize(VIEW_MATRIX[0].xyz - NORMAL * dot(VIEW_MATRIX[0].xyz, NORMAL));

@@ -16,31 +16,22 @@ var arm_surfaces: Array[ShaderMaterial] = []
 var face: ShaderMaterial
 var head_turn := 0.0
 var jaw := 0.0
-var shannon := false
-var seat_mesh: MeshInstance3D
-var seated_shins: Array[Node3D] = []
 
 
-func build(as_shannon := false) -> void:
-	shannon = as_shannon
+func build() -> void:
 	var shorts := ShaderMaterial.new()
 	shorts.shader = preload("res://rich_boardshorts.gdshader")
 	var shirt := fabric(Color("#c6a5a0"), .80)
 	var collar := fabric(Color("#b69592"), .28)
-	if shannon:
-		shorts = fabric(Color("#46474b"), .28)
-		shirt = fabric(Color("#203b40"), .25)
-		shirt.set_shader_parameter("floral", true)
-		collar = fabric(Color("#203038"), .25)
-	var arm_skin := Kit.paint(Color("#bd826c") if shannon else Color("#c18b71"), .83)
+	var arm_skin := Kit.paint(Color("#c18b71"), .83)
 	arm_skin.disable_receive_shadows = true
 	for side: float in [-1.0, 1.0]:
 		build_leg(side, shorts, arm_skin)
-	seat_mesh = loft(self, [
+	var seat := loft(self, [
 		Vector4(.628, .047, .051, .053), Vector4(.674, .137, .079, .078),
 		Vector4(.720, .180, .097, .089), Vector4(.775, .176, .094, .086),
 		Vector4(.844, .161, .087, .077), Vector4(.862, .009, .009, .012)], shorts, 40)
-	seat_mesh.position.z = -.015
+	seat.position.z = -.015
 	torso = joint(self, Vector3(0, .784, 0), "Torso")
 	loft(torso, [
 		Vector4(.000, .157, .085, .102), Vector4(.012, .172, .091, .112),
@@ -57,33 +48,17 @@ func build(as_shannon := false) -> void:
 	build_head(arm_skin)
 	for side: float in [-1.0, 1.0]:
 		build_arm(side, shirt, collar, arm_skin)
-	if shannon:
-		torso.scale.x = 1.12
-	else:
-		build_wrench(wrists[0])
-		build_beer(wrists[1])
+	build_wrench(wrists[0])
+	build_beer(wrists[1])
 
 
 func build_leg(side: float, shorts: Material, skin: Material) -> void:
 	var leg := joint(self, Vector3(side * .097, 0, side * .022), "Leg")
 	legs.append(leg)
 	leg.rotation.y = side * .12
-	var lower := leg
-	if shannon:
-		lower = joint(leg, Vector3.UP * .45, "Shin")
-		seated_shins.append(lower)
-	var shin_offset := Vector3.DOWN * .45 if shannon else Vector3.ZERO
-	var foot := Kit.mesh_at(lower, preload("res://ottawa/rich/bare_leg.res"), shin_offset, skin)
+	var foot := Kit.mesh_at(leg, preload("res://ottawa/rich/bare_leg.res"), Vector3.ZERO, skin)
 	foot.name = "BareLeg"
 	foot.scale.x = side
-	if shannon:
-		var rubber := Kit.paint(Color("#232627"), .84)
-		var sole := Kit.paint(Color("#d0cbbe"), .88)
-		Tools.shell(lower, Vector3(0, -.018, .02), Vector3(.141, .137, .149), skin)
-		loft(lower, [Vector4(.041, .046, .053, .122), Vector4(.106, .046, .044, .058),
-			Vector4(.172, .036, .033, .037), Vector4(.188, .032, .033, .033)], rubber, 24).position = shin_offset
-		Tools.shell(lower, shin_offset + Vector3(0, .062, .045), Vector3(.102, .101, .217), rubber)
-		Tools.shell(lower, shin_offset + Vector3(0, .027, .045), Vector3(.106, .037, .226), sole)
 	loft(leg, [
 		Vector4(.463, .077, .073, .083), Vector4(.477, .080, .076, .085),
 		Vector4(.509, .080, .077, .086), Vector4(.569, .089, .083, .090),
@@ -160,14 +135,11 @@ func build_wrench(wrist: Node3D) -> void:
 
 
 func build_head(skin: Material) -> void:
+	var photo := Image.load_from_file(BASE + "rich_face.png")
+	photo.generate_mipmaps()
 	face = ShaderMaterial.new()
 	face.shader = preload("res://rich_skin.gdshader")
-	if shannon:
-		face.set_shader_parameter("procedural_face", true)
-	else:
-		var photo := Image.load_from_file(BASE + "rich_face.png")
-		photo.generate_mipmaps()
-		face.set_shader_parameter("portrait", ImageTexture.create_from_image(photo))
+	face.set_shader_parameter("portrait", ImageTexture.create_from_image(photo))
 	# Keep the collar end in torso space so the skin can bend into the head.
 	var skin_mesh := loft(torso, [
 		Vector4(-.066, .065, .064, .068), Vector4(-.051, .062, .061, .065),
@@ -191,8 +163,7 @@ func build_head(skin: Material) -> void:
 		Tools.shell(head, at, Vector3(.024, .062, .040), skin).rotation.z = -.20 * side
 		Tools.shell(head, at + Vector3(side * .006, .001, .014), Vector3(.009, .036, .012), ear_inside)
 		Tools.shell(head, at + Vector3(side * .004, -.015, .011), Vector3(.017, .015, .015), skin)
-	if not shannon:
-		build_glasses()
+	build_glasses()
 	build_cap()
 
 
@@ -229,7 +200,7 @@ func glasses_lens(outline: PackedVector2Array, side: float, scale_xy: float, dep
 
 
 func build_cap() -> void:
-	var khaki := fabric(Color("#293d50") if shannon else Color("#a49058"), .30)
+	var khaki := fabric(Color("#a49058"), .30)
 	var underside := Kit.paint(Color("#222322"), .90)
 	loft(head, [
 		Vector4(.171, .078, .079, .091), Vector4(.179, .082, .083, .097),
@@ -237,7 +208,7 @@ func build_cap() -> void:
 		Vector4(.237, .063, .064, .071), Vector4(.250, .038, .041, .049),
 		Vector4(.255, .006, .008, .011)], khaki, 48)
 	Tools.shell(head, Vector3(0, .256, -.004), Vector3(.017, .007, .016), khaki)
-	var seam := Kit.paint(Color("#465365") if shannon else Color("#766448"), .92)
+	var seam := Kit.paint(Color("#766448"), .92)
 	Tools.tube(head, Vector3(0, .249, .049), Vector3(0, .226, .083), .0019, .0019, seam)
 	Tools.tube(head, Vector3(0, .226, .083), Vector3(0, .193, .099), .0019, .0019, seam)
 	var brim := SurfaceTool.new()
@@ -259,7 +230,7 @@ func build_cap() -> void:
 	var bill := Kit.mesh_at(head, brim.commit(), Vector3.ZERO, underside)
 	bill.name = "ForwardCapBill"
 	edge.generate_normals()
-	var binding := Kit.paint(Color("#354658") if shannon else Color("#77664b"), .94)
+	var binding := Kit.paint(Color("#77664b"), .94)
 	binding.cull_mode = BaseMaterial3D.CULL_DISABLED
 	Kit.mesh_at(head, edge.commit(), Vector3.ZERO, binding)
 
@@ -335,24 +306,6 @@ func pose(delta: float, clock: float, look_yaw: float, look_up: float, gesture: 
 		elbows[i].rotation.x = lerpf(elbows[i].rotation.x, bend, settle)
 		arm_surfaces[i].set_shader_parameter("elbow_angle", elbows[i].rotation.x)
 		wrists[i].rotation = wrists[i].rotation.lerp(wrist, settle)
-
-
-func pose_at_desk(delta: float, clock: float, look_yaw: float, look_up: float,
-		speaking: bool, speech_age: float, mouth: float) -> void:
-	pose(delta, clock, look_yaw, look_up, "point" if speaking else "", speech_age, mouth)
-	torso.position.y -= .244
-	seat_mesh.position.y = -.249
-	for index in 2:
-		var side := float(2 * index - 1)
-		var leg := legs[index]
-		leg.rotation = Vector3(-1.46, side * .05, 0)
-		leg.position = Vector3(side * .097, .498, -.027) - leg.basis * (Vector3.UP * .72)
-		seated_shins[index].rotation.x = 1.46
-		if not speaking:
-			upper_arms[index].rotation.x = -.86 + sin(clock * 5.1 + index) * .055
-			upper_arms[index].rotation.z = side * .15
-			elbows[index].rotation.x = -.94 + cos(clock * 6.2 + index * .8) * .036
-			arm_surfaces[index].set_shader_parameter("elbow_angle", elbows[index].rotation.x)
 
 
 static func joint(parent: Node3D, at: Vector3, label: String) -> Node3D:

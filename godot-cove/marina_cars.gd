@@ -4,8 +4,6 @@ const Kit = preload("res://scenery.gd")
 const RoadCar = preload("res://marina_car.gd")
 const Model = preload("res://marina_car_model.gd")
 const Map = preload("res://ottawa_map.gd")
-const Yard = preload("res://public_works.gd")
-const VehicleExit = preload("res://vehicle_exit.gd")
 # Inland from the promenade, between the access road and the launch approach.
 const LOT := Vector3(18022.6, 0, 12636.8)
 const LOT_ANGLE := .16
@@ -38,22 +36,14 @@ func setup(fishing_game: Node3D, map: Map, river_crew: Node) -> void:
 	var sound := RoadCar.engine_sample()
 	build_bays()
 	for i in Model.MODELS.size():
-		add_vehicle("Car%d" % i, Model.MODELS[i], bay(i * BAY_WIDTH, 0), LOT_ANGLE, sound)
-	for i in Yard.TRUCK_PARKING.size():
-		var slot: Vector3 = Yard.TRUCK_PARKING[i]
-		add_vehicle("PublicWorksTruck%d" % (i + 1), Model.WORK_TRUCKS[i],
-			Vector3(slot.x, 0, slot.z), slot.y, sound)
+		var car := RoadCar.new()
+		car.name = "Car%d" % i
+		add_child(car)
+		car.setup(Model.MODELS[i], bay(i * BAY_WIDTH, 0), LOT_ANGLE, river.ground_height, sound)
+		cars.append(car)
+		drivers.append(0)
 	crew.changed.connect(crew_changed)
 	crew.member_left.connect(driver_left)
-
-
-func add_vehicle(node_name: String, model: Dictionary, at: Vector3, heading: float, sound: AudioStreamWAV) -> void:
-	var car := RoadCar.new()
-	car.name = node_name
-	add_child(car)
-	car.setup(model, at, heading, river.ground_height, sound)
-	cars.append(car)
-	drivers.append(0)
 
 
 func bay(x: float, z: float) -> Vector3:
@@ -90,7 +80,7 @@ func paint_stripe(mesh: SurfaceTool, x0: float, x1: float, z0: float, z1: float)
 
 func find_focus() -> void:
 	focused = -1
-	if active >= 0 or game.aboard():
+	if active >= 0 or game.aboard() or game.campaign.crewplay.hands_busy():
 		return
 	var eye: Camera3D = game.eye
 	for car in cars:
@@ -105,7 +95,7 @@ func find_focus() -> void:
 func interact() -> bool:
 	if active >= 0:
 		if absf(cars[active].speed) > .55:
-			game.notify_angling("Stop the vehicle before getting out.", 2.3)
+			game.notify_angling("Stop the car before getting out.", 2.3)
 		elif crew.is_guest():
 			seat_order.rpc_id(1, active, "exit")
 		else:
@@ -115,7 +105,7 @@ func interact() -> bool:
 	if focused < 0:
 		return false
 	if drivers[focused] > 0:
-		game.notify_angling("Someone is driving this vehicle.", 2.3)
+		game.notify_angling("Someone is driving this car.", 2.3)
 	elif crew.is_guest():
 		seat_order.rpc_id(1, focused, "enter")
 	else:
@@ -162,7 +152,25 @@ func release_driver(peer: int, which: int) -> void:
 
 func find_exit(which: int) -> Vector3:
 	var car := cars[which]
-	return VehicleExit.find(car, game.player, Vector2(car.body_size.x, car.body_size.z) * .5, car.heading)
+	var capsule := CapsuleShape3D.new()
+	capsule.height = 1.68
+	capsule.radius = .25
+	var query := PhysicsShapeQueryParameters3D.new()
+	query.shape = capsule
+	query.collision_mask = 1
+	query.exclude = [game.player.get_rid()]
+	var space := get_world_3d().direct_space_state
+	for offset: Vector3 in [Vector3(-car.body_size.x * .5 - .54, 0, -.44),
+			Vector3(car.body_size.x * .5 + .54, 0, -.44), Vector3(0, 0, car.body_size.z * .5 + .67)]:
+		var place := car.global_position + offset.rotated(Vector3.UP, car.heading)
+		place.y = river.ground_height(place.x, place.z) + .052
+		if place.y < .03 or absf(place.y - car.global_position.y) > .58:
+			continue
+		query.transform = Transform3D(Basis.IDENTITY, place + Vector3.UP * .84)
+		if space.intersect_shape(query, 1).is_empty():
+			return place
+	return Vector3.INF
+
 
 func enter(which: int) -> void:
 	active = which
@@ -186,7 +194,6 @@ func leave(place: Vector3) -> void:
 	var car := cars[active]
 	active = -1
 	game.player.global_position = place
-	game.player.velocity = Vector3.UP * VehicleExit.LIFT
 	game.player.collision_layer = collision_layer_on_foot
 	game.player.collision_mask = collision_mask_on_foot
 	game.player.reset_physics_interpolation()
@@ -275,9 +282,6 @@ func step(delta: float, throttle: float, steering: float, brake: bool, has_input
 			for car in cars:
 				state.append([car.global_transform, car.heading, car.speed, car.steer, car.spinning, car.braking, car.lamps_on])
 			car_poses.rpc(state)
-	for index in cars.size():
-		var car := cars[index]
-		car.model.show_driver(drivers[index], index == active and cockpit_view)
 	if active >= 0:
 		follow(delta)
 	else:
@@ -330,8 +334,12 @@ func seat_order(which: int, action: String) -> void:
 	match action:
 		"enter":
 			var person: Dictionary = crew.last_pose(peer)
+			if not game.campaign.crewplay.held_by(peer).is_empty() or not game.campaign.crewplay.held_fish(peer).is_empty():
+				return
 			if not person.is_empty() and not person.onboard and cars[which].global_position.distance_squared_to(person.at) < 22.0:
 				assign_driver(peer, which)
+		"rescue":
+			rescue_driver(peer, which)
 		"exit":
 			release_driver(peer, which)
 		"lights":
@@ -390,3 +398,33 @@ func interpolate_cars(delta: float) -> void:
 		car.braking = sample[5]
 		car.lamps_on = sample[6]
 		car.present(delta, drivers[i] != 0, smoothstep(1.0, 13.0, absf(car.speed)))
+
+
+func request_rescue() -> void:
+	if active < 0:
+		return
+	if crew.is_guest():
+		seat_order.rpc_id(1, active, "rescue")
+	else:
+		rescue_driver(crew.my_id(), active)
+
+
+func rescue_driver(peer: int, which: int) -> void:
+	if which < 0 or which >= cars.size() or drivers[which] != peer:
+		return
+	var exit: Vector3 = game.safety.find_near(cars[which].global_position, 8.0)
+	if not exit.is_finite():
+		campaign_message(peer, "No safe exit found near this car.")
+		return
+	cars[which].speed = 0
+	drivers[which] = 0
+	remote_input.erase(peer)
+	if peer == crew.my_id():
+		leave(exit)
+	else:
+		exit_at.rpc_id(peer, exit)
+	broadcast_seats()
+
+
+func campaign_message(peer: int, message: String) -> void:
+	game.campaign.tell(peer, message)

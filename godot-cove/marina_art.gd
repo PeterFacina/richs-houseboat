@@ -8,11 +8,20 @@ const Pines = preload("res://lamure_pines.gd")
 const Graphics = preload("res://river_graphics.gd")
 const WATERFRONT_CANOPY := "res://ottawa/waterfront_canopy.bin"
 const YachtClub = preload("res://marina_yacht_club.gd")
+const TennisCourts = preload("res://marina_tennis_courts.gd")
 const DOCK_HEIGHT := 0.46
 const WALKWAY_WIDTH := 2.55
-const Routes = preload("res://mowing_routes.gd")
+const MOWING_LAWN := [
+	Vector2(7.5, -10), Vector2(14, -12.5), Vector2(25, -14.5), Vector2(33, -14),
+	Vector2(29, -6), Vector2(24, .5), Vector2(17, 7.5), Vector2(7.5, 11.5),
+]
 
-var mowing_routes: Array[Dictionary]
+
+static func mowing_lawn_bounds() -> Rect2:
+	var bounds := Rect2(MOWING_LAWN[0], Vector2.ZERO)
+	for corner: Vector2 in MOWING_LAWN:
+		bounds = bounds.expand(corner)
+	return bounds
 
 var ground: Callable
 var timber: Material
@@ -26,11 +35,11 @@ var bark_material: Material
 var wharf := Wharf.new()
 var fleet := Fleet.new()
 var park_grass: MultiMeshInstance3D
-var grass_transforms: Array[Transform3D]
 
 
 func build(parent: Node3D, layout: Dictionary, ground_lookup: Callable, shore_lookup: Callable,
-		wood: Texture2D, concrete: Texture2D, sand: Texture2D, clear_route := Callable()) -> void:
+		wood: Texture2D, concrete: Texture2D, sand: Texture2D, clear_route := Callable(),
+		pier_path: Array = []) -> void:
 	ground = ground_lookup
 	wood_scan = wood
 	timber = weathered_wood(Color("#a99073"))
@@ -47,7 +56,13 @@ func build(parent: Node3D, layout: Dictionary, ground_lookup: Callable, shore_lo
 	for index in layout.dock_main.size():
 		build_dock(marina, layout.dock_main[index], index)
 	fleet.build(marina, layout.dock_main, ground)
-	build_courts(marina, layout.tennis)
+	var courts := TennisCourts.new()
+	courts.build(marina, layout.tennis, pier_path, ground, concrete, timber)
+	for child in courts.site.get_node("CourtCoating").get_children():
+		if child is StaticBody3D:
+			# The coating follows the marina terrain. Let its continuous ground collider
+			# carry players across the gate, where the raised coating would create a lip.
+			child.collision_layer = 0
 	var launch := Kit.paint(Color("#aeaaa5"))
 	launch.albedo_texture = concrete
 	launch.uv1_triplanar = true
@@ -180,29 +195,6 @@ func drape(parent: Node3D, corners: Array, material: Material, lift: float, laun
 	Kit.mesh_at(parent, surface.commit(), Vector3.ZERO, material)
 
 
-func build_courts(parent: Node3D, outline: Array) -> void:
-	var paint := Kit.paint(Color("#637760"))
-	drape(parent, outline, paint, 0.016)
-	var white := Kit.paint(Color("#aeb799"))
-	var a := point(outline[0], 0)
-	var b := point(outline[1], 0)
-	var c := point(outline[2], 0)
-	var d := point(outline[3], 0)
-	for i in 4:
-		var left := (float(i) + 0.13) / 4.0
-		var right := (float(i) + 0.87) / 4.0
-		var corners := [a.lerp(b, left).lerp(d.lerp(c, left), 0.15),
-			a.lerp(b, right).lerp(d.lerp(c, right), 0.15),
-			a.lerp(b, right).lerp(d.lerp(c, right), 0.85),
-			a.lerp(b, left).lerp(d.lerp(c, left), 0.85)]
-		for index in 4:
-			var s: Vector3 = corners[index]
-			var e: Vector3 = corners[(index + 1) % 4]
-			s.y = ground.call(s.x, s.z) + 0.027
-			e.y = ground.call(e.x, e.z) + 0.027
-			Kit.beam(parent, s, e, 0.012, white)
-
-
 func build_pavilion(parent: Node3D, at: Vector3, roof_color := Color("#365348"),
 		seam_color := Color("#506b5d")) -> Node3D:
 	var shelter := Node3D.new()
@@ -326,38 +318,31 @@ func build_park_grass(parent: Node3D, pavilion: Vector3, shore: Callable) -> voi
 				var scale := Vector3(random.randf_range(.85, 1.75), random.randf_range(.24, .73), 1.18)
 				var angle := Basis(Vector3.UP, random.randf_range(0.0, TAU)).scaled_local(scale)
 				grass.append(Transform3D(angle, p))
-	mowing_routes = Routes.load_routes(Vector2(pavilion.x, pavilion.z))
-	var occupied := {}
-	for route in mowing_routes:
-		for zone: PackedVector2Array in route.zones:
-			add_route_grass(zone, grass, occupied, random, shore)
+	# Add mowable tufts on the open turf beside the pavilion.
+	var lawn := PackedVector2Array(MOWING_LAWN)
+	var bounds := mowing_lawn_bounds()
+	var rows := ceili(bounds.size.y / .43)
+	var columns := ceili(bounds.size.x / .43)
+	for z in rows:
+		for x in columns:
+			var at := bounds.position + Vector2(
+				(x + random.randf_range(.15, .85)) / columns, (z + random.randf_range(.15, .85)) / rows) * bounds.size
+			if not Geometry2D.is_point_in_polygon(at, lawn):
+				continue
+			var p := pavilion + Vector3(at.x, 0, at.y)
+			p.y = ground.call(p.x, p.z)
+			if p.y < .26 or shore.call(p) > 0.0:
+				continue
+			var scale := Vector3(.47, random.randf_range(.18, .36), .52)
+			var angle := Basis(Vector3.UP, random.randf_range(0.0, TAU)).scaled_local(scale)
+			grass.append(Transform3D(angle, p))
 	if not grass.is_empty():
 		var material := ShaderMaterial.new()
 		material.shader = preload("res://river_reeds.gdshader")
 		var verge := Kit.new().scatter(parent, reed_mesh(random), grass, material)
 		park_grass = verge
-		grass_transforms = grass
 		verge.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		# The shared MultiMesh also includes routes outside the marina.
-
-
-func add_route_grass(zone: PackedVector2Array, grass: Array[Transform3D], occupied: Dictionary,
-		random: RandomNumberGenerator, shore: Callable) -> void:
-	const SPACING := .43
-	var area := Routes.bounds(zone)
-	for z in range(floori(area.position.y / SPACING), ceili(area.end.y / SPACING)):
-		for x in range(floori(area.position.x / SPACING), ceili(area.end.x / SPACING)):
-			var cell := Vector2i(x, z)
-			var at := (Vector2(cell) + Vector2(.5, .5)) * SPACING
-			if occupied.has(cell) or not Geometry2D.is_point_in_polygon(at, zone):
-				continue
-			var p := Vector3(at.x, ground.call(at.x, at.y), at.y)
-			if p.y < .26 or shore.call(p) > 0.0:
-				continue
-			occupied[cell] = true
-			var scale := Vector3(.47, random.randf_range(.18, .36), .52)
-			var angle := Basis(Vector3.UP, random.randf_range(0.0, TAU)).scaled_local(scale)
-			grass.append(Transform3D(angle, p))
+		verge.visibility_range_end = 180.0
 
 
 func build_trees(parent: Node3D, woodland: Array, buildings: Array) -> void:

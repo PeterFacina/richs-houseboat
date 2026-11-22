@@ -28,8 +28,6 @@ var message := ""
 var dock := -1
 var captain := 0
 var revision := 0
-var saved_state: Dictionary = {}
-var saved_evening := false
 var remote_ship: Dictionary = {}
 var remote_throttle := 0.0
 var remote_rudder := 0.0
@@ -63,6 +61,8 @@ func setup(fishing_game: Node3D) -> void:
 	game = fishing_game
 	name = "RiverCampaign"
 	houseboat = game.vessel as Boat
+	if game.multiplayer_trip:
+		ledger.save_path = Ledger.CREW_SAVE
 	ledger.load_file()
 	houseboat.set_modern_design(ledger.state.modern_houseboat)
 	crew.name = "Crew"
@@ -75,7 +75,7 @@ func setup(fishing_game: Node3D) -> void:
 	crew.command_received.connect(receive_helm)
 	crew.result_received.connect(receive_result)
 	crew.member_left.connect(member_left)
-	crew.changed.connect(crew_changed)
+	crew.changed.connect(refresh_board)
 	add_child(landings)
 	landings.setup(game.river, ledger)
 	houseboat.water_check = houseboat_route
@@ -110,9 +110,8 @@ func setup(fishing_game: Node3D) -> void:
 	ghost = Kit.mesh_at(self, BoxMesh.new(), Vector3.ZERO, ghost_paint)
 	ghost.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	ghost.hide()
-	route_map = Node2D.new()
-	route_map.name = "SupplyRoutes"
-	game.chart.add_child(route_map)
+	route_map = game.chart.routes
+	game.chart.map_resized.connect(reposition_routes)
 	for index in Data.WORK.size():
 		var job: Dictionary = Data.WORK[index]
 		if job.has("offset"):
@@ -189,8 +188,9 @@ func open_board(page := "River") -> void:
 	cancel_preview(false)
 	board.active_page = page
 	board.show()
-	Input.mouse_mode = Input.MOUSE_MODE_CONFINED
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	refresh_board()
+	board.focus_page()
 
 
 func close_board() -> void:
@@ -623,11 +623,12 @@ func request(action: String, value: Variant) -> void:
 func remote_request(peer: int, action: String, value: Variant) -> void:
 	if action == "connected":
 		crew.share_state.rpc_id(peer, ledger.state, dock, captain, revision)
-		crew.share_ship.rpc_id(peer, ship_packet())
 		crewplay.welcome(peer)
 		crew.result.rpc_id(peer, "Welcome aboard. B opens the shared notebook.", dock, actor_site(actor(1)) < 0)
+		crew.enter_river.rpc_id(peer, ship_packet())
 		return
-	perform(peer, action, value)
+	if crew.started:
+		perform(peer, action, value)
 
 
 func tell(peer: int, text: String, at_site := -2, to_boat := false) -> void:
@@ -666,8 +667,8 @@ func changed(persist := true) -> void:
 	refresh_board()
 
 
-func reward_mowing(amount: int) -> void:
-	ledger.state.cash += amount
+func reward_mowing() -> void:
+	ledger.state.cash += 5
 	changed()
 
 
@@ -826,7 +827,7 @@ func use_helm(peer: int, person: Dictionary) -> void:
 		return
 	if not person.onboard or diver > 0 or lifting_peer > 0:
 		return
-	if not crewplay.held_by(peer).is_empty() or crewplay.lamp_operator == peer:
+	if not crewplay.held_by(peer).is_empty() or not crewplay.held_fish(peer).is_empty() or crewplay.lamp_operator == peer:
 		tell(peer, "Set down the gear or release the light before taking the wheel.")
 		return
 	var boat: Boat = game.vessel
@@ -1050,6 +1051,11 @@ func commission_route(peer: int, a: int, b: int) -> void:
 	tell(peer, "Supply line open between %s and %s." % [Data.dock_name(a), Data.dock_name(b)])
 
 
+func reposition_routes() -> void:
+	route_map_version = ""
+	update_route_map()
+
+
 func update_route_map() -> void:
 	var key := "%s/%s" % [str(ledger.state.routes.keys()), str(ledger.state.sites.keys())]
 	if key == route_map_version:
@@ -1062,15 +1068,15 @@ func update_route_map() -> void:
 		var path := Line2D.new()
 		path.width = 2.5
 		path.antialiased = true
-		path.default_color = Color("#edb875bd")
-		path.add_point(game.chart_screen(landings.sites[int(connection.a)].berth))
-		path.add_point(game.chart_screen(landings.sites[int(connection.b)].berth))
+		path.default_color = Color("#875621d9")
+		path.add_point(game.chart.map_point(landings.sites[int(connection.a)].berth))
+		path.add_point(game.chart.map_point(landings.sites[int(connection.b)].berth))
 		route_map.add_child(path)
 	for i in landings.sites.size():
 		var shape := Polygon2D.new()
-		shape.position = game.chart_screen(landings.sites[i].berth)
+		shape.position = game.chart.map_point(landings.sites[i].berth)
 		shape.polygon = PackedVector2Array([Vector2(0, -5), Vector2(4, 0), Vector2(0, 5), Vector2(-4, 0)])
-		shape.color = Color("#f8d8a6") if not ledger.site(i).is_empty() else Color("#a3c9bf")
+		shape.color = Color("#a96728") if not ledger.site(i).is_empty() else Color("#527162")
 		route_map.add_child(shape)
 
 
@@ -1213,41 +1219,9 @@ func begin_dive() -> void:
 	dive.deploy(game.vessel.center, target_for_job())
 
 
-func crew_changed() -> void:
-	if crew.mode == "solo" and not saved_state.is_empty():
-		last_guest_revision = -1
-		ledger.state = saved_state
-		saved_state = {}
-		crewplay.dusk = saved_evening
-		stop_captain()
-		remote_ship.clear()
-		dock = int(ledger.state.last_dock)
-		if dock >= 0:
-			select_craft(ledger.state.craft, dock)
-			set_moored(dock)
-			move_person(dock, false)
-		else:
-			select_craft("houseboat", 0)
-			var reset: Vector3 = game.river.point(1)
-			houseboat.center = reset
-			houseboat.transform = Transform3D(Basis.IDENTITY, reset)
-			houseboat.heading = 0
-			houseboat.departed = false
-			keep_player_on_deck(houseboat, houseboat.board_anchor())
-		changed(false)
-	if crew.mode == "solo":
-		captain = 0
-		game.driving = false
-		remote_ship.clear()
-		crewplay.reset_gear()
-		crewplay.camp.clear()
-		if dive.active:
-			dive.stow()
-		diver = 0
-	refresh_board()
-
-
 func member_left(peer: int) -> void:
+	if not crew.started:
+		return
 	crewplay.leave(peer)
 	if captain == peer:
 		stop_captain()
@@ -1353,20 +1327,17 @@ func button_selected(action: String, value: Variant) -> void:
 		"pin":
 			guide_site = int(value)
 			close_board()
-		"chart":
+		"chart", "catch_journal":
 			board.hide()
-			game.chart.show()
-			Input.mouse_mode = Input.MOUSE_MODE_CONFINED
-		"host":
-			crew.host(value)
-		"join":
-			saved_state = ledger.state.duplicate(true)
-			saved_evening = crewplay.dusk
-			crew.join(value[0], value[1])
-			if crew.mode == "solo":
-				saved_state = {}
+			game.open_chart(action == "catch_journal")
+		"fish_guide":
+			board.hide()
+			game.open_fish_guide()
 		"leave":
-			crew.stop()
+			var error: String = game.leave_trip()
+			if not error.is_empty():
+				message = error
+				refresh_board()
 		"dock", "travel", "launch", "crew_evening_trip", "houseboat_design":
 			close_board()
 			request(action, value)
@@ -1396,7 +1367,7 @@ func refresh_board() -> void:
 		return
 	var site := local_site()
 	var boat: Boat = game.vessel
-	var data := {"heading": Data.dock_name(site) if site >= 0 else "Aboard Rich's boat" if game.aboard() else "On the riverbank",
+	var data := {"heading": Data.dock_name(site) if site >= 0 else "Aboard Rich’s Boat" if game.aboard() else "On the riverbank",
 		"inventory": "%d timber   •   %d parts   •   $%d   |   %s" % [
 			ledger.state.wood, ledger.state.parts, ledger.state.cash,
 			"Charge %d%%" % roundi(100 * ledger.state.charge / capacity()) if boat.skiff else "%.0f L fuel" % ledger.state.fuel],
@@ -1556,16 +1527,13 @@ func workshop_page(rows: Array[Dictionary], data: Dictionary, site: int) -> void
 
 
 func crew_page(rows: Array[Dictionary], data: Dictionary) -> void:
-	data.title = "Share the river"
-	data.detail = "Host or join on the same network. The host's world keeps the crew's cabins, supplies and boat upgrades."
-	data.join_fields = crew.mode == "solo"
-	data.local_name = crew.local_name
-	data.address = crew.last_address
+	data.title = "Crew"
+	data.detail = "Camp supplies, job totals and river records."
 	add(rows, "Ice chest and shore camp", "%d fish in the chest  •  %d shared meals at Pine Reach" %
 		[ledger.state.ice_chest.size(), ledger.state.meals])
-	if not crew.status.is_empty():
-		add(rows, crew.status, "", "Leave crew" if crew.mode != "solo" else "", "leave")
-	if crew.mode != "solo":
+	if crew.started:
+		var notice := "Your crew world will be saved and the session will end." if crew.on_server() else "Return to the title screen."
+		add(rows, "Multiplayer session", notice, "Save & end" if crew.on_server() else "Leave session", "leave")
 		for peer: int in crew.people:
 			add(rows, crew.people[peer].name, "At the wheel" if peer == captain else "On the crew")
 	if not ledger.state.scores.is_empty():
