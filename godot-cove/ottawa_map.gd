@@ -9,7 +9,6 @@ const RiverbankPark = preload("res://riverbank_park.gd")
 const BrockhouseWay = preload("res://brockhouse_way.gd")
 const Swisha = preload("res://swisha_dam.gd")
 const Town = preload("res://deep_river_buildings.gd")
-const PublicWorks = preload("res://public_works.gd")
 const Waves = preload("res://swell.gd")
 const Landings = preload("res://river_campaign_data.gd")
 const BASE := "res://ottawa/"
@@ -208,7 +207,7 @@ func build() -> void:
 		ground.set_shader_parameter("riverbank_path_bounds", Vector4(
 			park.bounds.position.x, park.bounds.position.y, park.bounds.size.x, park.bounds.size.y))
 	waterfront.build(self, meta.marina, ground_height, wet_clearance, wood_scan, concrete_scan, riverbed,
-		park.near_trail)
+		park.near_trail, meta.get("riverbank", {}).get("pier_approach", []))
 	for material: ShaderMaterial in [near_water, far_water]:
 		waterfront.wharf.launch.bind_water(material, concrete_scan)
 	if lamure_patch != null:
@@ -216,9 +215,7 @@ func build() -> void:
 	var pines := LamurePines.new()
 	waterfront.build_canopy(self, town_canopy, marina_patch.area, wet_clearance,
 		func(foot: Vector3, height: float) -> bool:
-			return PublicWorks.cleared_for_construction(foot) or park.owns_tree(foot) \
-				or Vector2(foot.x, foot.z).distance_squared_to(RiverbankPark.GAZEBO_SITE) < 36.0 \
-				or (lamure_patch != null and pines.place_from_survey(foot, height)))
+			return park.owns_tree(foot) or (lamure_patch != null and pines.place_from_survey(foot, height)))
 	if meta.has("riverbank"):
 		park.build(self, town_canopy, waterfront, pines, ground_height, wet_clearance, riverbed)
 	if meta.has("brockhouse"):
@@ -383,7 +380,6 @@ func tile(col_start: int, row_start: int, material: Material, detail: TerrainPat
 				surface.add_index(index)
 	var land := Kit.mesh_at(self, surface.commit(), Vector3.ZERO, material)
 	land.create_trimesh_collision()
-	land.get_child(0).add_to_group("ottawa_terrain")
 
 
 func trees_for_tile(col: int, row: int, rng: RandomNumberGenerator, tree: Mesh, trunk: Mesh,
@@ -400,8 +396,7 @@ func trees_for_tile(col: int, row: int, rng: RandomNumberGenerator, tree: Mesh, 
 		if Vector2(x, z).distance_squared_to(Landings.SITES[1].plot) < 96.0 * 96.0:
 			continue
 		var location := Vector2(x, z)
-		if swisha_patch.area.has_point(location) or marina_patch.area.has_point(location) or canopy_area.has_point(location) \
-				or PublicWorks.road_clearance(location):
+		if swisha_patch.area.has_point(location) or marina_patch.area.has_point(location) or canopy_area.has_point(location):
 			continue
 		if wet_clearance(Vector3(x, 0, z)) > 0.0:
 			continue
@@ -568,8 +563,7 @@ func build_town() -> void:
 	tile_image.generate_mipmaps()
 	var textures := ImageTexture.create_from_image(tile_image)
 	var buildings := Town.new()
-	var footprints: Array = meta.buildings.filter(func(building: Dictionary) -> bool:
-		return not PublicWorks.REPLACED_FOOTPRINTS.has(building.id) and building.id != RiverbankPark.GAZEBO_FOOTPRINT)
+	var footprints: Array = meta.buildings
 	if lamure_patch != null:
 		var shelter := Vector2(meta.lamure.shelter[0], meta.lamure.shelter[1])
 		footprints = footprints.filter(func(building: Dictionary):
@@ -584,8 +578,6 @@ func build_town() -> void:
 	road.set_normal(Vector3.UP)
 	for line: Array in meta.streets:
 		add_street(road, line)
-	add_street(road, PublicWorks.CEDAR_ROAD)
-	add_street(road, PublicWorks.YARD_DRIVE, 2.85)
 	var material := ShaderMaterial.new()
 	material.shader = preload("res://town_street.gdshader")
 	material.set_shader_parameter("asphalt_scan", asphalt_scan)
@@ -597,57 +589,7 @@ func build_town() -> void:
 	Kit.mesh_at(self, road.commit(), Vector3.ZERO, material)
 
 
-func roadside_sign_foot(foot: Vector3, half_span: float) -> Vector3:
-	var point := Vector2(foot.x, foot.z)
-	var height_offset := foot.y - ground_height(foot.x, foot.z)
-	for attempt in 4:
-		var crossing := road_at_sign(point, half_span)
-		if crossing.is_empty():
-			break
-		var center: Vector2 = crossing.center
-		var edge: Vector2 = crossing.edge
-		var preferred := center + edge
-		var alternate := center - edge
-		if roadside_safe(alternate) and (not roadside_safe(preferred) \
-				or not road_at_sign(preferred, half_span).is_empty()):
-			preferred = alternate
-		point = preferred
-	return Vector3(point.x, ground_height(point.x, point.y) + height_offset, point.y)
-
-
-func roadside_safe(at: Vector2) -> bool:
-	var ground := ground_height(at.x, at.y)
-	return ground > .15 and (ground > .65 or wet_clearance(Vector3(at.x, ground, at.y)) < .1)
-
-
-func road_at_sign(point: Vector2, half_span: float) -> Dictionary:
-	var lines: Array = meta.streets.duplicate()
-	lines.append(PublicWorks.CEDAR_ROAD)
-	lines.append(PublicWorks.YARD_DRIVE)
-	if meta.has("brockhouse"):
-		var road: Array = meta.brockhouse.road_segment
-		lines.append([[road[0], road[1]], [road[2], road[3]]])
-	var clearance := 3.4 + half_span
-	var best := clearance * clearance
-	var found := {}
-	for line: Array in lines:
-		for i in range(1, line.size()):
-			var a := Vector2(line[i - 1][0], line[i - 1][1])
-			var b := Vector2(line[i][0], line[i][1])
-			if a.is_equal_approx(b) or not Rect2(a, Vector2.ZERO).expand(b).grow(clearance).has_point(point):
-				continue
-			var center := Geometry2D.get_closest_point_to_segment(point, a, b)
-			var distance := point.distance_squared_to(center)
-			if distance < best:
-				best = distance
-				var normal := (b - a).orthogonal().normalized()
-				if (point - center).dot(normal) < -.015:
-					normal = -normal
-				found = {"center": center, "edge": normal * (clearance + .85)}
-	return found
-
-
-func add_street(surface: SurfaceTool, line: Array, half_width := 3.4) -> void:
+func add_street(surface: SurfaceTool, line: Array) -> void:
 	var centers := PackedVector2Array()
 	for pair: Array in line:
 		var at := Vector2(pair[0], pair[1])
@@ -661,14 +603,13 @@ func add_street(surface: SurfaceTool, line: Array, half_width := 3.4) -> void:
 		var outgoing := (centers[mini(i + 1, centers.size() - 1)] - centers[i]).orthogonal().normalized()
 		var across := (incoming + outgoing).normalized()
 		var alignment := maxf(absf(across.dot(incoming + outgoing)) * .5, .72)
-		edges.append(across * (half_width / alignment) if i > 0 and i < centers.size() - 1 else across * half_width)
+		edges.append(across * (3.40 / alignment) if i > 0 and i < centers.size() - 1 else across * 3.40)
 	for i in range(1, centers.size()):
 		var a := centers[i - 1]
 		var b := centers[i]
-		var bounds := Rect2(a, Vector2.ZERO).expand(b).grow(4.5)
-		var detailed := marina_patch.area.intersects(bounds) or (lamure_patch != null and lamure_patch.area.intersects(bounds))
-		var spacing := .92 if detailed else 6.0
-		var cross_sections := 5 if detailed else 2
+		var near_marina := marina_patch.area.intersects(Rect2(a, Vector2.ZERO).expand(b).grow(4.5))
+		var spacing := .92 if near_marina else 6.0
+		var cross_sections := 5 if near_marina else 2
 		var sections := maxi(1, ceili(a.distance_to(b) / spacing))
 		for section in sections:
 			var start := float(section) / sections

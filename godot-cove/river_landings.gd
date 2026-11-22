@@ -251,7 +251,7 @@ func text_on(parent: Node3D, content: String, at: Vector3, size: int, pixel: flo
 func board_sign(parent: Node3D, at: Vector3, title: String, subtitle: String, heading: float, color: Color) -> Label3D:
 	var sign := Node3D.new()
 	parent.add_child(sign)
-	sign.position = parent.to_local(river.roadside_sign_foot(parent.to_global(at), 1.15))
+	sign.position = at
 	sign.rotation.y = heading + PI
 	for side in [-.78, .78]:
 		Kit.box_at(sign, Vector3(side, -.56, -.13), Vector3(.12, 1.7, .13), wood)

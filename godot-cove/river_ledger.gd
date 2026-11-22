@@ -1,11 +1,13 @@
 extends RefCounted
 
 const SAVE := "user://ottawa_river_campaign.json"
+const CREW_SAVE := "user://ottawa_river_multiplayer.json"
 const PROFILE := "user://ottawa_crew_id.txt"
 const Data = preload("res://river_campaign_data.gd")
 
 var state: Dictionary
 var error := ""
+var save_path := SAVE
 
 
 func _init() -> void:
@@ -18,13 +20,12 @@ func fresh() -> Dictionary:
 		"sites": {}, "routes": {}, "equipment": {}, "visited": [0], "surveys": {}, "scores": {}, "records": {}, "doors": {}, "lifts": {},
 		"job": -1, "stage": "", "job_fish": [], "freight_run": 0.0, "last_dock": -1, "craft": "houseboat", "tow": false,
 		"bilge": 0.0, "pump_on": true, "modern_houseboat": false,
-		"ice_chest": [], "meals": 0,
-		"work_minutes": 480.0, "last_mowing_day": -1,
+		"ice_chest": [], "meals": 0, "held_fish": {}, "camp_fish": {},
 	}
 
 
 func load_file() -> void:
-	for path: String in [SAVE, SAVE + ".prev"]:
+	for path: String in [save_path, save_path + ".prev"]:
 		if not FileAccess.file_exists(path):
 			continue
 		var value: Variant = JSON.parse_string(FileAccess.get_file_as_string(path))
@@ -34,20 +35,23 @@ func load_file() -> void:
 				var old: Variant = value.get(key, state[key])
 				if typeof(old) == typeof(state[key]) or (old is float and state[key] is int):
 					state[key] = int(old) if state[key] is int else old
+			for fish: Dictionary in state.held_fish.values():
+				state.ice_chest.append(fish)
+			state.held_fish.clear()
 			return
 
 
 func save_file() -> void:
-	var stage := SAVE + ".new"
+	var stage := save_path + ".new"
 	var file := FileAccess.open(stage, FileAccess.WRITE)
 	if file == null:
 		error = "The river save could not be written."
 		return
 	file.store_string(JSON.stringify(state))
 	file.close()
-	var main := ProjectSettings.globalize_path(SAVE)
+	var main := ProjectSettings.globalize_path(save_path)
 	var backup := main + ".prev"
-	if FileAccess.file_exists(SAVE) and DirAccess.rename_absolute(main, backup) != OK:
+	if FileAccess.file_exists(save_path) and DirAccess.rename_absolute(main, backup) != OK:
 		error = "The river save could not be backed up."
 		return
 	if DirAccess.rename_absolute(ProjectSettings.globalize_path(stage), main) != OK:

@@ -1,9 +1,8 @@
 extends Node3D
 
 const Kit = preload("res://scenery.gd")
+const HandModel = preload("res://river_hands.gd")
 const RichModel = preload("res://rich_model.gd")
-const RELAXED_HAND = preload("res://ottawa/rich/gesture.res")
-const CLOSED_HAND = preload("res://ottawa/rich/grip.res")
 const SEGMENTS := 16
 const GUIDES := [0.16, 0.31, 0.47, 0.62, 0.76, 0.89, 1.0]
 const PUNCH_DURATION := .36
@@ -23,9 +22,9 @@ var side_flex := 0.0
 var reel_angle := 0.0
 var fists: Node3D
 var fist_hands: Array[Node3D] = []
-var relaxed_hands: Array[MeshInstance3D] = []
-var closed_hands: Array[MeshInstance3D] = []
 var forearms: Array[MeshInstance3D] = []
+var motion_amount := .65
+var hands_blend := 0.0
 var punch_hand := 1
 var punch_elapsed := PUNCH_DURATION
 
@@ -40,28 +39,11 @@ func build_fists(camera: Camera3D) -> void:
 	fists = Node3D.new()
 	fists.name = "Fists"
 	camera.add_child(fists)
-	var skin := Kit.paint(Color("#c18b71"), .83)
-	skin.disable_receive_shadows = true
 	for side in [-1.0, 1.0]:
-		var hand := Node3D.new()
-		fists.add_child(hand)
+		var hand := HandModel.build(fists, side, false, "relaxed", false)
 		fist_hands.append(hand)
-		var relaxed := no_shadow(Kit.mesh_at(hand, RELAXED_HAND, Vector3.ZERO, skin))
-		var closed := no_shadow(Kit.mesh_at(hand, CLOSED_HAND, Vector3.ZERO, skin))
-		# The source meshes point down the wrist axis and use opposite hands.
-		relaxed.rotation.x = PI * .5
-		relaxed.scale.x = side
-		closed.rotation.x = PI * .5
-		closed.scale.x = -side
-		relaxed_hands.append(relaxed)
-		closed_hands.append(closed)
-		forearms.append(no_shadow(RichModel.loft(fists, [
-			Vector4(-.50, .024, .023, .023),
-			Vector4(-.33, .027, .026, .027),
-			Vector4(-.12, .032, .031, .033),
-			Vector4(.15, .040, .036, .042),
-			Vector4(.50, .045, .042, .048),
-		], skin, 20)))
+		hand.position = Vector3(side * .315, -.34, -.54)
+		forearms.append(make_sleeve(fists))
 	fists.hide()
 
 
@@ -72,27 +54,29 @@ func punch() -> void:
 
 
 func update_hands(delta: float, clock: float, show_hands: bool, fists_raised: bool) -> void:
-	fists.visible = show_hands
+	hands_blend = move_toward(hands_blend, 1.0 if show_hands else 0.0, delta * 4.5)
+	fists.visible = hands_blend > .005
 	if not fists_raised:
 		punch_elapsed = PUNCH_DURATION
-	if not show_hands:
+	if not fists.visible:
 		return
 	punch_elapsed = minf(punch_elapsed + delta, PUNCH_DURATION)
 	var reach := smoothstep(0.0, .095, punch_elapsed) * (1.0 - smoothstep(.105, PUNCH_DURATION, punch_elapsed))
 	for index in fist_hands.size():
 		var side := -1.0 if index == 0 else 1.0
-		var sway := sin(clock * 2.3 + index) * .007
+		var sway := sin(clock * 2.3 + index) * .005 * motion_amount
 		var hand := fist_hands[index]
-		relaxed_hands[index].visible = not fists_raised
-		closed_hands[index].visible = fists_raised
+		HandModel.set_pose(hand, "fist" if fists_raised else "relaxed")
 		var extension := reach if index == punch_hand else 0.0
 		var idle := Vector3(side * .315, -.34 + sway, -.54)
 		var wrist_turn := Vector3(-.10, side * .22, -side * .12)
 		if fists_raised:
 			idle = Vector3(side * .235, -.285 + sway, -.49)
 			wrist_turn = Vector3(lerpf(-.24, -.02, extension), side * .15, -side * .16)
-		hand.position = idle.lerp(Vector3(side * .085, -.105, -.88), extension)
-		hand.rotation = wrist_turn
+		var target := idle.lerp(Vector3(side * .085, -.105, -.88), extension)
+		target.y -= (1.0 - smoothstep(0, 1, hands_blend)) * .4
+		hand.position = hand.position.lerp(target, 1.0 - exp(-delta * 18))
+		hand.quaternion = hand.quaternion.slerp(Basis.from_euler(wrist_turn).get_rotation_quaternion(), 1.0 - exp(-delta * 15))
 		var elbow := Vector3(side * .43, -.57, -.18).lerp(Vector3(side * .30, -.53, -.44), extension)
 		fit_cylinder(forearms[index], hand.position, elbow)
 
@@ -185,32 +169,17 @@ func build_rod() -> void:
 
 
 func glove(side: float, sleeve := true) -> Node3D:
-	var hand := Node3D.new()
-	rod.add_child(hand)
-	var fabric := Kit.paint(Color("#3c4a42"), .91)
-	var panels := Kit.paint(Color("#262e2b"), .93)
-	var seam := Kit.paint(Color("#718072"), .91)
-	var cloth := Kit.paint(Color("#4a5549"), .93)
-	oval(hand, Vector3(side * .032, -.012, .037), Vector3(.050, .083, .106), fabric)
-	oval(hand, Vector3(side * .055, .009, .053), Vector3(.016, .059, .075), panels)
-	for i in 4:
-		var z := -.010 + i * .023
-		var low := -.044 + i * .002
-		cylinder(hand, Vector3(side * .033, .005, z), Vector3(side * .029, low * .63, z - .007), .0115, .0105, fabric)
-		cylinder(hand, Vector3(side * .029, low * .63, z - .007), Vector3(-side * .004, low, z - .008), .0105, .0092, panels)
-		cylinder(hand, Vector3(-side * .004, low, z - .008), Vector3(-side * .024, -.008, z - .006), .0092, .0078, fabric)
-		oval(hand, Vector3(-side * .024, -.008, z - .006), Vector3(.016, .019, .018), fabric)
-		Kit.beam(hand, Vector3(side * .044, -.003, z - .007), Vector3(side * .042, -.020, z - .007), .0019, seam)
-	cylinder(hand, Vector3(side * .045, .007, .043), Vector3(side * .027, .042, .034), .017, .015, fabric)
-	cylinder(hand, Vector3(side * .027, .042, .034), Vector3(-side * .015, .032, .001), .014, .010, panels)
-	oval(hand, Vector3(-side * .015, .032, .001), Vector3(.020, .016, .021), fabric)
-	var wrist := Vector3(side * .042, -.019, .091)
-	var arm := Vector3(side * .145, -.114, .365)
-	cylinder(hand, wrist, wrist.lerp(arm, .16), .040, .046, panels)
-	if sleeve:
-		cylinder(hand, wrist.lerp(arm, .14), arm, .046, .065, cloth)
-		cylinder(hand, wrist.lerp(arm, .28), wrist.lerp(arm, .31), .055, .056, seam)
-	return hand
+	return HandModel.build(rod, side, sleeve)
+
+
+func make_sleeve(parent: Node3D) -> MeshInstance3D:
+	return no_shadow(RichModel.loft(parent, [Vector4(-.5,.026,.023,.026),
+		Vector4(-.3,.030,.026,.031), Vector4(0,.035,.030,.036),
+		Vector4(.5,.043,.036,.043)], Kit.paint(Color("#465653"), .89), 20))
+
+
+func wrist_anchor(hand: Node3D) -> Vector3:
+	return HandModel.wrist(hand)
 
 
 func pose_rod(delta: float, clock: float, tension: float, sideways: float, cast: float,
@@ -225,10 +194,10 @@ func pose_rod(delta: float, clock: float, tension: float, sideways: float, cast:
 		sweep = .29 * backswing - .43 * forward + .14 * recovery
 	var set_hook := sin(clampf(hook, 0, 1) * PI) * .52
 	var raised := .24 if lift else 0.0
-	rod.rotation.x = lerpf(rod.rotation.x, sin(clock * 1.4) * .017 + swing + set_hook + raised
+	rod.rotation.x = lerpf(rod.rotation.x, sin(clock * 1.4) * .011 * motion_amount + swing + set_hook + raised
 		- net_up * .76, 1.0 - exp(-delta * 27))
 	rod.rotation.y = lerpf(rod.rotation.y, sweep + sideways * tension * .20, 1.0 - exp(-delta * 17))
-	rod.rotation.z = -.082 + cos(clock * 1.1) * .013 + tension * .148 * sideways
+	rod.rotation.z = lerp_angle(rod.rotation.z, -.082 + cos(clock * 1.1) * .009 * motion_amount + tension * .148 * sideways, 1.0 - exp(-delta * 15))
 	rod.visible = net_up < .76
 	flex = lerpf(flex, tension * .48 + absf(swing) * .17 + set_hook * .22, 1.0 - exp(-delta * 21))
 	side_flex = lerpf(side_flex, sideways * tension * .36, 1.0 - exp(-delta * 17))

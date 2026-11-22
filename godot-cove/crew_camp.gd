@@ -23,6 +23,7 @@ var cook_until := 0.0
 var course: Dictionary = {}
 var servings := 0
 var last_phase := ""
+var transfer_until := 0.0
 var cabin_photo: StandardMaterial3D
 
 
@@ -275,9 +276,9 @@ func scatter_camp(river: Node3D, random: RandomNumberGenerator) -> void:
 		Kit.new().scatter(self, Marina.new().reed_mesh(random), tufts, grass)
 
 
-func instructions(ledger: Ledger, clock: float) -> String:
+func instructions(_ledger: Ledger, clock: float) -> String:
 	if not cooking:
-		return "E  Set a fish on the grill" if not ledger.state.ice_chest.is_empty() else "Keep a landed fish with H to cook it here"
+		return "Take a fish out of the nearby ice chest, then E to place it on the grill"
 	if clock < cook_until:
 		return "Let it sizzle"
 	return "E  Serve the fish" if turned else "E  Turn the fish"
@@ -285,13 +286,7 @@ func instructions(ledger: Ledger, clock: float) -> String:
 
 func use(ledger: Ledger, clock: float) -> String:
 	if not cooking:
-		if ledger.state.ice_chest.is_empty():
-			return "The ice chest is empty. Press H after landing a fish to keep it."
-		course = ledger.state.ice_chest.front()
-		cooking = true
-		turned = false
-		cook_until = clock + 3.5
-		return "Fish is on the grill."
+		return "Take a fish out of the ice chest first."
 	if clock < cook_until:
 		return "Give that side a moment to brown."
 	if not turned:
@@ -300,7 +295,6 @@ func use(ledger: Ledger, clock: float) -> String:
 		return "Turned it over. The other side is browning."
 	cooking = false
 	servings += 1
-	ledger.state.ice_chest.pop_front()
 	ledger.state.meals += 1
 	return "%s served at Pine Reach. Meal %d for the crew." % [Catalog.profile(course.species).name, ledger.state.meals]
 
@@ -334,6 +328,7 @@ func animate(clock: float, dusk: float) -> void:
 		var elapsed := maxf(0, 3.3 - (cook_until - clock))
 		var lift := .13 * sin(clampf(elapsed / .50, 0, 1) * PI) if turned and cooking else 0.0
 		var at := griddle.to_global(Vector3(-.17, .045 + lift, -.10))
+		food.visible = clock >= transfer_until
 		food.pose(at, Vector3.RIGHT, PI * .5 + (PI * smoothstep(.0, .50, elapsed) if turned else 0.0), 0.0, 0.0)
 	var plate_ready := phase == "served"
 	plate.visible = plate_ready
@@ -417,3 +412,13 @@ func audio(pcm: PackedByteArray, repeat: bool) -> AudioStreamWAV:
 		sound.loop_mode = AudioStreamWAV.LOOP_FORWARD
 		sound.loop_end = pcm.size() / 2
 	return sound
+
+
+func place_fish(fish: Dictionary, clock: float) -> bool:
+	if cooking or fish.is_empty():
+		return false
+	course = fish.duplicate(true)
+	cooking = true
+	turned = false
+	cook_until = clock + 3.5
+	return true

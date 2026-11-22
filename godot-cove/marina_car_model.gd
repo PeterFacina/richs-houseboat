@@ -1,7 +1,5 @@
 extends Node3D
 
-const Driver = preload("res://vehicle_driver.gd")
-
 const Kit = preload("res://scenery.gd")
 const Interior = preload("res://marina_car_interior.gd")
 const Badges = preload("res://marina_car_badges.gd")
@@ -36,25 +34,6 @@ const MODELS := [
 		"roof": [-.48, -.12, .26, .73], "belt": .85},
 ]
 
-const WORK_TRUCKS := [
-	{"label": "Public Works white pickup", "paint": "#e1e4e1", "size": Vector3(2.04, 1.97, 5.64),
-		"wheelbase": 3.57, "radius": .386, "style": "pickup", "pull": 3.75, "grip": .98, "limit": 23.0, "tone": .82,
-		"body": [[-1.0, .91, 1.0], [-.94, .99, 1.13], [-.60, 1.0, 1.20], [-.40, .99, 1.24],
-			[.25, .98, 1.20], [.36, 1.0, 1.04], [.89, .99, 1.03], [1.0, .95, 1.02]],
-		"roof": [-.48, -.26, .22, .33], "belt": 1.23},
-	{"label": "Public Works silver pickup", "paint": "#9fa8ad", "size": Vector3(2.06, 1.97, 5.78),
-		"wheelbase": 3.61, "radius": .393, "style": "pickup", "pull": 3.94, "grip": .95, "limit": 24.0, "tone": .77,
-		"body": [[-1.0, .89, 1.02], [-.94, .97, 1.15], [-.68, 1.0, 1.22], [-.41, .99, 1.25],
-			[.30, .985, 1.22], [.37, 1.0, 1.05], [.91, .99, 1.04], [1.0, .94, 1.03]],
-		"roof": [-.49, -.27, .24, .35], "belt": 1.24},
-	{"label": "Public Works grey service truck", "paint": "#c2c8c9", "size": Vector3(2.09, 2.02, 5.88),
-		"wheelbase": 3.65, "radius": .401, "style": "pickup", "pull": 3.68, "grip": .97, "limit": 22.0, "tone": .75,
-		"body": [[-1.0, .91, 1.03], [-.92, .98, 1.16], [-.62, 1.0, 1.23], [-.40, .99, 1.26],
-			[.27, .98, 1.22], [.36, 1.0, 1.05], [.92, .99, 1.04], [1.0, .95, 1.03]],
-		"roof": [-.48, -.26, .22, .33], "belt": 1.26, "toolbox": true},
-]
-
-var driver: Driver
 var body_size: Vector3
 var radius: float
 var wheelbase: float
@@ -111,30 +90,13 @@ func build(model: Dictionary) -> void:
 		mesh.visibility_range_begin = CABIN_DETAIL_DISTANCE
 		mesh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_door_details(style, model.belt, cabin_start, cabin_end)
-	if style == "pickup":
-		build_pickup_fittings(cabin_end, model.get("toolbox", false))
-	else:
-		build_fittings(style)
+	build_fittings(style)
 	build_wheels(style)
 	combine_meshes(self)
-	driver = Driver.new()
-	driver.name = "SeatedDriver"
-	add_child(driver)
-	var eye := interior.driver_eye
-	driver.build(eye, Vector3(eye.x, float(model.belt) - .19, eye.z + .045))
 	for instance: Node in find_children("*", "MeshInstance3D", true, false):
 		if is_zero_approx(instance.visibility_range_end):
 			instance.visibility_range_end = 255.0
 			instance.visibility_range_end_margin = 18.0
-
-
-func show_driver(peer: int, cockpit: bool) -> void:
-	if peer == 0:
-		driver.hide()
-		return
-	var wheel := interior.steering_wheel
-	driver.pose(to_local(wheel.to_global(Vector3(-.154, .049, .026))),
-		to_local(wheel.to_global(Vector3(.154, .049, .026))), wheel.rotation.z, cockpit)
 
 
 func build_body(profile: Array, cabin_start: float, cabin_end: float) -> void:
@@ -193,7 +155,7 @@ func build_body(profile: Array, cabin_start: float, cabin_end: float) -> void:
 func build_cabin(profile: Array, belt: float, style: String) -> void:
 	var half := body_size.z * .5
 	var waist := body_size.x * .438
-	var lid := waist * (.87 if style in ["wagon", "suv", "pickup"] else .81)
+	var lid := waist * (.87 if style in ["wagon", "suv"] else .81)
 	var roof_material := Kit.paint(Color("#262e40"), .89) if style == "convertible" else paint
 	var side := PackedVector3Array([
 		Vector3(waist * .92, belt - .04, profile[0] * half),
@@ -232,7 +194,7 @@ func build_cabin(profile: Array, belt: float, style: String) -> void:
 		panel(points[0], points[1], top, bottom, glass)
 		for edge in 4:
 			Kit.beam(self, points[edge], points[(edge + 1) % 4], .038 if edge == 2 else .029, roof_material)
-		var pillars := [.46, .78] if style in ["wagon", "suv", "sedan", "pickup"] else [.56]
+		var pillars := [.46, .78] if style in ["wagon", "suv", "sedan"] else [.56]
 		for fraction: float in pillars:
 			var pillar_top := points[1].lerp(points[2], clampf((fraction - .15) / .68, 0.0, 1.0))
 			var pillar_foot := points[0].lerp(points[3], fraction)
@@ -323,46 +285,6 @@ func side_point(side: float, z: float, y: float) -> Vector3:
 			point.x = (point.x + .007) * side
 			return point
 	return Vector3.ZERO
-
-
-func build_pickup_fittings(cabin_end: float, has_toolbox: bool) -> void:
-	var half := body_size.x * .5
-	var nose := -body_size.z * .5
-	var tailgate := body_size.z * .5
-	var bed_start := cabin_end + .10
-	var bed_length := tailgate - bed_start
-	var bed_middle := (tailgate + bed_start) * .5
-	Kit.box_at(self, Vector3(0, 1.069, bed_middle), Vector3(half * 1.715, .057, bed_length - .08), dark)
-	for track in 9:
-		Kit.box_at(self, Vector3((track - 4) * .139, 1.105, bed_middle), Vector3(.024, .022, bed_length - .13), rubber)
-	for side: float in [-1.0, 1.0]:
-		Kit.box_at(self, Vector3(half * .90 * side, 1.19, bed_middle), Vector3(.15, .29, bed_length), paint)
-		Kit.box_at(self, Vector3(half * .90 * side, 1.344, bed_middle), Vector3(.157, .031, bed_length), rubber)
-		var lamp_x := side * half * .75
-		Kit.box_at(self, Vector3(lamp_x, .91, nose - .017), Vector3(.31, .224, .047), lamp)
-		Kit.box_at(self, Vector3(lamp_x, .814, nose - .044), Vector3(.302, .043, .02), amber)
-		Kit.box_at(self, Vector3(lamp_x, 1.08, tailgate + .028), Vector3(.15, .34, .048), tail)
-		Kit.box_at(self, Vector3(lamp_x, .999, tailgate + .056), Vector3(.13, .049, .021), white)
-		var light := SpotLight3D.new()
-		add_child(light)
-		light.position = Vector3(lamp_x, .89, nose - .062)
-		light.light_color = Color("#fcf1d8")
-		light.light_energy = 1.9
-		light.spot_range = 36
-		light.spot_angle = 30
-		light.hide()
-		running_lights.append(light)
-	Kit.box_at(self, Vector3(0, 1.176, tailgate - .029), Vector3(half * 1.68, .251, .075), paint)
-	Kit.box_at(self, Vector3(0, 1.237, tailgate + .017), Vector3(.225, .043, .023), dark)
-	Kit.box_at(self, Vector3(0, .64, tailgate + .018), Vector3(half * 1.92, .155, .154), trim)
-	Kit.box_at(self, Vector3(0, .65, nose - .018), Vector3(half * 1.91, .156, .18), trim)
-	intake(nose, .775, 1.014, half * .55, half * .57, 4)
-	Kit.box_at(self, Vector3(0, .60, tailgate + .105), Vector3(.29, .127, .019), white)
-	Badges.lettering(self, "DEEP RIVER", Vector3(0, 1.122, tailgate + .02), .050, dark.albedo_color)
-	if has_toolbox:
-		Kit.box_at(self, Vector3(0, 1.281, bed_start + .26), Vector3(half * 1.78, .387, .50), trim)
-		Kit.box_at(self, Vector3(0, 1.49, bed_start + .26), Vector3(half * 1.81, .047, .55), trim)
-		Kit.box_at(self, Vector3(0, body_size.y + .06, .22), Vector3(.88, .077, .148), amber)
 
 
 func build_fittings(style: String) -> void:
@@ -499,7 +421,7 @@ func intake(z: float, bottom: float, top: float, lower: float, upper: float, bar
 
 func build_wheels(style: String) -> void:
 	var track := body_size.x * .5 - .087
-	var patterns := {"wagon": 10, "suv": 5, "sedan": 6, "convertible": 12, "coupe": 5, "pickup": 6}
+	var patterns := {"wagon": 10, "suv": 5, "sedan": 6, "convertible": 12, "coupe": 5}
 	var spokes: int = patterns[style]
 	var spoke_width := .023 if spokes > 6 else .042
 	for axle in [-1.0, 1.0]:
@@ -523,7 +445,7 @@ func build_wheels(style: String) -> void:
 					Vector3(.022, radius * .43, spoke_width), trim)
 				arm.rotation.x = angle
 			combine_meshes(hub)
-			var cap := null if style == "pickup" else Badges.stamp(hub, style, Vector3(side * .137, 0, 0), .045)
+			var cap := Badges.stamp(hub, style, Vector3(side * .137, 0, 0), .045)
 			if cap != null:
 				cap.rotation.y = side * PI * .5
 				cap.visibility_range_end = 12.0

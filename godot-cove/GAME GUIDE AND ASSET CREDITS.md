@@ -1,6 +1,5 @@
-# Game guide and asset credits
 
-Import `godot-cove/project.godot` in Godot 4.7.2, press **F5** to start the game, and click the game window. You start on the bow outside Deep River Marina. **E** at the wheel takes or leaves the helm. Use **W/S** for throttle and reverse and **A/D** to steer. The outboard turns with the wheel and produces prop wash, cooling water, and RPM-dependent sound. **Tab** opens the chart and journal, **1–3** mark Swisha, Deep River, or Chalk River Labs, and **F3** displays FPS.
+Open `godot-cove/project.godot` in Godot 4.7.2 and press F5. Choose **Play Solo** to start or resume your solo trip. On the bow outside Deep River Marina, click the game window to look around. **E** at the wheel takes or leaves the helm. Use **W/S** for throttle and reverse and **A/D** to steer. The outboard turns with the wheel and produces prop wash, cooling water, and RPM-dependent sound. **Tab** opens the chart and journal. Use **1–7** for hotbar slots, **I** for Backpack, **J** for the Fish Index, and **F3** for the FPS counter.
 
 Rich walks a loop on the bow deck, checking the fish finder, looking over the rail, and inspecting his wrench. Look at him and press **E** to stop him for a story. He has 50 voiced lines and leaves roughly two minutes between casual remarks. Subtitles appear nearby, and the host shares his patrol and lines with the crew. His voice was synthesized offline from an original script using Kokoro. [Kokoro model and credits](https://huggingface.co/hexgrad/Kokoro-82M).
 
@@ -10,7 +9,7 @@ The **Jobs** page has fishing, freight, surveys, rescue tows, and salvage. Check
 
 Build a workshop to fabricate the bilge pump, battery bank, winch, electric skiff, and crane barge. A current turbine powers the dry dock and charges boats at the landing. A powered dry dock unlocks the hydrofoil and tethered survey sub. Use **V** near the recorder buoy to launch the fitted sub. **WASD** steers, **Space/Ctrl** changes depth, **E** collects the recorder, and **V** returns to the boat.
 
-For a crew of up to four, one player opens **B → Crew → Host**. The other players enter the host's LAN IP and choose **Join**. The crew shares the active boat and the host's saved world. Anyone can take the wheel when it is free. Plot ownership, landings, and catch records appear in the notebook.
+For a crew of up to four, choose **Multiplayer** on the title screen. One player selects **Host**. The other players enter the host's LAN or Tailscale IP and select **Join**. The lobby shows everyone connected. The host selects **Start Trip** when the crew is ready. The host's multiplayer world has its own save. Anyone can take the wheel when it is free. The **Crew** page of the boat notebook shows the crew and its records. Use **Pause** or **Crew** to leave the session.
 
 Choose **B → River → Evening at Pine Reach** to start at the shore camp. On the boat, aim at the landing net or ice chest and press **E** to pick it up. Look at a crewmate and press **E** to hand it over. **Q** sets it down, and **E** at its rack secures it. With the net in your hands, aim at a crewmate's fish when it surfaces within reach and left-click to scoop it.
 
@@ -49,3 +48,12 @@ The surface scans in `godot-cove/ottawa/materials` and the tone-mapped daytime s
 Lamure’s pine materials use CC0 assets from Poly Haven and Yughues. [Pine bark](https://polyhaven.com/a/pine_bark), [forest floor](https://polyhaven.com/a/forrest_ground_03), [pine branch textures](https://opengameart.org/content/branches-textures-pack-02).
 
 Swisha uses a 4 m terrain grid, a raised headpond, and a powerhouse below the concrete crest. The plan is traced from the Ontario aerial tile in `swisha_layout.json`. The source rasters are `data/ottawa_fishing/swisha_imagery.tif` and `data/ottawa_fishing/swisha_elevation.tif`. The elevation tile puts the headpond at about 150.9 m and the tailrace at about 112.8 m. The eight animated outlets, the foam, and the cascade audio are game effects. [Ontario Power Generation station overview](https://water.opg.com/sites/des-joachims-generating-station/)
+
+
+First-person hand meshes, skin/normal/ORM textures and finger poses are by DigitalN8m4r3 / Miodrag Sejic and the Godot XR Tools contributors, derived from MakeHuman. The hand assets are CC0; original notices, pinned source revision and the upstream MIT notice are included in `godot-cove/ottawa/hands/`. [Godot XR hand assets](https://github.com/GodotVR/godot-xr-tools/tree/6c6189bdfcdf855052ef1aeb9f3e0ec4c7a7eb60/addons/godot-xr-tools/hands).
+
+Use **Alt+Enter** or **F11** for fullscreen. **Esc** or **F10** releases the cursor so native window controls remain reachable; **Esc > Settings > Maximize window** also fills the desktop with a normal resizable window.
+
+## Zero Turn controls
+
+While seated, use W/S to drive, A/D to steer, Q/R to lower or raise the throttle, X for the blades, C to change the camera view, and E to dismount. The throttle indicator shows Low, Normal, High, or Transport.

@@ -25,16 +25,12 @@ var dial_light := Kit.paint(Color("#d6e1d7"), .76)
 var orange := Kit.paint(Color("#eb632f"), .57)
 
 
-var truck_cab := false
-
-
 func build(spec: Dictionary) -> void:
-	truck_cab = spec.style == "pickup"
 	name = "Cabin"
 	var size: Vector3 = spec.size
 	var belt := float(spec.belt)
 	var roof: Array = spec.roof
-	var style: String = "suv" if spec.style == "pickup" else spec.style
+	var style: String = spec.style
 	var colors: Array = FINISHES[style]
 	seat = Kit.paint(Color(colors[0]), .88)
 	insert = Kit.paint(Color(colors[1]), .84)
@@ -178,8 +174,7 @@ func build_steering(at: Vector3, style: String) -> void:
 	for point: Vector3 in [Vector3(-.155, .021, 0), Vector3(.155, .021, 0), Vector3(0, -.164, 0)]:
 		Kit.beam(steering_wheel, Vector3.ZERO, point, .040, fascia if style in ["suv", "coupe"] else dash)
 	oval(steering_wheel, Vector3(0, .009, .011), Vector3(.155, .109, .071), dash)
-	if not truck_cab:
-		Badges.stamp(steering_wheel, style, Vector3(0, .017, .048), .046)
+	Badges.stamp(steering_wheel, style, Vector3(0, .017, .048), .046)
 
 
 func pose(steer: float, speed: float) -> void:

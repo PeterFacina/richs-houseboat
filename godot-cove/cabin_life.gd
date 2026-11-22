@@ -432,7 +432,7 @@ func update_sleeves() -> void:
 		var sleeve := sleeves[index]
 		sleeve.visible = hand.visible
 		if sleeve.visible:
-			var wrist: Vector3 = hand.transform * Vector3(.055 * side, -.027, .122)
+			var wrist: Vector3 = hand.transform * hand.get("wrist_anchor")
 			var shoulder := Vector3(side * .38, -.655, -.165)
 			sleeve.position = wrist.lerp(shoulder, .5)
 			sleeve.quaternion = Quaternion(Vector3.UP, (wrist - shoulder).normalized())

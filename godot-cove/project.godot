@@ -2,15 +2,16 @@ config_version=5
 
 [application]
 config/name="Rich's Houseboat — Ottawa River"
-run/main_scene="res://fishing.tscn"
+run/main_scene="res://title_screen.tscn"
 config/features=PackedStringArray("4.3", "GL Compatibility")
 
 [audio]
-general/text_to_speech=true
+general/text_to_speech=false
 
 [display]
 window/size/viewport_width=1280
 window/size/viewport_height=720
+window/size/resizable=true
 window/stretch/mode="canvas_items"
 
 [rendering]

@@ -81,13 +81,17 @@ static func build_cooler(parent: Node3D) -> Node3D:
 	Kit.box_at(cooler, Vector3(0, .157, 0), Vector3(.631, .310, .374), blue)
 	Kit.box_at(cooler, Vector3(0, .065, 0), Vector3(.651, .085, .386), gasket)
 	Kit.box_at(cooler, Vector3(0, .308, 0), Vector3(.66, .032, .40), gasket)
-	Kit.box_at(cooler, Vector3(0, .348, 0), Vector3(.675, .064, .416), lid)
-	Kit.box_at(cooler, Vector3(0, .391, 0), Vector3(.583, .034, .351), lid)
+	var hinge := Node3D.new()
+	hinge.name = "LidHinge"
+	cooler.add_child(hinge)
+	hinge.position = Vector3(0, .316, .20)
+	Kit.box_at(hinge, Vector3(0, .032, -.20), Vector3(.675, .064, .416), lid)
+	Kit.box_at(hinge, Vector3(0, .075, -.20), Vector3(.583, .034, .351), lid)
 	for side in [-1.0, 1.0]:
 		Kit.box_at(cooler, Vector3(side * .333, .183, 0), Vector3(.046, .103, .15), gasket)
 		Kit.box_at(cooler, Vector3(side * .363, .208, 0), Vector3(.082, .046, .117), alloy)
 		Kit.box_at(cooler, Vector3(side * .183, .275, -.193), Vector3(.054, .107, .027), alloy)
 		Kit.box_at(cooler, Vector3(side * .207, .241, .193), Vector3(.109, .081, .027), blue)
 	for groove in 6:
-		Kit.box_at(cooler, Vector3((groove - 2.5) * .088, .408, 0), Vector3(.036, .008, .309), lid)
+		Kit.box_at(hinge, Vector3((groove - 2.5) * .088, .092, -.20), Vector3(.036, .008, .309), lid)
 	return cooler

@@ -6,6 +6,7 @@ const Boat = preload("res://houseboat.gd")
 const Avatar = preload("res://crew_avatar.gd")
 const Camp = preload("res://crew_camp.gd")
 const Catalog = preload("res://fish_species.gd")
+const Fish = preload("res://river_fish.gd")
 const NET_READY := 6
 const LANDED := 8
 const PINE_REACH := 1
@@ -45,6 +46,16 @@ var watch_flash := 0.0
 var taking_picture := false
 var flash: ColorRect
 var last_net := ""
+var carried_fish: Dictionary = {}
+var transfer_until: Dictionary = {}
+var transfers: Array[Dictionary] = []
+var fish_models: Dictionary = {}
+var fish_view: Node3D
+var view_fish: Fish
+var chest_open_until := 0.0
+var fish_view_kind := ""
+var wheel_blend := 0.0
+var wheel_sleeves: Array[MeshInstance3D] = []
 
 
 func setup(scene: Node3D, trip: Node3D) -> void:
@@ -64,10 +75,30 @@ func setup(scene: Node3D, trip: Node3D) -> void:
 				hand.position.z = -.27
 		held.hide()
 	for side: float in [-1.0, 1.0]:
-		var hand: Node3D = game.rig.glove(side)
+		var hand: Node3D = game.rig.glove(side, false)
 		hand.reparent(game.eye, false)
+		hand.position = Vector3(side * .29, -.61, -.35)
 		hand.hide()
 		wheel_grips.append(hand)
+	fish_view = Node3D.new()
+	game.eye.add_child(fish_view)
+	fish_view.position = Vector3(0, -.38, -.67)
+	view_fish = Fish.new()
+	fish_view.add_child(view_fish)
+	for side: float in [-1.0, 1.0]:
+		var palm: Node3D = game.rig.glove(side)
+		game.rig.HandModel.set_pose(palm, "carry")
+		palm.reparent(fish_view, false)
+		palm.position = Vector3(side * .17, -.04, .01)
+		palm.rotation = Vector3(.12, side * -.5, side * -.65)
+	fish_view.hide()
+	for side: float in [-1.0, 1.0]:
+		wheel_sleeves.append(game.rig.make_sleeve(game.eye))
+		wheel_sleeves.back().hide()
+	if not campaign.ledger.state.camp_fish.is_empty():
+		camp.course = campaign.ledger.state.camp_fish.duplicate(true)
+		camp.cooking = true
+		camp.cook_until = game.clock + 3.5
 	flash = ColorRect.new()
 	flash.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	game.hud.add_child(flash)
@@ -142,7 +173,7 @@ func lamp_origin() -> Vector3:
 
 func reset_gear() -> void:
 	for item: String in ITEM_NAMES:
-		gear[item] = {"owner": 0, "at": home(item), "secured": true}
+		gear[item] = {"owner": 0, "at": home(item), "secured": true, "space": "boat"}
 	older.clear()
 	loose_speed = Vector2.ZERO
 	lamp_on = false
@@ -163,7 +194,7 @@ func own_item() -> String:
 
 
 func hands_busy() -> bool:
-	return not own_item().is_empty() or lamp_operator == campaign.crew.my_id()
+	return not own_item().is_empty() or not held_fish(campaign.crew.my_id()).is_empty() or lamp_operator == campaign.crew.my_id()
 
 
 func movement_scale() -> float:
@@ -171,7 +202,7 @@ func movement_scale() -> float:
 
 
 func style() -> Dictionary:
-	var hand := own_item()
+	var hand := "fish" if not held_fish(campaign.crew.my_id()).is_empty() else own_item()
 	if game.driving:
 		hand = "helm"
 	elif lamp_operator == campaign.crew.my_id():
@@ -195,8 +226,13 @@ func aimed_item() -> String:
 
 
 func item_target(item: String) -> Vector3:
-	var model: Node3D = models[item]
-	return model.to_global(Vector3(0, .22, 0) if item == "cooler" else Vector3(0, -.03, -.26))
+	var info: Dictionary = gear[item]
+	var owner := int(info.owner)
+	if owner != 0:
+		var actor: Dictionary = campaign.actor(owner)
+		return Vector3(actor.get("at", boat.global_position)) + Vector3.UP * .9
+	var origin: Vector3 = info.at if info.get("space", "boat") == "world" else boat.to_global(info.at)
+	return origin + Vector3.UP * .22
 
 
 func target_peer() -> int:
@@ -215,15 +251,25 @@ func target_peer() -> int:
 
 
 func interact() -> bool:
-	if not game.aboard():
-		if campaign.aiming(camp.griddle.global_position, 2.15, .88):
-			campaign.request("crew_cook", null)
-			return true
-		return false
 	if game.driving:
 		return false
-	var crew_id: int = campaign.crew.my_id()
-	if lamp_operator == crew_id:
+	var peer: int = campaign.crew.my_id()
+	if game.clock < float(transfer_until.get(peer, 0)):
+		return true
+	var held := held_fish(peer)
+	if not held.is_empty():
+		if campaign.aiming(camp.griddle.global_position, 2.3, .84):
+			campaign.request("crew_place_fish", null)
+			return true
+		if campaign.aiming(item_target("cooler"), 2.25, .84):
+			campaign.request("crew_store_fish", null)
+			return true
+		game.notify_angling("E at the ice chest to store the fish, or E at the grill to cook it.", 3)
+		return true
+	if not game.aboard() and campaign.aiming(camp.griddle.global_position, 2.15, .88):
+		campaign.request("crew_cook", null)
+		return true
+	if lamp_operator == peer:
 		campaign.request("crew_lamp", null)
 		return true
 	var item := own_item()
@@ -232,11 +278,11 @@ func interact() -> bool:
 		if friend != 0:
 			campaign.request("crew_pass", friend)
 			return true
-		if campaign.aiming(boat.to_global(home(item)), 2.25, .80):
+		if game.aboard() and campaign.aiming(boat.to_global(home(item)), 2.25, .80):
 			campaign.request("crew_drop", true)
 			return true
 		return false
-	if campaign.aiming(boat.to_global(lever_at()), 1.70, .96):
+	if game.aboard() and campaign.aiming(boat.to_global(lever_at()), 1.70, .96):
 		campaign.request("crew_lamp", null)
 		return true
 	var selected := aimed_item()
@@ -255,7 +301,14 @@ func input(event: InputEvent) -> bool:
 	if not event is InputEventKey or not event.pressed or event.echo:
 		return false
 	match event.physical_keycode:
+		KEY_F:
+			if not aimed_item().is_empty() and aimed_item() == "cooler" and not hands_busy():
+				campaign.request("crew_take_fish", null)
+				return true
 		KEY_Q:
+			if not held_fish(campaign.crew.my_id()).is_empty():
+				game.notify_angling("Store the fish with E at the chest, or place it on the grill.", 3)
+				return true
 			if hands_busy():
 				campaign.request("crew_drop", false)
 				return true
@@ -279,28 +332,33 @@ func start_scoop() -> void:
 
 
 func prompt() -> String:
-	if not game.aboard():
-		return camp.instructions(campaign.ledger, game.clock) if campaign.aiming(camp.griddle.global_position, 2.15, .88) else ""
+	var peer: int = campaign.crew.my_id()
+	if game.clock < float(transfer_until.get(peer, 0)):
+		return "Handling fish…"
+	if not held_fish(peer).is_empty():
+		if campaign.aiming(camp.griddle.global_position, 2.3, .84):
+			return "E  Place this fish on the grill" if not camp.cooking else "The grill is occupied. E at the chest to store this fish."
+		if campaign.aiming(item_target("cooler"), 2.25, .84):
+			return "E  Open lid and put fish in the ice chest"
+		return "Carrying a fish  ·  E at ice chest to store / E at campfire to cook"
+	if not game.aboard() and campaign.aiming(camp.griddle.global_position, 2.15, .88):
+		return camp.instructions(campaign.ledger, game.clock)
 	if game.driving:
 		return ""
-	var peer: int = campaign.crew.my_id()
 	if lamp_operator == peer:
-		return "Move mouse to aim the bow light  •  E release   •   Q switch off"
+		return "Move mouse to aim the bow light  ·  E release  ·  Q switch off"
 	var item := own_item()
 	if not item.is_empty():
 		var pass_peer := target_peer()
 		if pass_peer != 0:
-			return "E  Pass %s to %s   •   Q set down" % [ITEM_NAMES[item], campaign.crew.person(pass_peer).name]
+			return "E  Pass %s to %s  ·  Q set down" % [ITEM_NAMES[item], campaign.crew.person(pass_peer).name]
 		if item == "net":
-			var reach := ready_fish()
-			if not reach.is_empty():
-				return "Left click to scoop %s’s fish    •    Q set down" % campaign.crew.person(reach.peer).name
-			return "Aim at a crew member’s fish as it surfaces   •   Q set down"
-		return "E at the rack to strap the ice chest down   •   Q set down here"
-	if campaign.aiming(boat.to_global(lever_at()), 1.70, .96):
-		return "E  Aim the bow spotlight"
-	var target := aimed_item()
-	return "E  Take the " + ITEM_NAMES[target] if not target.is_empty() else ""
+			return "Left click to scoop a surfaced fish  ·  Q set down"
+		return "Carry the ice chest ashore  ·  Q set down  ·  E at boat rack to secure"
+	var selected := aimed_item()
+	if selected == "cooler":
+		return "E  Carry ice chest  ·  F open lid / take a fish (%d inside)" % campaign.ledger.state.ice_chest.size()
+	return "E  Take the " + ITEM_NAMES[selected] if not selected.is_empty() else ""
 
 
 func act(peer: int, action: String, argument: Variant, person: Dictionary) -> void:
@@ -310,10 +368,13 @@ func act(peer: int, action: String, argument: Variant, person: Dictionary) -> vo
 			publish()
 			campaign.tell(peer, "Evening at Pine Reach. Keep a fish with H, then cook it at the shore camp.")
 		return
+	if action in ["crew_take_fish", "crew_store_fish", "crew_place_fish"]:
+		fish_action(peer, action, person)
+		return
 	if action == "crew_cook":
 		if not person.onboard and can_reach(person, camp.griddle.global_position, 2.40):
 			var message := camp.use(campaign.ledger, game.clock)
-			campaign.changed()
+			remember_fish()
 			publish()
 			campaign.tell(peer, message)
 		return
@@ -326,7 +387,7 @@ func act(peer: int, action: String, argument: Variant, person: Dictionary) -> vo
 		publish()
 		campaign.tell(peer, "Evening on the river." if dusk else "Daylight on the river.")
 		return
-	if not bool(person.get("onboard", false)) or campaign.captain == peer:
+	if person.is_empty() or campaign.captain == peer or not held_fish(peer).is_empty() or game.clock < float(transfer_until.get(peer, 0)):
 		return
 	var item := held_by(peer)
 	match action:
@@ -343,7 +404,8 @@ func act(peer: int, action: String, argument: Variant, person: Dictionary) -> vo
 		"crew_pass":
 			if not item.is_empty() and argument is int and argument != peer:
 				var recipient: Dictionary = campaign.actor(argument)
-				if bool(recipient.get("onboard", false)) and held_by(argument).is_empty() and campaign.captain != argument \
+				if not recipient.is_empty() and held_by(argument).is_empty() and held_fish(argument).is_empty() \
+						and game.clock >= float(transfer_until.get(argument, 0)) and campaign.captain != argument \
 						and lamp_operator != argument and int(fishing_sample(argument).get("stage", 0)) == 0 \
 						and can_reach(person, recipient.at + Vector3.UP * 1.15, 2.58):
 					gear[item].owner = argument
@@ -360,6 +422,8 @@ func act(peer: int, action: String, argument: Variant, person: Dictionary) -> vo
 				var secured: bool = argument == true and can_reach(person, boat.to_global(home(item)), 2.45)
 				drop(peer, item, person, secured)
 		"crew_lamp":
+			if not person.onboard:
+				return
 			if lamp_operator == peer:
 				lamp_operator = 0
 				publish()
@@ -389,7 +453,20 @@ func floor_position(person: Dictionary, item: String) -> Vector3:
 
 
 func drop(peer: int, item: String, person: Dictionary, secured: bool) -> void:
-	gear[item].at = home(item) if secured or person.is_empty() else floor_position(person, item)
+	var ashore := not person.is_empty() and not bool(person.get("onboard", false))
+	if ashore:
+		var facing := -Basis(Vector3.UP, float(person.get("yaw", 0))).z
+		var feet: Vector3 = person.at
+		var safe: Vector3 = game.safety.find_near(feet + facing * .75, 1.0)
+		if not safe.is_finite():
+			campaign.tell(peer, "Move onto clear ground before setting down the chest.")
+			return
+		gear[item].at = safe
+		gear[item].space = "world"
+		secured = false
+	else:
+		gear[item].space = "boat"
+		gear[item].at = home(item) if secured or person.is_empty() else floor_position(person, item)
 	gear[item].owner = 0
 	gear[item].secured = secured or person.is_empty()
 	if item == "cooler":
@@ -399,6 +476,10 @@ func drop(peer: int, item: String, person: Dictionary, secured: bool) -> void:
 
 
 func leave(peer: int) -> void:
+	if carried_fish.has(peer):
+		campaign.ledger.state.ice_chest.append(carried_fish[peer])
+		carried_fish.erase(peer)
+		remember_fish()
 	for item: String in ITEM_NAMES:
 		if gear[item].owner == peer:
 			drop(peer, item, {}, true)
@@ -456,17 +537,24 @@ func keep_catch(peer: int, hook: int) -> void:
 	var kind: int = data.get("species", -1)
 	if kind < 0 or kind >= Catalog.all().size():
 		return
-	if campaign.ledger.state.ice_chest.size() >= 8:
-		campaign.tell(peer, "The ice chest is full. Cook some of the catch at Pine Reach.")
+	if not held_fish(peer).is_empty() or not held_by(peer).is_empty() or game.clock < float(transfer_until.get(peer, 0)):
+		campaign.tell(peer, "Put down your gear or store your fish first.")
+		return
+	if campaign.ledger.state.ice_chest.size() + carried_fish.size() >= 8:
+		campaign.tell(peer, "Your crew has eight fish. Cook a fish before keeping another.")
 		return
 	kept[peer] = hook
-	campaign.ledger.state.ice_chest.append({"species": kind, "length": clampi(int(data.get("length", 0)), 2, 200)})
-	campaign.changed()
+	var fish := {"species": kind, "length": clampi(int(data.get("length", 0)), 2, 200)}
+	carried_fish[peer] = fish
+	remember_fish()
 	if peer == campaign.crew.my_id():
 		catch_stored(hook)
 	else:
 		catch_stored.rpc_id(peer, hook)
-	campaign.tell(peer, "%s in the ice chest. Take it to the Pine Reach grill." % Catalog.profile(kind).name)
+	var source: Vector3 = data.get("fish", hand_position(peer))
+	start_transfer(peer, "hold", fish, source, hand_position(peer))
+	publish()
+	campaign.tell(peer, "Holding %s. E at the ice chest to store it, or carry it to the grill." % Catalog.profile(kind).name)
 
 
 @rpc("authority", "call_remote", "reliable")
@@ -495,20 +583,21 @@ func activity(kind: String) -> void:
 
 func publish() -> void:
 	if campaign.crew.on_server() and campaign.crew.people.size() > 1:
-		gear_changed.rpc(gear, lamp_on, lamp_operator, dusk, camp.pack())
+		gear_changed.rpc(gear, lamp_on, lamp_operator, dusk, camp.pack(), carried_fish)
 
 
 func welcome(peer: int) -> void:
-	gear_changed.rpc_id(peer, gear, lamp_on, lamp_operator, dusk, camp.pack())
+	gear_changed.rpc_id(peer, gear, lamp_on, lamp_operator, dusk, camp.pack(), carried_fish)
 
 
 @rpc("authority", "call_remote", "reliable")
-func gear_changed(items: Dictionary, lit: bool, operator: int, evening_enabled: bool, grill: Dictionary) -> void:
+func gear_changed(items: Dictionary, lit: bool, operator: int, evening_enabled: bool, grill: Dictionary, fish_in_hands: Dictionary) -> void:
 	gear = items
 	lamp_on = lit
 	lamp_operator = operator
 	dusk = evening_enabled
 	camp.unpack(grill)
+	carried_fish = fish_in_hands
 
 
 func moving_parts() -> Dictionary:
@@ -516,7 +605,7 @@ func moving_parts() -> Dictionary:
 
 
 func update_moving_parts(data: Dictionary) -> void:
-	if data.has("chest") and not gear.cooler.secured and gear.cooler.owner == 0:
+	if data.has("chest") and gear.cooler.get("space", "boat") == "boat" and not gear.cooler.secured and gear.cooler.owner == 0:
 		gear.cooler.at = data.chest
 	if data.has("lamp"):
 		lamp_target = data.lamp
@@ -546,7 +635,7 @@ func tick(delta: float) -> void:
 	spotlight.visible = brightness > .008
 	spotlight.light_energy = 4.1 * brightness
 	game.river.set_bow_light(spotlight.global_position, -spotlight.global_basis.z, brightness)
-	update_models(delta)
+	update_fish_visuals(delta)
 	draw_crew_fish()
 	if snapshot_requested:
 		snapshot_requested = false
@@ -588,11 +677,11 @@ func animate_gear(delta: float) -> void:
 			publish()
 	for item: String in ITEM_NAMES:
 		var owner: int = gear[item].owner
-		if owner != 0 and not bool(campaign.actor(owner).get("onboard", false)):
+		if owner != 0 and campaign.actor(owner).is_empty():
 			drop(owner, item, {}, true)
 	var change := (boat.speed - last_speed) / maxf(delta, .001)
 	last_speed = boat.speed
-	if gear.cooler.owner != 0 or gear.cooler.secured:
+	if gear.cooler.owner != 0 or gear.cooler.secured or gear.cooler.get("space", "boat") == "world":
 		return
 	var heel := boat.wave_pose.z
 	var rudder := boat.motor.steering
@@ -613,7 +702,7 @@ func animate_gear(delta: float) -> void:
 
 
 func update_models(delta: float) -> void:
-	update_wheel_grips()
+	update_wheel_grips(delta)
 	var local: int = campaign.crew.my_id()
 	for item: String in ITEM_NAMES:
 		var info: Dictionary = gear[item]
@@ -629,26 +718,47 @@ func update_models(delta: float) -> void:
 		if item == "net":
 			angles = Vector3(.07, PI, PI * .5) if info.secured else Vector3(-.06, .92, 0)
 		var wanted := Transform3D(Basis.from_euler(angles), info.at)
+		if info.get("space", "boat") == "world":
+			wanted = boat.global_transform.affine_inverse() * wanted
 		if owner != 0 and campaign.crew.avatars.has(owner):
 			var avatar: Avatar = campaign.crew.avatars[owner]
 			wanted = boat.global_transform.affine_inverse() * avatar.tool_grip
 		var start: bool = not older.has(item) or int(older[item]) != owner
 		older[item] = owner
-		model.transform = wanted if start else model.transform.interpolate_with(wanted, 1.0 - exp(-delta * 22.0))
+		model.transform = wanted if start or info.get("space", "boat") == "world" else model.transform.interpolate_with(wanted, 1.0 - exp(-delta * 15.0))
+		if item == "cooler":
+			var lid: Node3D = model.get_node("LidHinge")
+			lid.rotation.x = lerpf(lid.rotation.x, -1.35 if game.clock < chest_open_until else 0.0, 1.0 - exp(-delta * 8))
 
 
-func update_wheel_grips() -> void:
+func update_wheel_grips(delta: float) -> void:
 	var wheel := boat.helm_wheel
-	var visible_grip: bool = game.driving and is_instance_valid(wheel) and not game.cabin.hands_in_use()
+	var active: bool = game.driving and is_instance_valid(wheel) and not game.cabin.hands_in_use()
+	wheel_blend = move_toward(wheel_blend, 1.0 if active else 0.0, delta * 3.5)
 	for index in wheel_grips.size():
 		var hand := wheel_grips[index]
-		hand.visible = visible_grip
-		if visible_grip:
+		hand.visible = wheel_blend > .01
+		wheel_sleeves[index].visible = hand.visible
+		if hand.visible and is_instance_valid(wheel):
 			var side := float(index * 2 - 1)
 			var radius := .139 if boat.skiff else .229
-			var target := wheel.to_global(Vector3(side * radius, .018, .033))
-			hand.position = game.eye.to_local(target) + Vector3(-side * .028, .019, -.048)
-			hand.rotation = Vector3(.27, side * -.64, side * -.31 + wheel.rotation.z * .48)
+			# Hands stay at 9 and 3 o'clock instead of orbiting through the dashboard.
+			var rim_angle := clampf(wheel.rotation.z * .22, -.58, .58)
+			var grip := Vector3(side * radius * cos(rim_angle), side * radius * sin(rim_angle), .033)
+			var unspun := grip.rotated(Vector3.BACK, -wheel.rotation.z)
+			var wheel_basis := wheel.global_basis * Basis(Vector3.BACK, -wheel.rotation.z)
+			# A rod grip's shaft axis is local Z. On the wheel it follows the
+			# vertical rim tangent, with the backs of both hands facing the player.
+			var world_grip := wheel_basis * Basis(Vector3.BACK, rim_angle) \
+				* Basis(Vector3.RIGHT, Vector3.BACK, Vector3.DOWN)
+			var grip_center := Vector3(0, -.015, .035)
+			var target: Vector3 = game.eye.to_local(wheel.to_global(unspun) - world_grip * grip_center)
+			var rest := Vector3(side * .29, -.61, -.35)
+			hand.position = hand.position.lerp(rest.lerp(target, smoothstep(0, 1, wheel_blend)), 1.0 - exp(-delta * 14))
+			var rotation_target: Basis = game.eye.global_basis.inverse() * world_grip
+			hand.quaternion = hand.quaternion.slerp(rotation_target.get_rotation_quaternion(), 1.0 - exp(-delta * 13))
+			var wrist: Vector3 = hand.transform * game.rig.wrist_anchor(hand)
+			game.rig.fit_cylinder(wheel_sleeves[index], wrist, Vector3(side * .39, -.64, -.12))
 
 
 func pose_view(view: Node3D, item: String, delta: float) -> void:
@@ -656,7 +766,7 @@ func pose_view(view: Node3D, item: String, delta: float) -> void:
 	var dip := smoothstep(.0, .28, swing_time) * (1.0 - smoothstep(.28, .69, swing_time))
 	var clock: float = game.clock
 	var walk: float = minf(1.0, game.player.velocity.slide(Vector3.UP).length() * .28)
-	var bob := Vector3(sin(clock * 8.5) * .015, absf(cos(clock * 8.5)) * .018, 0) * walk
+	var bob: Vector3 = Vector3(sin(clock * 7.5) * .009, cos(clock * 7.5) * .010, 0) * walk * game.rig.motion_amount
 	var rest := Vector3(.30, -.377 - reach * .08 - dip * .34, -.64 - dip * .28) if item == "net" else Vector3(0, -.68, -.79)
 	rest.y -= .37 * (1.0 - smoothstep(.0, .28, reach_time))
 	var turn := Vector3(.21 - dip * .74, -.23 + dip * .22, -.09) if item == "net" else Vector3(-.10, 0, -.04)
@@ -685,3 +795,153 @@ func take_picture() -> void:
 		camp.load_photo()
 		watch_flash = .27
 		game.notify_angling("Photo saved in the river album. " + name, 4.2)
+
+
+func _process(delta: float) -> void:
+	if is_instance_valid(boat) and not gear.is_empty():
+		update_models(delta)
+
+
+func held_fish(peer: int) -> Dictionary:
+	return carried_fish.get(peer, {})
+
+
+func restore_trip_fish() -> void:
+	carried_fish.clear()
+	for fish: Dictionary in campaign.ledger.state.held_fish.values():
+		campaign.ledger.state.ice_chest.append(fish)
+	campaign.ledger.state.held_fish.clear()
+	camp.clear()
+	if not campaign.ledger.state.camp_fish.is_empty():
+		camp.place_fish(campaign.ledger.state.camp_fish, game.clock)
+
+
+func remember_fish() -> void:
+	campaign.ledger.state.held_fish.clear()
+	for peer: int in carried_fish:
+		var profile: String = campaign.crew.person(peer).get("profile", str(peer))
+		campaign.ledger.state.held_fish[profile] = carried_fish[peer].duplicate(true)
+	campaign.ledger.state.camp_fish = camp.course.duplicate(true) if camp.cooking else {}
+	campaign.changed()
+
+
+func hand_position(peer: int) -> Vector3:
+	if peer == campaign.crew.my_id():
+		return game.eye.to_global(Vector3(0, -.38, -.67))
+	var person: Dictionary = campaign.actor(peer)
+	return Vector3(person.get("at", boat.global_position)) + Vector3.UP * 1.05 \
+		- Basis(Vector3.UP, float(person.get("yaw", 0))).z * .45
+
+
+func fish_action(peer: int, action: String, person: Dictionary) -> void:
+	if person.is_empty() or campaign.captain == peer or game.clock < float(transfer_until.get(peer, 0)):
+		return
+	var fish := held_fish(peer)
+	var chest := item_target("cooler")
+	if action in ["crew_take_fish", "crew_store_fish"]:
+		if gear.cooler.owner != 0 or not held_by(peer).is_empty() or not can_reach(person, chest, 2.5):
+			campaign.tell(peer, "Set the ice chest down nearby first.")
+			return
+	if action == "crew_take_fish":
+		if not fish.is_empty() or int(fishing_sample(peer).get("stage", 0)) != 0:
+			return
+		if campaign.ledger.state.ice_chest.is_empty():
+			campaign.tell(peer, "The ice chest is empty. H holds a newly landed fish.")
+			return
+		fish = campaign.ledger.state.ice_chest.pop_front()
+		carried_fish[peer] = fish
+		start_transfer(peer, "take", fish, chest, hand_position(peer))
+	elif action == "crew_store_fish":
+		if fish.is_empty():
+			return
+		campaign.ledger.state.ice_chest.append(fish)
+		carried_fish.erase(peer)
+		start_transfer(peer, "store", fish, hand_position(peer), chest)
+	elif action == "crew_place_fish":
+		if person.onboard or fish.is_empty() or not can_reach(person, camp.griddle.global_position, 2.5):
+			return
+		if not camp.place_fish(fish, game.clock):
+			campaign.tell(peer, "Finish the fish already on the grill first.")
+			return
+		carried_fish.erase(peer)
+		start_transfer(peer, "grill", fish, hand_position(peer), camp.griddle.global_position + Vector3.UP * .06)
+	remember_fish()
+	publish()
+	var messages := {"crew_take_fish": "Fish in hand. E at the grill to lay it over the fire.",
+		"crew_store_fish": "Fish stored. F at the ice chest takes a fish out.",
+		"crew_place_fish": "Fish laid on the grill. Let the first side sizzle."}
+	campaign.tell(peer, messages[action])
+
+
+func start_transfer(peer: int, kind: String, fish: Dictionary, source: Vector3, target: Vector3) -> void:
+	transfer_visual(peer, kind, fish, source, target)
+	if campaign.crew.on_server() and campaign.crew.people.size() > 1:
+		transfer_visual.rpc(peer, kind, fish, source, target)
+
+
+@rpc("authority", "call_remote", "reliable")
+func transfer_visual(peer: int, kind: String, fish: Dictionary, source: Vector3, target: Vector3) -> void:
+	transfer_until[peer] = game.clock + .85
+	if kind in ["take", "store"]:
+		chest_open_until = game.clock + 1.5
+	if kind == "grill":
+		camp.transfer_until = game.clock + .85
+	var model := Fish.new()
+	add_child(model)
+	model.select_species(int(fish.species), clampi(int(fish.length), 12, 65))
+	transfers.append({"peer": peer, "kind": kind, "model": model, "start": game.clock, "from": source, "to": target})
+	if peer == campaign.crew.my_id():
+		reach_time = 0.0
+
+
+func update_fish_visuals(delta: float) -> void:
+	for index in range(transfers.size() - 1, -1, -1):
+		var transfer: Dictionary = transfers[index]
+		var progress := clampf((game.clock - float(transfer.start)) / .85, 0, 1)
+		var destination: Vector3 = hand_position(transfer.peer) if transfer.kind in ["hold", "take"] else transfer.to
+		var source: Vector3 = hand_position(transfer.peer) if transfer.kind in ["store", "grill"] else transfer.from
+		var at: Vector3 = source.lerp(destination, smoothstep(0, 1, progress)) + Vector3.UP * sin(progress * PI) * .16
+		transfer.model.pose(at, game.eye.global_basis.x, PI * .5, .0, 0)
+		if progress >= 1:
+			transfer.model.queue_free()
+			transfers.remove_at(index)
+	var local: int = campaign.crew.my_id()
+	var fish := held_fish(local)
+	var handling: bool = game.clock < float(transfer_until.get(local, 0))
+	fish_view.visible = not fish.is_empty() or handling
+	view_fish.visible = not fish.is_empty() and not handling
+	var rest := Vector3(0, -.38, -.67)
+	for transfer: Dictionary in transfers:
+		if transfer.peer == local:
+			var progress := clampf((game.clock - float(transfer.start)) / .85, 0, 1)
+			var goal: Vector3 = transfer.to if transfer.kind in ["store", "grill"] else transfer.from
+			var reach: Vector3 = (game.eye.to_local(goal) - rest).limit_length(.65)
+			rest += reach * sin(progress * PI)
+	fish_view.position = fish_view.position.lerp(rest, 1.0 - exp(-delta * 14))
+	if view_fish.visible:
+		var kind := "%s/%s" % [fish.species, fish.length]
+		if kind != fish_view_kind:
+			view_fish.select_species(int(fish.species), clampi(int(fish.length), 12, 65))
+			fish_view_kind = kind
+		var bob: float = sin(game.clock * 2) * .004 * game.rig.motion_amount
+		fish_view.position = fish_view.position.lerp(Vector3(0, -.38 + bob, -.67), 1.0 - exp(-delta * 12))
+		view_fish.pose(fish_view.global_position + game.eye.global_basis.x * view_fish.metres * .45, game.eye.global_basis.x, PI * .5, 0, 0)
+	for peer: int in carried_fish:
+		if peer == local:
+			continue
+		if not fish_models.has(peer):
+			var model := Fish.new()
+			add_child(model)
+			fish_models[peer] = model
+		var model: Fish = fish_models[peer]
+		var data: Dictionary = carried_fish[peer]
+		var signature := "%s/%s" % [data.species, data.length]
+		if model.get_meta("held_kind", "") != signature:
+			model.select_species(int(data.species), clampi(int(data.length), 12, 65))
+			model.set_meta("held_kind", signature)
+		model.visible = game.clock >= float(transfer_until.get(peer, 0))
+		model.pose(hand_position(peer), Vector3.RIGHT, PI * .5, 0, 0)
+	for peer: int in fish_models.keys():
+		if not carried_fish.has(peer):
+			fish_models[peer].queue_free()
+			fish_models.erase(peer)

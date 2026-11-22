@@ -14,6 +14,7 @@ const PORT := 28460
 const MAX_GUESTS := 3
 
 var mode := "solo"
+var started := false
 var people: Dictionary = {}
 var poses: Dictionary = {}
 var avatars: Dictionary = {}
@@ -26,6 +27,9 @@ var boat: Node3D
 
 
 func _ready() -> void:
+	var config := ConfigFile.new()
+	if config.load("user://river_identity.cfg") == OK:
+		local_name = clean_name(str(config.get_value("player", "name", local_name)))
 	multiplayer.peer_connected.connect(peer_arrived)
 	multiplayer.peer_disconnected.connect(peer_departed)
 	multiplayer.connected_to_server.connect(joined_server)
@@ -54,16 +58,29 @@ func host(display_name: String) -> void:
 	if mode != "solo":
 		return
 	var listener := ENetMultiplayerPeer.new()
-	var fail := listener.create_server(PORT, MAX_GUESTS, 3)
+	# Leave max_channels at its engine default. In the bundled Godot 4.7.2,
+	# an explicit limit is passed into ENet's incoming bandwidth argument,
+	# which throttles/drops pose and vehicle packets even though joins succeed.
+	var fail := listener.create_server(PORT, MAX_GUESTS)
 	if fail != OK:
 		status = "Could not host on UDP %d (%s)." % [PORT, error_string(fail)]
 		changed.emit()
 		return
-	local_name = clean_name(display_name)
+	set_display_name(display_name)
 	people[1] = {"name": local_name, "profile": local_profile}
 	mode = "host"
 	multiplayer.multiplayer_peer = listener
 	status = "Hosting on UDP %d   •   %s" % [PORT, local_addresses()]
+	changed.emit()
+
+
+func start_session() -> void:
+	if not on_server() or started:
+		return
+	started = true
+	for peer: int in people:
+		if peer != 1:
+			requested.emit(peer, "connected", null)
 	changed.emit()
 
 
@@ -81,7 +98,7 @@ func join(display_name: String, host_address: String) -> void:
 		status = "Could not join (%s)." % error_string(fail)
 		changed.emit()
 		return
-	local_name = clean_name(display_name)
+	set_display_name(display_name)
 	mode = "joining"
 	multiplayer.multiplayer_peer = connection
 	status = "Connecting to %s…" % last_address
@@ -96,8 +113,9 @@ func local_addresses() -> String:
 	return " / ".join(found) if not found.is_empty() else "127.0.0.1"
 
 
-func stop(message := "Returned to solo play.") -> void:
+func stop(message := "") -> void:
 	mode = "solo"
+	started = false
 	status = message
 	multiplayer.multiplayer_peer = OfflineMultiplayerPeer.new()
 	for avatar: Node3D in avatars.values():
@@ -120,6 +138,8 @@ func peer_departed(id: int) -> void:
 		avatars[id].queue_free()
 		avatars.erase(id)
 	member_left.emit(id)
+	if on_server() and people.size() > 1:
+		roster.rpc(people)
 	changed.emit()
 
 
@@ -135,7 +155,7 @@ func connection_failed() -> void:
 
 
 func server_closed() -> void:
-	stop("The host left. Your solo river has been restored.")
+	stop("The host ended the session.")
 
 
 func person(peer: int) -> Dictionary:
@@ -152,14 +172,28 @@ func register(display_name: String, profile: String) -> void:
 		profile = ("%032x" % peer).right(32)
 	people[peer] = {"name": clean_name(display_name), "profile": profile}
 	roster.rpc(people)
-	requested.emit(peer, "connected", null)
+	if started:
+		requested.emit(peer, "connected", null)
 	changed.emit()
 
 
 @rpc("authority", "call_remote", "reliable")
 func roster(names: Dictionary) -> void:
 	people = names
+	if people.has(my_id()):
+		local_name = str(people[my_id()].name)
+	for peer: int in avatars:
+		if people.has(peer):
+			avatars[peer].label.text = str(people[peer].name)
 	changed.emit()
+
+
+@rpc("authority", "call_remote", "reliable")
+func enter_river(initial_ship: Dictionary) -> void:
+	if mode == "guest" and not started:
+		ship_received.emit(initial_ship)
+		started = true
+		changed.emit()
 
 
 @rpc("any_peer", "call_remote", "reliable")
@@ -221,7 +255,7 @@ func pose(position: Vector3, turn: float, onboard: bool, animation: Dictionary) 
 		if amount is float and is_finite(amount):
 			visual[key] = clampf(amount, -1.5, 20.0 if key == "age" else 1.5)
 	var tool: Variant = animation.get("tool")
-	if tool is String and tool in ["net", "cooler", "lamp", "helm"]:
+	if tool is String and tool in ["net", "cooler", "lamp", "helm", "fish"]:
 		visual.tool = tool
 	poses[peer] = {"at": position, "yaw": wrapf(turn, -PI, PI), "onboard": onboard, "animation": visual,
 		"received": Time.get_ticks_msec()}
@@ -260,3 +294,28 @@ func tick(delta: float, actor: CharacterBody3D, onboard: bool, yaw: float, visua
 	pose.rpc(boat.to_local(actor.global_position) if onboard else actor.global_position,
 		yaw - boat.rotation.y if onboard else yaw, onboard, visual.call())
 	return true
+
+
+func set_display_name(display_name: String) -> void:
+	local_name = clean_name(display_name)
+	var config := ConfigFile.new()
+	config.set_value("player", "name", local_name)
+	config.save("user://river_identity.cfg")
+	if on_server():
+		people[1].name = local_name
+		roster.rpc(people)
+	elif mode == "guest":
+		rename_request.rpc_id(1, local_name)
+	changed.emit()
+
+
+@rpc("any_peer", "call_remote", "reliable")
+func rename_request(display_name: String) -> void:
+	var peer := multiplayer.get_remote_sender_id()
+	if not on_server() or not people.has(peer):
+		return
+	people[peer].name = clean_name(display_name)
+	if avatars.has(peer):
+		avatars[peer].label.text = str(people[peer].name)
+	roster.rpc(people)
+	changed.emit()

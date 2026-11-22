@@ -224,6 +224,8 @@ func update_limbs(animation: Dictionary, vessel: Node3D, stage: int, clock: floa
 			hand = Vector3(side * (.18 if side > 0.0 else .02), 1.03 - .47 * lift, -.39 - lift * .23)
 		elif action == "cooler":
 			hand = Vector3(side * .328, .962, -.402)
+		elif action == "fish":
+			hand = Vector3(side * .17, 1.02, -.42)
 		elif action == "lamp":
 			hand = Vector3(side * .14, 1.14, -.40)
 		hand += Vector3(.04 * side, .065, -.13) * grab

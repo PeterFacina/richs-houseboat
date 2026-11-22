@@ -21,6 +21,7 @@ var yaw := -1.30
 var pitch := -0.107
 var driving := false
 var walk_multiplier := 1.0
+var mouse_sensitivity := .0022
 var boarded := false
 var pulled := false
 var landed := false
@@ -169,8 +170,8 @@ func label(text: String, size: int, color: Color) -> Label:
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
-		yaw -= event.relative.x * 0.0022
-		pitch = clampf(pitch - event.relative.y * 0.0022, -1.38, 1.38)
+		yaw -= event.relative.x * mouse_sensitivity
+		pitch = clampf(pitch - event.relative.y * mouse_sensitivity, -1.38, 1.38)
 		update_view()
 	elif event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
@@ -250,6 +251,8 @@ func move_on_foot(delta: float, walk: Vector3, jump: bool) -> void:
 	player.velocity.x = walk.x * 3.75 * walk_multiplier
 	player.velocity.z = walk.z * 3.75 * walk_multiplier
 	player.velocity.y -= delta * 13.0
+	if player.is_on_ceiling() and player.velocity.y > 0:
+		player.velocity.y = 0
 	if jump and player.is_on_floor():
 		player.velocity.y = 4.0
 	player.move_and_slide()
