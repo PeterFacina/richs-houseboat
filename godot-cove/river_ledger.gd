@@ -21,7 +21,7 @@ func fresh() -> Dictionary:
 		"job": -1, "stage": "", "job_fish": [], "freight_run": 0.0, "last_dock": -1, "craft": "houseboat", "tow": false,
 		"bilge": 0.0, "pump_on": true, "modern_houseboat": false,
 		"ice_chest": [], "meals": 0, "held_fish": {}, "camp_fish": {},
-		"work_minutes": 480.0, "last_mowing_day": -1,
+		"progression": {}, "verified_job_fish": 0, "job_serial": 0, "catch_serial": 0, "work_minutes": 480.0, "last_mowing_day": -1, "last_commercial_day": -1,
 	}
 
 
@@ -61,12 +61,12 @@ func save_file() -> void:
 	error = ""
 
 
-func profile_id() -> String:
-	var current := FileAccess.get_file_as_string(PROFILE).strip_edges() if FileAccess.file_exists(PROFILE) else ""
+func profile_id(path := PROFILE) -> String:
+	var current := FileAccess.get_file_as_string(path).strip_edges() if FileAccess.file_exists(path) else ""
 	if current.length() == 32:
 		return current
 	var generated := Crypto.new().generate_random_bytes(16).hex_encode()
-	var file := FileAccess.open(PROFILE, FileAccess.WRITE)
+	var file := FileAccess.open(path, FileAccess.WRITE)
 	if file != null:
 		file.store_string(generated)
 	return generated

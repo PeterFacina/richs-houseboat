@@ -21,6 +21,8 @@ var poses: Dictionary = {}
 var avatars: Dictionary = {}
 var local_name := "Rich"
 var local_profile := ""
+var progression_secret := ""
+var progression_keys := {}
 var last_address := ""
 var status := ""
 var packet_timer := 0.0
@@ -123,6 +125,7 @@ func stop(message := "") -> void:
 		avatar.queue_free()
 	avatars.clear()
 	poses.clear()
+	progression_keys.clear()
 	people.clear()
 	stopped.emit()
 	changed.emit()
@@ -134,6 +137,7 @@ func peer_arrived(_id: int) -> void:
 
 
 func peer_departed(id: int) -> void:
+	progression_keys.erase(id)
 	people.erase(id)
 	poses.erase(id)
 	if avatars.has(id):
@@ -148,7 +152,7 @@ func peer_departed(id: int) -> void:
 func joined_server() -> void:
 	mode = "guest"
 	status = "Joined %s." % last_address
-	register.rpc_id(1, local_name, local_profile)
+	register.rpc_id(1, local_name, local_profile, progression_secret)
 	changed.emit()
 
 
@@ -165,10 +169,16 @@ func person(peer: int) -> Dictionary:
 
 
 @rpc("any_peer", "call_remote", "reliable")
-func register(display_name: String, profile: String) -> void:
+func register(display_name: String, profile: String, secret: String) -> void:
 	if not on_server() or profile.length() != 32:
 		return
 	var peer := multiplayer.get_remote_sender_id()
+	if secret.length() != 32 or not secret.is_valid_hex_number(false) or progression_keys.has(peer):
+		return
+	var key := secret.sha256_text()
+	if progression_keys.values().has(key) or secret == progression_secret:
+		key = Crypto.new().generate_random_bytes(32).hex_encode()
+	progression_keys[peer] = key
 	if profile == local_profile:
 		# Two local test instances can share a Godot user directory.
 		profile = ("%032x" % peer).right(32)

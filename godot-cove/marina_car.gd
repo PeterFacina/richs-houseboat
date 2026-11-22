@@ -14,6 +14,7 @@ var braking := false
 var lamps_on := false
 var engine: AudioStreamPlayer3D
 var blocked := false
+var recovery_seconds := 0.0
 var wheelbase: float
 var body_size: Vector3
 var sway := 0.0
@@ -66,7 +67,8 @@ func ground_basis(angle: float, feet: PackedFloat32Array) -> Basis:
 	return basis * Basis(Vector3.BACK, atan(bank))
 
 
-func drive(delta: float, pedal: float, turning: float, handbrake: bool, occupied: bool) -> void:
+func drive(delta: float, pedal: float, turning: float, handbrake: bool, occupied: bool, recovery_bonus := 0.0) -> void:
+	recovery_seconds = maxf(0.0, recovery_seconds - delta)
 	var previous := speed
 	var moving_against_pedal := absf(pedal) > .01 and speed * pedal < -.12
 	braking = handbrake or moving_against_pedal
@@ -77,7 +79,7 @@ func drive(delta: float, pedal: float, turning: float, handbrake: bool, occupied
 		var limit: float = details.limit if pedal > 0 else 5.6
 		var traction := 1.0 - smoothstep(2.0, limit, absf(speed)) * .73
 		var slope := global_basis.z.y * 3.2
-		speed = clampf(speed + (pedal * float(details.pull) * traction + slope) * delta, -5.6, details.limit)
+		speed = clampf(speed + (pedal * float(details.pull) * (1.0 + recovery_bonus if recovery_seconds > 0.0 else 1.0) * traction + slope) * delta, -5.6, details.limit)
 	else:
 		speed = move_toward(speed, 0.0, (.62 + absf(speed) * .04) * delta)
 	var angle_limit := lerpf(.54, .11, smoothstep(2.5, 23.0, absf(speed)))
@@ -103,6 +105,8 @@ func drive(delta: float, pedal: float, turning: float, handbrake: bool, occupied
 		else:
 			speed = 0.0
 			blocked = true
+	if blocked:
+		recovery_seconds = 1.0
 	braking = braking or blocked
 	var acceleration := clampf((speed - previous) / maxf(.001, delta), -10.0, 6.0)
 	sway = lerpf(sway, -steer * clampf(absf(speed) / 8.0, 0, 1) * .09, 1.0 - exp(-delta * 7.0))

@@ -73,6 +73,9 @@ const WORK := [
 		"detail": "Log two different species around Pine Reach after accepting."},
 	{"name": "Swisha to Chalk River freight", "kind": "freight", "home": 3, "dest": 4, "reward": [120, 16, 19],
 		"detail": "Move a crate of hydro parts between the regional landings."},
+	{"name": "Regional channel inspection", "kind": "survey", "home": 3, "offset": Vector2(118, -145), "skill": "expert_captain", "reward": [140, 16, 12], "detail": "Sound the channel by the inspection buoy and return with the readings."},
+	{"name": "Contractor supply charter", "kind": "freight", "home": 1, "dest": 3, "skill": "trusted_contractor", "reward": [145, 14, 12], "detail": "Deliver workshop supplies from Pine Reach to Swisha."},
+	{"name": "Private survey commission", "kind": "survey", "home": 2, "offset": Vector2(110, -138), "skill": "business_connections", "reward": [155, 15, 12], "detail": "Record a sounding for the dock owner and report back."},
 ]
 
 static func dock_name(site: int) -> String:
