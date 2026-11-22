@@ -43,3 +43,7 @@ Example: “Merged into main: the steering hands now stay aligned through full l
 3. Publish the workflow at `.github/workflows/discord-main-updates.yml` to `main`. It sends announcements for merged PRs into `main`. A manual run sends a test message. Confirm the test lands in **#main-updates**.
 
 Include a `## What changed?` section in each PR with a sentence teammates can understand. The workflow uses that section and the PR link. It requires no AI API or hosted bot. Keep Actions spending disabled to stay within the included private-repository allowance. Keep the webhook URL in GitHub Secrets.
+
+## Where to see updates
+
+Open [#main-updates](https://discord.com/channels/1574136192935661588/1574136467934941334) to find the announcement and its GitHub pull request link. If a friend cannot open the channel yet, they need to join Rich’s Houseboat Dev first.
