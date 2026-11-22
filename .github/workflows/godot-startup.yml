@@ -1,0 +1,176 @@
+name: Godot startup
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: godot-startup-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  startup:
+    name: Start Godot headlessly
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      checked: ${{ steps.project.outputs.checked }}
+      stage: ${{ steps.smoke.outputs.stage }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+      - name: Check for the game project
+        id: project
+        shell: bash
+        run: |
+          if [[ -f godot-cove/project.godot ]]; then
+            echo "checked=true" >> "$GITHUB_OUTPUT"
+          elif git cat-file -e 'HEAD^1:godot-cove/project.godot' 2>/dev/null; then
+            echo "checked=true" >> "$GITHUB_OUTPUT"
+            echo "::error::The change removed godot-cove/project.godot."
+            exit 1
+          else
+            echo "checked=false" >> "$GITHUB_OUTPUT"
+            echo "Game baseline has not been added. Startup check skipped." >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Install the pinned Godot release
+        if: steps.project.outputs.checked == 'true'
+        shell: bash
+        run: |
+          archive=Godot_v4.7.2-stable_linux.x86_64.zip
+          cd "$RUNNER_TEMP"
+          curl --fail --silent --show-error --location --retry 2 --output "$archive" \
+            "https://github.com/godotengine/godot-builds/releases/download/4.7.2-stable/$archive"
+          echo "cadd3204e728a35d3f13adb7fd0d7902636b79f6b95c40c265eb73b6c35329e4  $archive" | sha256sum -c -
+          unzip -oq "$archive" -d houseboat-godot
+          chmod +x houseboat-godot/Godot_v4.7.2-stable_linux.x86_64
+      - name: Import assets and start the main scene
+        if: steps.project.outputs.checked == 'true'
+        id: smoke
+        shell: bash
+        run: |
+          engine="$RUNNER_TEMP/houseboat-godot/Godot_v4.7.2-stable_linux.x86_64"
+          run_godot() {
+            local stage="$1"
+            shift
+            local log="$RUNNER_TEMP/houseboat-${stage}.log"
+            echo "stage=$stage" >> "$GITHUB_OUTPUT"
+            timeout 180s "$engine" --headless --path godot-cove "$@" 2>&1 | tee "$log"
+            if grep -Eq '^(SCRIPT ERROR|ERROR):' "$log"; then
+              echo "::error::Godot reported an error during $stage. See the log above."
+              return 1
+            fi
+          }
+          run_godot import --import
+          run_godot startup --quit-after 60
+          echo "Godot imported the project and ran the main scene for 60 iterations." >> "$GITHUB_STEP_SUMMARY"
+
+  notify:
+    name: Notify Discord on failure or recovery
+    needs: startup
+    if: >-
+      ${{ !cancelled() && github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      (needs.startup.result == 'failure' || needs.startup.outputs.checked == 'true') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions:
+      actions: read
+    steps:
+      - name: Post a short build status
+        env:
+          WEBHOOK: ${{ secrets.DISCORD_BUILD_CHECKS_WEBHOOK }}
+          TEAM_IDS: ${{ vars.DISCORD_BUILD_CHECKS_USER_IDS }}
+          GH_TOKEN: ${{ github.token }}
+          RESULT: ${{ needs.startup.result }}
+          STAGE: ${{ needs.startup.outputs.stage }}
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import re
+          from urllib.error import HTTPError, URLError
+          from urllib.parse import urlencode
+          from urllib.request import Request, urlopen
+
+          webhook = os.environ["WEBHOOK"]
+          if not webhook:
+              print("Discord build check webhook is not configured.")
+              raise SystemExit(0)
+          with open(os.environ["GITHUB_EVENT_PATH"], encoding="utf-8") as source:
+              pr = json.load(source)["pull_request"]
+          repo = os.environ["GITHUB_REPOSITORY"]
+          server = os.environ["GITHUB_SERVER_URL"]
+          api = f"{os.environ['GITHUB_API_URL']}/repos/{repo}/actions"
+          run_link = f"{server}/{repo}/actions/runs/{os.environ['GITHUB_RUN_ID']}"
+          pr_link = f"{server}/{repo}/pull/{pr['number']}"
+          owner = pr["user"]["login"]
+          failed = os.environ["RESULT"] == "failure"
+
+          def github_json(path):
+              request = Request(api + path, headers={
+                  "Authorization": "Bearer " + os.environ["GH_TOKEN"],
+                  "Accept": "application/vnd.github+json",
+              })
+              with urlopen(request, timeout=10) as response:
+                  return json.load(response)
+
+          if not failed:
+              params = urlencode({"branch": pr["head"]["ref"], "event": "pull_request",
+                                  "status": "completed", "per_page": 30})
+              runs = github_json("/workflows/godot-startup.yml/runs?" + params)["workflow_runs"]
+              candidates = [
+                  run for run in runs
+                  if run["run_number"] < int(os.environ["GITHUB_RUN_NUMBER"])
+                  and any(item["number"] == pr["number"] for item in run["pull_requests"])
+                  and run["conclusion"] in {"success", "failure"}
+              ]
+              if int(os.environ["GITHUB_RUN_ATTEMPT"]) > 1:
+                  previous_attempt = int(os.environ["GITHUB_RUN_ATTEMPT"]) - 1
+                  jobs = github_json(
+                      f"/runs/{os.environ['GITHUB_RUN_ID']}/attempts/{previous_attempt}/jobs"
+                  )["jobs"]
+              elif candidates:
+                  previous_id = max(candidates, key=lambda run: run["run_number"])["id"]
+                  jobs = github_json(f"/runs/{previous_id}/jobs")["jobs"]
+              else:
+                  jobs = []
+              if not any(job["name"] == "Start Godot headlessly" and job["conclusion"] == "failure"
+                         for job in jobs):
+                  print("Startup passed and there is no previous failure to announce.")
+                  raise SystemExit(0)
+
+          ids = json.loads(os.environ["TEAM_IDS"] or "{}")
+          discord_id = str(ids.get(owner.lower(), "")) if isinstance(ids, dict) else ""
+          mention = bool(failed and re.fullmatch(r"[0-9]{17,20}", discord_id))
+          recipient = f"<@{discord_id}>" if mention else owner
+          if failed:
+              stage = {"import": "Godot could not import the project.",
+                       "startup": "Godot reported an error while starting the game."}
+              detail = stage.get(os.environ["STAGE"], "The startup check could not run. Open the check for details.")
+              content = (f"❌ **{recipient}, PR #{pr['number']} needs attention.**\n{detail}\n"
+                         f"Ask Codex: “Open PR #{pr['number']}, fix the startup check, and push the fix.”")
+          else:
+              content = f"✅ **PR #{pr['number']} startup check recovered.** Ready for a human playtest."
+          content += f"\n[Open PR]({pr_link}) · [View check]({run_link})"
+          data = json.dumps({"content": content,
+                             "allowed_mentions": {"parse": [], "users": [discord_id] if mention else []}})
+          request = Request(webhook, data=data.encode(), method="POST", headers={
+              "Content-Type": "application/json", "User-Agent": "Houseboat-GitHub-Build-Checks",
+          })
+          try:
+              with urlopen(request, timeout=15):
+                  print("Discord accepted the build status.")
+          except HTTPError as error:
+              raise SystemExit(f"Discord rejected the build status (HTTP {error.code}).") from None
+          except (URLError, TimeoutError):
+              raise SystemExit("Could not reach Discord.") from None
+          PY
