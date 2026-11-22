@@ -14,6 +14,7 @@ const Waves = preload("res://swell.gd")
 const Landings = preload("res://river_campaign_data.gd")
 const BASE := "res://ottawa/"
 const TILE := 44
+const PLAZA_PORTICO_TREE := Vector2(18000.5215, 13239.9229)
 
 class TerrainPatch:
 	var area: Rect2
@@ -219,6 +220,9 @@ func build() -> void:
 	var pines := LamurePines.new()
 	waterfront.build_canopy(self, town_canopy, marina_patch.area, wet_clearance,
 		func(foot: Vector3, height: float) -> bool:
+			# This surveyed tree stands under the new corner portico.
+			if Vector2(foot.x, foot.z).distance_squared_to(PLAZA_PORTICO_TREE) < .25:
+				return true
 			return PublicWorks.cleared_for_construction(foot) or park.owns_tree(foot) \
 				or Vector2(foot.x, foot.z).distance_squared_to(RiverbankPark.GAZEBO_SITE) < 36.0 \
 				or (lamure_patch != null and pines.place_from_survey(foot, height)))
