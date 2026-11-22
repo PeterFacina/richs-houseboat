@@ -1,0 +1,57 @@
+name: Discord main updates
+
+on:
+  pull_request:
+    branches: [main]
+    types: [closed]
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  announce:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Post update to Discord
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_MAIN_UPDATES_WEBHOOK }}
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import re
+          from urllib.error import HTTPError, URLError
+          from urllib.request import Request, urlopen
+
+          webhook = os.environ.get("DISCORD_WEBHOOK")
+          if not webhook:
+              print("Discord webhook secret is not configured.")
+              raise SystemExit(0)
+          with open(os.environ["GITHUB_EVENT_PATH"], encoding="utf-8") as stream:
+              event = json.load(stream)
+          if os.environ["GITHUB_EVENT_NAME"] == "workflow_dispatch":
+              content = "Houseboat updates are connected. Future merges into main will appear here."
+          else:
+              pr = event["pull_request"]
+              body = pr.get("body") or ""
+              section = re.search(r"(?ims)^##\s+What changed\?\s*\n(.*?)(?=^##\s|\Z)", body)
+              summary = " ".join(section[1].split())[:650] if section else ""
+              content = f"**Merged into main:** {pr['title'][:150]}\n"
+              if summary:
+                  content += summary + "\n"
+              content += f"<{pr['html_url']}>"
+          payload = json.dumps({"content": content, "allowed_mentions": {"parse": []}})
+          request = Request(webhook, data=payload.encode(), headers={
+              "Content-Type": "application/json", "User-Agent": "Houseboat-GitHub-Updates"
+          }, method="POST")
+          try:
+              with urlopen(request, timeout=15):
+                  print("Discord accepted the update.")
+          except HTTPError as error:
+              raise SystemExit(f"Discord rejected the update (HTTP {error.code}).") from None
+          except (URLError, TimeoutError):
+              raise SystemExit("Could not reach Discord.") from None
+          PY
