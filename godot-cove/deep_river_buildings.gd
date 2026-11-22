@@ -4,6 +4,7 @@ const Kit = preload("res://scenery.gd")
 const Graphics = preload("res://river_graphics.gd")
 const WALLS = preload("res://deep_river_walls.gdshader")
 const YachtClub = preload("res://marina_yacht_club.gd")
+const Plaza = preload("res://deep_river_plaza.gd")
 
 var roof: SurfaceTool
 var walls: SurfaceTool
@@ -23,7 +24,11 @@ func build(parent: Node3D, buildings: Array, texture: Texture2D, ground: Callabl
 	district.name = "DeepRiverBuildings"
 	parent.add_child(district)
 	var chunks := {}
+	var plaza: Dictionary
 	for building: Dictionary in buildings:
+		if building.detail == "giant_tiger":
+			plaza = building
+			continue
 		if building.windows == "club":
 			continue
 		var cell := Vector2i(floori(float(building.center[0]) / 192.0), floori(float(building.center[1]) / 192.0))
@@ -63,6 +68,8 @@ func build(parent: Node3D, buildings: Array, texture: Texture2D, ground: Callabl
 		build_batch(frames, trim, "building_detail")
 		build_batch(glass, windows, "building_detail")
 
+	if not plaza.is_empty():
+		Plaza.new().build(district, plaza, ground_height, aggregate, windows)
 	if buildings.any(func(building: Dictionary) -> bool: return building.id == "hexagon"):
 		var club_root := Node3D.new()
 		district.add_child(club_root)
@@ -286,21 +293,7 @@ func build_school_entry(center: Vector3, along: Vector3, outward: Vector3) -> vo
 
 func add_landmark_detail(building: Dictionary, origin: Vector3, along: Vector3,
 		normal: Vector3, width: float, trim: Color) -> void:
-	if building.detail == "giant_tiger":
-		var span := minf(width * 0.64, metre * 11.6)
-		var base := origin + along * (width * 0.5 - span * 0.5) + normal * 0.009
-		base.y += building.eave - metre * 0.39
-		panel(frames, base, along, normal, span, metre * 0.95, Color("#e8b42c"))
-		var text := Label3D.new()
-		town.add_child(text)
-		text.position = base + along * span * 0.5 + Vector3.UP * metre * 0.46 + normal * 0.007
-		text.basis = Basis(along, Vector3.UP, normal)
-		text.text = building.name
-		text.font_size = 52
-		text.pixel_size = span / 360.0
-		text.outline_size = 0
-		text.modulate = Color("#292724")
-	elif building.detail == "town_hall_entry":
+	if building.detail == "town_hall_entry":
 		var center: Vector3 = origin + along * width * 0.5 + Vector3.UP * building.eave + normal * 0.022
 		var half_width := minf(width * 0.38, metre * 2.87)
 		var left := center - along * half_width
