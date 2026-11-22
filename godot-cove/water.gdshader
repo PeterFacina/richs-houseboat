@@ -1,0 +1,327 @@
+shader_type spatial;
+render_mode unshaded;
+
+#include "res://river_sky.gdshaderinc"
+#include "res://boat_launch_surface.gdshaderinc"
+#include "res://lamure_surface.gdshaderinc"
+
+uniform float clock;
+uniform bool mapped = false;
+uniform bool distant = false;
+uniform bool headpond = false;
+uniform sampler2D shoals : filter_linear, repeat_disable;
+uniform sampler2D marina_shoals : filter_linear, repeat_disable;
+uniform sampler2D swisha_shoals : filter_linear, repeat_disable;
+uniform sampler2D lamure_shoals : filter_linear, repeat_disable;
+uniform vec4 lamure_bounds = vec4(0.0);
+uniform float lamure_shore_unit = .25;
+uniform sampler2D riverbed : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
+uniform sampler2D ramp_concrete : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
+uniform vec4 ramp_axes = vec4(0.0);
+uniform vec2 ramp_size = vec2(0.0);
+uniform sampler2D reflect_shore : filter_linear, repeat_disable;
+uniform vec4 marina_bounds = vec4(0.0);
+uniform vec4 swisha_bounds = vec4(0.0);
+uniform vec3 shore_units = vec3(2.0, 0.25, 0.25);
+uniform vec4 outfall = vec4(0.0);
+uniform float outfall_width = 0.0;
+uniform vec4 hooked_fish = vec4(0.0);
+uniform vec4 surface_slick = vec4(0.0);
+uniform vec2 fish_heading = vec2(1.0, 0.0);
+uniform vec3 sun_direction = vec3(-0.588, 0.304, -0.761);
+uniform vec2 map_size = vec2(1.0);
+uniform vec2 center = vec2(0.0);
+uniform vec4 boat_wake = vec4(0.0);
+uniform vec2 wake_heading = vec2(0.0, 1.0);
+uniform vec2 prop_heading = vec2(0.0, 1.0);
+uniform float evening = 0.0;
+uniform vec4 bow_light = vec4(0.0);
+uniform vec3 bow_direction = vec3(0.0, -0.2, -1.0);
+varying vec3 world;
+varying vec2 slope;
+varying float wave_height;
+
+vec2 grid_uv(sampler2D grid, vec2 uv) {
+	vec2 dimensions = vec2(textureSize(grid, 0));
+	return (uv * (dimensions - 1.0) + 0.5) / dimensions;
+}
+
+// Bank clearance, simulated bed depth, and a flag for the dam's tailrace.
+vec3 channel(vec2 point) {
+	vec2 uv = point / map_size;
+	vec3 regional = textureLod(shoals, grid_uv(shoals, uv), 0.0).rgb;
+	vec3 sample_data = vec3((headpond ? regional.g : regional.r) * 255.0 * shore_units.x,
+		regional.b * 63.75, 0.0);
+	vec2 marina_uv = (point - marina_bounds.xy) / max(vec2(0.001), marina_bounds.zw);
+	if (!headpond && all(greaterThanEqual(marina_uv, vec2(0.0))) && all(lessThan(marina_uv, vec2(1.0)))) {
+		vec3 harbor = textureLod(marina_shoals, grid_uv(marina_shoals, marina_uv), 0.0).rgb;
+		sample_data = vec3(harbor.r * 255.0 * shore_units.y, harbor.b * 63.75, 0.0);
+	}
+	if (!headpond && lamure_bounds.z > 0.0) {
+		vec2 beach_uv = (point - lamure_bounds.xy) / lamure_bounds.zw;
+		if (all(greaterThanEqual(beach_uv, vec2(0.0))) && all(lessThan(beach_uv, vec2(1.0)))) {
+			vec3 beach = textureLod(lamure_shoals, grid_uv(lamure_shoals, beach_uv), 0.0).rgb;
+			sample_data = vec3(beach.r * 255.0 * lamure_shore_unit, beach.b * 63.75, 0.0);
+		}
+	}
+	vec2 station_uv = (point - swisha_bounds.xy) / max(vec2(0.001), swisha_bounds.zw);
+	if (all(greaterThanEqual(station_uv, vec2(0.0))) && all(lessThan(station_uv, vec2(1.0)))) {
+		vec2 local = textureLod(swisha_shoals, grid_uv(swisha_shoals, station_uv), 0.0).rg;
+		float shoal = (headpond ? local.g : local.r) * 255.0 * shore_units.z;
+		sample_data = vec3(shoal, mix(0.18, 16.0, 1.0 - exp(-shoal * 0.064)), headpond ? 0.0 : 1.0);
+	}
+	return sample_data;
+}
+
+vec3 wave_component(vec2 p, vec2 k, float rate, float phase, float height) {
+	float position = dot(p, k) - rate * clock + phase;
+	return height * vec3(sin(position), cos(position) * k);
+}
+
+vec3 river_wave(vec2 p) {
+	return wave_component(p, vec2(.178, .123), 1.46, 0.0, .143)
+		+ wave_component(p, vec2(-.126, .316), 1.82, 1.4, .091)
+		+ wave_component(p, vec2(.491, -.217), 2.29, 2.6, .055)
+		+ wave_component(p, vec2(.397, .662), 2.75, 0.0, .033)
+		+ wave_component(p, vec2(-.798, .762), 3.29, .9, .016);
+}
+
+void vertex() {
+	world = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+	float a = dot(world.xz, vec2(0.31, 0.43)) - 1.45 * clock;
+	float b = dot(world.xz, vec2(-0.64, 0.25)) - 1.92 * clock;
+	float c = dot(world.xz, vec2(0.85, -0.54)) - 2.4 * clock;
+	wave_height = 0.0;
+	if (!distant) {
+		wave_height = (0.15 * sin(a) + 0.071 * sin(b) + 0.033 * sin(c)) * (headpond ? 0.032 : 1.0);
+		VERTEX.y += wave_height;
+		world.y += wave_height;
+	}
+	slope = 0.15 * cos(a) * vec2(0.31, 0.43)
+		+ 0.071 * cos(b) * vec2(-0.64, 0.25)
+		+ 0.033 * cos(c) * vec2(0.85, -0.54);
+	if (mapped) {
+		VERTEX.y -= wave_height;
+		world.y -= wave_height;
+		vec3 wave = river_wave(world.xz);
+		float shore = channel(world.xz).x;
+		wave *= headpond ? 0.12 : mix(.24, 1.0, smoothstep(0.0, 57.0, shore));
+		float fade = headpond ? 1.0 : 1.0 - smoothstep(89.0, 112.0, distance(world.xz, center));
+		wave_height = distant ? 0.0 : (wave.x + .03) * fade - (headpond ? 0.0 : .03);
+		slope = wave.yz;
+		VERTEX.y += wave_height;
+		world.y += wave_height;
+	}
+}
+
+float water_noise(vec2 p) {
+	vec2 cell = floor(p);
+	vec2 blend = smoothstep(vec2(0.0), vec2(1.0), fract(p));
+	vec4 x = cell.x + vec4(0.0, 1.0, 0.0, 1.0);
+	vec4 y = cell.y + vec4(0.0, 0.0, 1.0, 1.0);
+	vec4 grains = fract(sin(x * 41.37 + y * 173.21) * 1719.214);
+	return mix(mix(grains.x, grains.y, blend.x), mix(grains.z, grains.w, blend.x), blend.y);
+}
+
+vec3 local_reflection(vec2 start, vec3 ray, vec3 sky_color) {
+	if (ray.y < -.03 || ray.y > .42) {
+		return sky_color;
+	}
+	vec2 travel = ray.xz / max(.25, length(ray.xz));
+	vec3 color = sky_color;
+	for (int sample_index = 0; sample_index < 3; sample_index++) {
+		float reach = sample_index == 0 ? 250.0 : (sample_index == 1 ? 82.0 : 29.0);
+		vec2 uv = (start + travel * reach) / map_size;
+		vec3 bank = texture(reflect_shore, uv).rgb;
+		float dry = smoothstep(.022, .081, bank.r - bank.b);
+		float height = max(0.0, (bank.r - .232) * 1327.0) + 12.0;
+		float above = reach * max(0.0, ray.y);
+		float visible = dry * (1.0 - smoothstep(height * .52, height + 4.5, above));
+		vec3 timber = mix(bank * .90, vec3(.24, .32, .23), .38);
+		color = mix(color, timber, visible * .59);
+	}
+	return color;
+}
+
+void fragment() {
+	float west = length((world.xz - vec2(-34.0, 5.0)) / vec2(28.0, 62.0));
+	float east = length((world.xz - vec2(35.0, -37.0)) / vec2(26.0, 48.0));
+	float shore = min(west, east);
+	float shallow = 1.0 - smoothstep(0.87, 1.16, shore);
+	float mapped_bank = 0.0;
+	float bed_depth = 20.0;
+	bool in_tailrace = false;
+	if (mapped) {
+		float distance_from_boat = distance(world.xz, center);
+		if (!headpond && ((distant && distance_from_boat < 112.0) || (!distant && distance_from_boat >= 112.0))) {
+			discard;
+		}
+		vec3 sample_data = channel(world.xz);
+		if (sample_data.x < 0.12) {
+			discard;
+		}
+		bed_depth = max(.015, sample_data.y + wave_height);
+		in_tailrace = sample_data.z > .5;
+		shallow = 1.0 - smoothstep(0.25, 5.5, bed_depth);
+		mapped_bank = (1.0 - smoothstep(0.23, 1.26, sample_data.x)) * 0.18;
+	}
+	vec2 flow = world.xz;
+	float irregularity = water_noise(flow * .47 + vec2(.07, -.21) * clock) - .5;
+	float warp = sin(flow.x * .142 + flow.y * .258) * 1.6
+		+ sin(flow.x * .39 - flow.y * .11 + clock * .61) + irregularity * 2.3;
+	vec2 ripple = vec2(sin(dot(flow, vec2(3.2, 2.3)) + clock * 3.0 + warp) * .78
+		+ cos(dot(flow, vec2(-5.8, 4.1)) - clock * 4.7 + warp * .53) * .22,
+		cos(dot(flow, vec2(-1.7, 4.1)) - clock * 3.4 - warp) * .73
+		+ sin(dot(flow, vec2(5.6, .12)) - clock * 4.8 + warp * .69) * .27);
+	float footprint = length(fwidth(flow));
+	float fine = 1.0 - smoothstep(.11, .59, footprint);
+	vec2 normal_slope = slope;
+	if (mapped && distant && !headpond) {
+		normal_slope = river_wave(flow).yz * .71;
+	}
+	float stern_foam = 0.0;
+	if (mapped && !distant && !headpond && max(boat_wake.z, boat_wake.w) > .045) {
+		vec2 shift = world.xz - boat_wake.xy;
+		float along = dot(shift, wake_heading);
+		float across = dot(shift, vec2(wake_heading.y, -wake_heading.x));
+		float speed = smoothstep(.45, 5.8, boat_wake.z);
+		if (along > -4.6 && along < 74.0 && abs(across) < 27.0) {
+			float run = max(0.0, along + 3.5);
+			float side = abs(across) - (1.10 + run * 0.34);
+			float cusp = exp(-abs(side) * (1.11 - min(.52, run * .008)));
+			float amplitude = speed * cusp * exp(-run / (13.0 + speed * 15.0));
+			float crest = sin(side * 2.0 + run * .44 - clock * 3.6);
+			normal_slope += vec2(wake_heading.y, -wake_heading.x) * sign(across) * crest * amplitude * .083;
+			float froth = water_noise(vec2(run * 3.7 - clock * 3.1, across * 13.0));
+			stern_foam += amplitude * smoothstep(.55, 1.26, crest * .60 + froth * .62) * .34;
+		}
+		float jet_along = dot(shift, prop_heading);
+		float jet_side = dot(shift, vec2(prop_heading.y, -prop_heading.x));
+		if (jet_along > -.34 && jet_along < 29.0 && abs(jet_side) < 4.2) {
+			float drift = water_noise(vec2(jet_along * 1.04 - clock * 2.4, jet_side * 2.3));
+			float jet_radius = .27 + max(0.0, jet_along) * .116;
+			float turbulence = 1.0 - smoothstep(jet_radius * .33, jet_radius, abs(jet_side + (drift - .5) * .54));
+			float bubbles = water_noise(vec2(jet_along * 12.1 - clock * 7.9, jet_side * 13.1));
+			float whitewash = smoothstep(.33, .75, drift * .56 + bubbles * .42);
+			stern_foam += boat_wake.w * turbulence * exp(-max(0.0, jet_along) * .105) * whitewash * .85;
+			normal_slope += vec2(ripple.y, ripple.x) * turbulence * boat_wake.w * .045;
+		}
+	}
+	float ripple_strength = (headpond ? 0.015 : 0.024) * fine;
+	vec3 n = normalize(vec3(-normal_slope.x + ripple.x * ripple_strength, 1.0, -normal_slope.y + ripple.y * ripple_strength));
+	vec3 view = normalize(CAMERA_POSITION_WORLD - world);
+	float sky = pow(1.0 - max(dot(n, view), 0.0), 3.2);
+	vec3 blue = mix(vec3(0.025, 0.20, 0.245), vec3(0.12, 0.43, 0.39), shallow);
+	vec3 hue = mix(blue, vec3(0.44, 0.61, 0.66), sky * 0.81);
+	if (mapped && !headpond && !in_tailrace) {
+		float wind = .64 + .36 * sin(dot(flow, vec2(.24, .073)) - clock * .39);
+		vec2 breeze = vec2(sin(dot(flow, vec2(10.4, -5.7)) - clock * 5.4 + warp * 1.45),
+			cos(dot(flow, vec2(7.5, 8.9)) - clock * 6.8 - warp * 1.53));
+		breeze *= .023 * wind * (1.0 - smoothstep(.05, .24, footprint));
+		vec3 capillary = normalize(n + vec3(breeze.x, 0.0, breeze.y));
+		vec3 mirror = reflect(-view, capillary);
+		vec3 reflection = river_sky(mirror, 0.37, evening) * vec3(0.87, 0.96, 0.97);
+		reflection = local_reflection(flow, mirror, reflection);
+		float fresnel = 0.037 + pow(1.0 - max(dot(capillary, view), 0.0), 4.25) * 0.79;
+		vec3 basin = mix(vec3(0.047, 0.138, 0.148), vec3(0.157, 0.255, 0.201), shallow);
+		if (bed_depth < 7.0) {
+			vec3 underwater = refract(-view, capillary, .75);
+			float path = bed_depth / max(.37, -underwater.y);
+			vec2 floor_uv = flow + underwater.xz * path;
+			vec3 gravel = texture(riverbed, floor_uv / 2.4).rgb;
+			float sandy = lamure_coverage(floor_uv).b;
+			if (sandy > .001) {
+				gravel = mix(gravel, beach_sand(floor_uv, 1.0) * vec3(1.12, 1.07, .96), sandy);
+			}
+			if (ramp_size.x > 0.0 && distance(floor_uv, ramp_axes.xy) < ramp_size.x + ramp_size.y) {
+				vec2 offset = floor_uv - ramp_axes.xy;
+				vec2 across = vec2(-ramp_axes.w, ramp_axes.z);
+				vec2 metres = vec2(dot(offset, across), dot(offset, ramp_axes.zw));
+				if (metres.y >= 0.0 && metres.y <= ramp_size.x && abs(metres.x) < ramp_size.y * .5) {
+					gravel = launch_surface(ramp_concrete, metres, 1.0);
+				}
+			}
+			float light = water_noise((floor_uv + .15 * ripple) * 3.7 + vec2(.34, -.28) * clock);
+			float caustic = (1.0 - smoothstep(.024, .116, abs(light - .52))) * fine;
+			vec3 attenuation = exp(-path * vec3(.67, .34, .38));
+			vec3 bottom = gravel * vec3(.71, .83, .76) * (1.0 + caustic * .22);
+			basin = mix(basin, bottom, attenuation * .95);
+		}
+		hue = mix(basin, reflection, fresnel);
+	}
+	float glitter = pow(max(dot(reflect(-sun_direction, n), view), 0.0), 72.0);
+	float crest_breaks = ripple.x + 0.35 * sin(dot(flow, vec2(0.83, -1.58)) + clock * 1.7);
+	float flecks = smoothstep(0.14, 0.22, wave_height) * smoothstep(0.63, 1.33, crest_breaks);
+	float foam = (1.0 - smoothstep(0.011, 0.045, abs(shore - 0.92 + sin(clock + world.z * 0.27) * 0.008)))
+		* smoothstep(-0.17, 0.80, ripple.x);
+	if (mapped) {
+		foam = mapped_bank * smoothstep(0.05, 0.85, ripple.x * 0.55 + ripple.y * 0.45);
+	}
+	ALBEDO = hue + vec3(0.30, 0.24, 0.12) * glitter
+		+ vec3(0.49, 0.60, 0.56) * max(flecks * 0.26, foam * 0.52);
+	ALBEDO = mix(ALBEDO, vec3(.74, .849, .806), min(.74, stern_foam));
+	if (surface_slick.w > 0.0 && !distant && !headpond) {
+		vec2 slick = (world.xz - surface_slick.xy) / max(.05, surface_slick.z);
+		float radius = length(slick * vec2(.82, 1.06));
+		if (radius < 1.50) {
+			float broken = water_noise(slick * 7.4 + ripple * .20);
+			float plume = (1.0 - smoothstep(.26, 1.46, radius + .32 * broken)) * smoothstep(.25, .64, broken);
+			ALBEDO = mix(ALBEDO, vec3(.36, .367, .248), plume * surface_slick.w * .51);
+		}
+	}
+	if (headpond) {
+		float shimmer = water_noise(flow * vec2(1.96, 0.81) + vec2(-clock * 0.32, clock * 0.18));
+		ALBEDO = mix(hue, vec3(0.10, 0.245, 0.29), 0.42) + vec3(0.04, 0.06, 0.067) * shimmer;
+	}
+	if (hooked_fish.w > 0.0 && hooked_fish.z < 0.86 && !headpond) {
+		vec2 relative = world.xz - hooked_fish.xy + fish_heading * hooked_fish.w * 0.41;
+		vec2 along = vec2(dot(relative, fish_heading), dot(relative, vec2(fish_heading.y, -fish_heading.x)));
+		float blur = 0.025 + 0.20 * hooked_fish.z;
+		vec2 body = along / (vec2(hooked_fish.w * 0.48, hooked_fish.w * 0.15) + blur);
+		float fish_shadow = (1.0 - smoothstep(0.34, 1.16, length(body)))
+			* (1.0 - smoothstep(0.04, 0.86, hooked_fish.z));
+		ALBEDO = mix(ALBEDO, vec3(0.067, 0.165, 0.147), fish_shadow * 0.52);
+		float trail = -along.x - hooked_fish.w * 0.30;
+		if (trail > 0.0 && trail < 1.36 && hooked_fish.z < 0.24) {
+			float edge = abs(along.y) - (0.027 + trail * 0.30);
+			float lip = 1.0 - smoothstep(0.008, 0.074, abs(edge));
+			float wake = lip * smoothstep(0.0, 0.12, trail) * (1.0 - smoothstep(0.30, 1.36, trail));
+			wake *= (1.0 - smoothstep(0.027, 0.24, hooked_fish.z)) * (0.70 + 0.30 * sin(trail * 31.0 + clock * 9.0));
+			ALBEDO += vec3(0.22, 0.32, 0.30) * wake;
+		}
+	}
+	if (in_tailrace) {
+		vec2 delta = world.xz - outfall.xy;
+		vec2 along_bays = vec2(outfall.w, -outfall.z);
+		float downstream = dot(delta, outfall.zw);
+		float across = dot(delta, along_bays);
+		if (downstream >= -1.1 && downstream < 140.0 && abs(across) < outfall_width * 0.7) {
+			float pitch = outfall_width / 8.0;
+			float bend = water_noise(vec2(across * 0.65, downstream * 0.73 - clock * 1.4)) - 0.5;
+			float jet = abs(fract(across / pitch + 4.0 + bend * min(0.7, downstream * 0.15)) - 0.5);
+			float spread = 0.25 + min(0.22, downstream * 0.0063);
+			float edges = 1.0 - smoothstep(outfall_width * 0.42, outfall_width * 0.7, abs(across));
+			float plume = mix(0.49, 1.0, 1.0 - smoothstep(spread, 0.50, jet))
+				* edges * exp(-max(0.0, downstream) * 0.020);
+			vec2 stream = vec2(across + bend * 0.35, downstream - clock * 2.2);
+			float froth = water_noise(stream * vec2(7.4, 4.85));
+			float churn = water_noise(stream * vec2(2.2, 1.85) + vec2(3.8, clock * 0.23));
+			float seams = (1.0 - smoothstep(0.045, 0.18, abs(froth - 0.48))) * smoothstep(0.23, 0.69, churn);
+			float foam_patch = smoothstep(0.41, 0.81, 0.67 * churn + 0.33 * froth + plume * 0.17);
+			float at_outlet = 1.0 - smoothstep(4.2, 33.0, downstream);
+			float whitewash = plume * (0.05 + 0.50 * seams + 0.52 * foam_patch + 0.28 * at_outlet);
+			ALBEDO = mix(ALBEDO, vec3(0.90, 0.96, 0.935), min(0.94, whitewash));
+		}
+	}
+	ALBEDO *= mix(vec3(1.0), vec3(.64, .76, .89), evening);
+	ALBEDO += vec3(.19, .088, .033) * glitter * evening;
+	if (bow_light.w > 0.0 && !distant && !headpond) {
+		vec3 span = world - bow_light.xyz;
+		float distance_to_lamp = length(span);
+		float cone = smoothstep(.917, .986, dot(normalize(span), bow_direction));
+		float lamp_falloff = exp(-distance_to_lamp * .052) * (1.0 - smoothstep(20.0, 45.0, distance_to_lamp));
+		float glint = max(0.0, dot(reflect(normalize(span), n), view));
+		ALBEDO += vec3(.82, .61, .32) * bow_light.w * lamp_falloff * cone
+			* (.14 + .54 * pow(glint, 16.0) + ripple.x * .032);
+	}
+}
