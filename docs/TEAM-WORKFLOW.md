@@ -48,3 +48,16 @@ To try someone else’s version, fetch and switch to their branch in GitHub Desk
 - Invite the team and do one small test pull request before starting parallel gameplay work. Tag the first tested baseline and attach its playable package when one is ready.
 
 The current workspace has no commits or configured Git remote. These notes are local preparation for a shared repository.
+
+## Team task queue
+
+| Status | Where to look |
+| --- | --- |
+| Ready | [Open tasks ready to start](https://github.com/PeterFacina/richs-houseboat/issues?q=is%3Aissue+is%3Aopen+label%3A%22status%3A+ready%22) |
+| In progress | [Tasks someone is working on](https://github.com/PeterFacina/richs-houseboat/issues?q=is%3Aissue+is%3Aopen+label%3A%22status%3A+in+progress%22) |
+| Needs Peter | [Tasks waiting for Peter](https://github.com/PeterFacina/richs-houseboat/issues?q=is%3Aissue+is%3Aopen+label%3A%22status%3A+needs+peter%22) |
+| Done | [Closed tasks](https://github.com/PeterFacina/richs-houseboat/issues?q=is%3Aissue+is%3Aclosed) |
+
+Give each issue one owner and a clear done condition. When someone claims it, assign them and replace Ready with In progress. Use Needs Peter when it needs his review or a decision. Close the issue once its done condition is met. Link the issue from the draft pull request and keep its handoff section current if you pause.
+
+Ask Codex: **“Check the team task queue. Show me ready tasks nobody has claimed and anything waiting for Peter.”**
