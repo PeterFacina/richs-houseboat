@@ -4,6 +4,7 @@ signal dismissed
 
 var flight: CheckButton
 var speed: CheckButton
+var speed_scale: HSlider
 
 
 func _ready() -> void:
@@ -31,10 +32,27 @@ func _ready() -> void:
 	hint.text = "WASD to fly  ·  Space up  ·  Ctrl/Shift down"
 	rows.add_child(hint)
 	speed = CheckButton.new()
-	speed.text = "Super speed  ·  3× movement"
+	speed.text = "Enable movement speed multiplier"
 	rows.add_child(speed)
+	var speed_label := Label.new()
+	speed_label.text = "Movement speed: 3.0×"
+	rows.add_child(speed_label)
+	speed_scale = HSlider.new()
+	speed_scale.min_value = 1
+	speed_scale.max_value = 20
+	speed_scale.step = .5
+	speed_scale.value = 3
+	speed_scale.custom_minimum_size.x = 340
+	speed_scale.value_changed.connect(func(value: float):
+		speed_label.text = "Movement speed: %.1f×" % value
+		speed.button_pressed = value > 1)
+	rows.add_child(speed_scale)
 	var close := Button.new()
 	close.text = "Resume   F2"
 	close.pressed.connect(func(): dismissed.emit())
 	rows.add_child(close)
 	hide()
+
+
+func multiplier() -> float:
+	return speed_scale.value if speed.button_pressed else 1.0

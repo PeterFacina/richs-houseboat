@@ -23,6 +23,8 @@ const Safety = preload("res://river_safety.gd")
 const RiverChart = preload("res://river_chart.gd")
 const MenuTheme = preload("res://river_menu_theme.gd")
 const Lobby = preload("res://river_lobby.gd")
+const Regions = preload("res://river_regions.gd")
+const Helicopter = preload("res://river_helicopter.gd")
 const JOURNAL := "user://ottawa_catches.json"
 const CREW_JOURNAL := "user://ottawa_multiplayer_catches.json"
 const WINDUP := 0.19
@@ -30,7 +32,7 @@ const SWIM_ENTRY_DEPTH := 1.16
 const SWIM_EXIT_DEPTH := .95
 const SWIM_FEET_DEPTH := 1.22
 enum Fishing { READY, CASTING, WAITING, BITE, FIGHT, RETRIEVING, NET_READY, LANDING, DISPLAY, RELEASING }
-enum ChartDestination { MARINA, SWISHA, CHALK_RIVER, LAMURE, BOAT, PINE, BIRCH, CAMP }
+enum ChartDestination { MARINA, SWISHA, CHALK_RIVER, LAMURE, BOAT, PINE, BIRCH, CAMP, HELIPAD, CEMETERY, SKI }
 const TELEPORT_NAMES := {
 	ChartDestination.MARINA: "Deep River Marina",
 	ChartDestination.SWISHA: "Swisha Dam",
@@ -40,9 +42,14 @@ const TELEPORT_NAMES := {
 	ChartDestination.BIRCH: "Birch Beach / Birch Point",
 	ChartDestination.CAMP: "Pine Reach campfire",
 	ChartDestination.BOAT: "Return to boat",
+	ChartDestination.HELIPAD: "McAnulty Road helipad",
+	ChartDestination.CEMETERY: "Deep River Cemetery",
+	ChartDestination.SKI: "Mount Martin / ski trail",
 }
 
 var river: Ottawa
+var regions: Regions
+var helicopter: Helicopter
 var rig: Rig
 var effects: WaterFX
 var fish: Fish
@@ -145,7 +152,6 @@ func _ready() -> void:
 	build_player()
 	eye.near = .070
 	graphics.load_setting()
-	graphics.apply(river, eye)
 	boarded = true
 	rig = Rig.new()
 	eye.add_child(rig)
@@ -186,7 +192,12 @@ func _ready() -> void:
 	campaign = Campaign.new()
 	add_child(campaign)
 	campaign.setup(self)
+	regions = Regions.new()
+	add_child(regions)
+	regions.setup(self)
 	make_waypoints()
+	chart.setup_sections(regions.NAMES, regions.section_bounds())
+	graphics.apply(river, eye)
 	marina_cars = MarinaCars.new()
 	marina_cars.name = "MarinaCars"
 	add_child(marina_cars)
@@ -212,6 +223,9 @@ func _ready() -> void:
 	pause_menu.setup(self)
 	for menu in [pause_menu, chart, campaign.board]:
 		menu.visibility_changed.connect(update_menu_hud)
+	helicopter = Helicopter.new()
+	add_child(helicopter)
+	helicopter.setup(self)
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	if multiplayer_trip:
 		open_multiplayer_lobby()
@@ -467,7 +481,7 @@ func change_draw_distance() -> void:
 
 func _physics_process(delta: float) -> void:
 	clock += delta
-	var wants_flight := campaign.crew.mode == "solo" and cheats.flight.button_pressed
+	var wants_flight := campaign.crew.mode == "solo" and cheats.flight.button_pressed and not in_aircraft()
 	if wants_flight and marina_cars.active >= 0:
 		cheats.flight.button_pressed = false
 		wants_flight = false
@@ -478,6 +492,8 @@ func _physics_process(delta: float) -> void:
 	has_input = play_input()
 	var use_cabin: bool = has_input and not flying and mower.rider == null and marina_cars.active < 0 and aboard() and not vessel.skiff and not driving and absf(vessel.speed) <= 1.20
 	use_cabin = use_cabin and not campaign.crewplay.hands_busy()
+	use_cabin = use_cabin and not campaign.amenities.seated()
+	use_cabin = use_cabin and not in_aircraft()
 	var did_use := cabin.update(delta, clock, use_cabin, interact_pressed, Input.is_physical_key_pressed(KEY_E))
 	var can_use_yard := interact_pressed and has_input and can_talk_to_shannon()
 	var office_leaf := public_works.office_handle(eye) if can_use_yard else -1
@@ -515,8 +531,13 @@ func _physics_process(delta: float) -> void:
 	interact_pressed = false
 	has_input = play_input()
 	walk_multiplier = cabin.walk_scale() * campaign.crewplay.movement_scale()
+	helicopter.tick(delta, has_input and not cabin.busy())
 	if flying:
 		fly(delta, has_input)
+	elif in_aircraft():
+		step_vessel(delta, 0.0)
+	elif campaign.amenities.seated():
+		step_vessel(delta, 0.0)
 	elif marina_cars.active >= 0:
 		step_vessel(delta, 0.0)
 	elif mower.rider != null:
@@ -532,6 +553,7 @@ func _physics_process(delta: float) -> void:
 		mower.update_rider_camera(eye)
 	elif marina_cars.active < 0:
 		eye.rotation.x = pitch + cabin.camera_pitch
+	campaign.amenities.pin_local()
 	marina_cars.step(delta, axis(KEY_W, KEY_S), axis(KEY_D, KEY_A), Input.is_physical_key_pressed(KEY_SPACE),
 		has_input and not cabin.busy())
 	var viewpoint: Vector3 = vessel.center if aboard() else player.global_position
@@ -559,6 +581,7 @@ func _physics_process(delta: float) -> void:
 	shannon_job.tick(delta, play_input() and can_talk_to_shannon())
 	update_hud()
 	campaign.mark_world()
+	regions.tick(delta)
 	safety.tick(delta)
 
 
@@ -627,14 +650,14 @@ func fists_available() -> bool:
 
 func hands_available() -> bool:
 	return not flying and mower.rider == null and marina_cars.active < 0 and not swimming and not driving and not cabin.hands_in_use() and not campaign.dive.active \
-		and campaign.preview_id.is_empty() and not campaign.crewplay.hands_busy()
+		and campaign.preview_id.is_empty() and not campaign.crewplay.hands_busy() and not campaign.amenities.seated() and not in_aircraft()
 
 
 func move_on_foot(delta: float, walk: Vector3, jump: bool) -> void:
 	if campaign.crew.mode != "solo":
 		cheats.flight.button_pressed = false
 		cheats.speed.button_pressed = false
-	var boost := 3.0 if cheats.speed.button_pressed else 1.0
+	var boost := cheats.multiplier()
 	if cheats.flight.button_pressed:
 		set_swimming(false)
 		player.motion_mode = CharacterBody3D.MOTION_MODE_FLOATING
@@ -1196,6 +1219,15 @@ func capture_crew_pose() -> Dictionary:
 	var data := campaign.crewplay.style()
 	data.move = player.velocity
 	data.pitch = pitch
+	data.seat = campaign.amenities.seat_kind(campaign.crew.my_id())
+	if in_aircraft(): data.seat = "heli"
+	data.merge(cabin.visual_packet(), true)
+	data.merge(campaign.crewplay.hand_packet(), true)
+	if rig.visible:
+		data.rod_pose = eye.global_transform.affine_inverse() * rig.rod.global_transform
+		data.rod_crank = rig.reel_angle
+		data.rod_rotor = rig.rotor.rotation.z
+	data.view_roll = eye.rotation.z
 	data.stage = int(fishing)
 	data.age = state_age
 	data.rod = rig.visible
@@ -1271,8 +1303,8 @@ func make_chart() -> void:
 
 func make_waypoints() -> void:
 	chart.add_waypoint(ChartDestination.SWISHA, "Swisha Dam", "Swisha / Des Joachims Dam",
-		"Swisha / Des Joachims Dam", "Arrive at the tailwater landing.",
-		river.point(0), Vector2(16, -44), Color("#bd512d"))
+		"Swisha / Des Joachims Dam", "Arrive at the tailwater landing near the dam access road.",
+		river.point(0), Vector2(16, -44), Color("#bd512d"), false, 2)
 	chart.add_waypoint(ChartDestination.PINE, "Pine Beach / Pine Reach", "Pine Beach",
 		"Pine Beach / Pine Reach", "Arrive on shore at Pine Reach.",
 		campaign.landings.sites[1].stand, Vector2(-143, -59), Color("#417440"))
@@ -1291,7 +1323,16 @@ func make_waypoints() -> void:
 		campaign.landings.sites[2].stand, Vector2(95, 18), Color("#75569b"))
 	chart.add_waypoint(ChartDestination.CHALK_RIVER, "Chalk River Labs", "Chalk River Labs",
 		"Chalk River Labs", "Arrive near the research landing and lookout trail.",
-		river.point(2), Vector2(-129, 36), Color("#a44864"))
+		river.point(2), Vector2(-129, 36), Color("#a44864"), false, 3)
+	chart.add_waypoint(ChartDestination.HELIPAD, "McAnulty Road helipad", "Helipad",
+		"McAnulty Road helipad", "Arrive beside the four-seat survey helicopter.",
+		regions.helipad, Vector2(-176, -48), Color("#705589"))
+	chart.add_waypoint(ChartDestination.CEMETERY, "Deep River Cemetery", "Cemetery",
+		"Deep River Cemetery", "Arrive near the cemetery grounds off McAnulty Road.",
+		regions.cemetery, Vector2(-168, -6), Color("#6e7356"))
+	chart.add_waypoint(ChartDestination.SKI, "Mount Martin / ski trail", "Mount Martin",
+		"Mount Martin / ski trail", "Arrive at the trail toward Grouse Park.",
+		regions.ski, Vector2(-166, 41), Color("#526d4d"))
 	chart.add_waypoint(ChartDestination.BOAT, "Return to boat", "Boat",
 		"Return to boat", "Rejoin the boat at its current position.",
 		vessel.center, Vector2.ZERO, MenuTheme.BLUE, true)
@@ -1329,6 +1370,9 @@ func open_fish_guide() -> void:
 
 
 func teleport_blocker() -> String:
+	if in_aircraft(): return "Land and leave the helicopter before travelling."
+	if campaign.amenities.seated():
+		return "Get up before travelling."
 	if mower.rider != null or marina_cars.active >= 0:
 		return "Leave the vehicle before teleporting."
 	if driving or campaign.captain == campaign.crew.my_id():
@@ -1373,6 +1417,15 @@ func teleport_from_chart() -> void:
 		var arrival: Vector3
 		var view_target: Vector3
 		match teleport_destination:
+			ChartDestination.HELIPAD:
+				arrival = regions.helipad + Vector3(7.5, .1, 0)
+				view_target = regions.helipad
+			ChartDestination.CEMETERY:
+				arrival = regions.cemetery + Vector3(38, 0, 0)
+				view_target = regions.cemetery
+			ChartDestination.SKI:
+				arrival = regions.ski
+				view_target = arrival + Vector3(0, 0, 30)
 			ChartDestination.MARINA:
 				# Open space on the public wharf, clear of the rails and lamppost.
 				arrival = Vector3(18077.0, Wharf.DECK_HEIGHT, 12638.0)
@@ -1417,7 +1470,7 @@ func refresh_journal() -> void:
 
 func update_hud() -> void:
 	backpack.update_throttle(mower.throttle_index if mower.rider != null and play_input() else -1, mower.throttle_label())
-	backpack.hud_available = not chart.visible and not fish_guide.visible and not cheats.visible \
+	backpack.hud_available = not campaign.crewplay.hands_busy() and not cabin.hands_in_use() and not chart.visible and not fish_guide.visible and not cheats.visible \
 		and not campaign.controls_blocked() and not cabin.busy()
 	var location := "Ottawa River"
 	var at: Vector3 = vessel.center if aboard() else player.global_position
@@ -1563,7 +1616,11 @@ func update_flight_mode(enabled: bool) -> void:
 
 
 func aboard() -> bool:
-	return not flying and super.aboard()
+	return not flying and not in_aircraft() and super.aboard()
+
+
+func in_aircraft() -> bool:
+	return is_instance_valid(helicopter) and helicopter.mounted()
 
 
 func fly(delta: float, has_input: bool) -> void:
@@ -1573,7 +1630,7 @@ func fly(delta: float, has_input: bool) -> void:
 		return
 	var descent := Input.is_physical_key_pressed(KEY_CTRL) or Input.is_physical_key_pressed(KEY_SHIFT)
 	var direction := Vector3(axis(KEY_D, KEY_A), float(Input.is_physical_key_pressed(KEY_SPACE)) - float(descent), -axis(KEY_W, KEY_S))
-	var boost := 3.0 if cheats.speed.button_pressed else 1.0
+	var boost := cheats.multiplier()
 	var target := direction.limit_length().rotated(Vector3.UP, yaw) * 15.0 * boost
 	player.velocity = player.velocity.move_toward(target, delta * 66.0 * boost)
 	if not player.velocity.is_zero_approx():
@@ -1592,6 +1649,8 @@ func can_talk_to_shannon() -> bool:
 
 
 func unstuck() -> void:
+	if is_instance_valid(helicopter): helicopter.escape()
+	campaign.amenities.escape()
 	release_line()
 	interact_pressed = false
 	rod_pressed = false

@@ -6,6 +6,7 @@ const Boat = preload("res://houseboat.gd")
 const Avatar = preload("res://crew_avatar.gd")
 const Camp = preload("res://crew_camp.gd")
 const Catalog = preload("res://fish_species.gd")
+const Hands = preload("res://river_hands.gd")
 const Fish = preload("res://river_fish.gd")
 const NET_READY := 6
 const LANDED := 8
@@ -56,6 +57,9 @@ var chest_open_until := 0.0
 var fish_view_kind := ""
 var wheel_blend := 0.0
 var wheel_sleeves: Array[MeshInstance3D] = []
+var view_hands: Dictionary = {}
+var view_sleeves: Dictionary = {}
+var fish_hands: Array[Node3D] = []
 
 
 func setup(scene: Node3D, trip: Node3D) -> void:
@@ -65,8 +69,12 @@ func setup(scene: Node3D, trip: Node3D) -> void:
 	view_items.cooler = Tools.build_cooler(game.eye)
 	for name: String in view_items:
 		var held: Node3D = view_items[name]
+		view_hands[name] = []
+		view_sleeves[name] = []
 		for side: float in [-1.0, 1.0]:
-			var hand: Node3D = game.rig.glove(side)
+			var hand: Node3D = game.rig.glove(side, false)
+			view_hands[name].append(hand)
+			view_sleeves[name].append(game.rig.make_sleeve(game.eye))
 			hand.reparent(held, false)
 			hand.position = Vector3(side * .012, -.042, .036) if name == "net" else Vector3(side * .36, .20, .032)
 			if name == "cooler":
@@ -88,6 +96,7 @@ func setup(scene: Node3D, trip: Node3D) -> void:
 	for side: float in [-1.0, 1.0]:
 		var palm: Node3D = game.rig.glove(side)
 		game.rig.HandModel.set_pose(palm, "carry")
+		fish_hands.append(palm)
 		palm.reparent(fish_view, false)
 		palm.position = Vector3(side * .17, -.04, .01)
 		palm.rotation = Vector3(.12, side * -.5, side * -.65)
@@ -710,6 +719,8 @@ func update_models(delta: float) -> void:
 		var model: Node3D = models[item]
 		var view: Node3D = view_items[item]
 		view.visible = owner == local
+		for sleeve: MeshInstance3D in view_sleeves[item]:
+			sleeve.visible = owner == local
 		model.visible = owner != local
 		if owner == local:
 			pose_view(view, item, delta)
@@ -725,7 +736,7 @@ func update_models(delta: float) -> void:
 			wanted = boat.global_transform.affine_inverse() * avatar.tool_grip
 		var start: bool = not older.has(item) or int(older[item]) != owner
 		older[item] = owner
-		model.transform = wanted if start or info.get("space", "boat") == "world" else model.transform.interpolate_with(wanted, 1.0 - exp(-delta * 15.0))
+		model.transform = wanted if start or owner != 0 or info.get("space", "boat") == "world" else model.transform.interpolate_with(wanted, 1.0 - exp(-delta * 15.0))
 		if item == "cooler":
 			var lid: Node3D = model.get_node("LidHinge")
 			lid.rotation.x = lerpf(lid.rotation.x, -1.35 if game.clock < chest_open_until else 0.0, 1.0 - exp(-delta * 8))
@@ -767,12 +778,19 @@ func pose_view(view: Node3D, item: String, delta: float) -> void:
 	var clock: float = game.clock
 	var walk: float = minf(1.0, game.player.velocity.slide(Vector3.UP).length() * .28)
 	var bob: Vector3 = Vector3(sin(clock * 7.5) * .009, cos(clock * 7.5) * .010, 0) * walk * game.rig.motion_amount
-	var rest := Vector3(.30, -.377 - reach * .08 - dip * .34, -.64 - dip * .28) if item == "net" else Vector3(0, -.68, -.79)
+	var rest := Vector3(.30, -.377 - reach * .08 - dip * .34, -.64 - dip * .28) if item == "net" else Vector3(0, -.64, -.59)
 	rest.y -= .37 * (1.0 - smoothstep(.0, .28, reach_time))
 	var turn := Vector3(.21 - dip * .74, -.23 + dip * .22, -.09) if item == "net" else Vector3(-.10, 0, -.04)
 	var wanted := Transform3D(Basis.from_euler(turn), rest + bob)
 	view.transform = wanted if last_net != item else view.transform.interpolate_with(wanted, 1.0 - exp(-delta * 24.0))
 	last_net = item
+	for index in 2:
+		var side := float(index * 2 - 1)
+		var hand: Node3D = view_hands[item][index]
+		var point := Vector3(side * .363, .208, .025) if item == "cooler" else Vector3(0, -.01, .055 if side > 0 else -.27)
+		Hands.align(hand, point, Basis.IDENTITY, "shaft")
+		var wrist: Vector3 = game.eye.to_local(hand.to_global(Hands.wrist(hand)))
+		game.rig.fit_cylinder(view_sleeves[item][index], wrist, Vector3(side * .4, -.66, -.12))
 
 
 func take_picture() -> void:
@@ -945,3 +963,34 @@ func update_fish_visuals(delta: float) -> void:
 		if not carried_fish.has(peer):
 			fish_models[peer].queue_free()
 			fish_models.erase(peer)
+
+
+func hand_packet() -> Dictionary:
+	var hands: Array = []
+	var tool_mode := true
+	if game.cabin.active >= 0 and game.cabin.holding.visible:
+		hands = [game.cabin.left_hand, game.cabin.right_hand]
+	elif game.driving:
+		hands = wheel_grips
+	elif not own_item().is_empty():
+		hands = view_hands[own_item()]
+	elif fish_view.visible:
+		hands = fish_hands
+	elif game.rig.visible:
+		hands = [game.rig.reel_hand, game.rig.grip_hand]
+	else:
+		hands = game.rig.fist_hands
+		tool_mode = false
+	var result := {"hand_mode": 1 if tool_mode else 0}
+	var inverse: Transform3D = game.eye.global_transform.affine_inverse()
+	if not own_item().is_empty():
+		result.tool_pose = inverse * view_items[own_item()].global_transform
+	for index in 2:
+		var hand: Node3D = hands[index]
+		var key := "left" if index == 0 else "right"
+		result["hand_" + key] = inverse * hand.global_transform
+		if game.cabin.active >= 0 and game.cabin.holding.visible:
+			result["hand_" + key].origin += game.cabin.Actions.world_offset(game.cabin.active, game.cabin.action_age)
+		result["hand_" + key + "_visible"] = hand.is_visible_in_tree()
+		result["hand_" + key + "_pose"] = hand.get("current_pose")
+	return result

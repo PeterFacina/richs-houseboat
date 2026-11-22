@@ -20,6 +20,13 @@ class PinPulse extends Control:
 				Color(tint, 1.0 - progress), 2.5, true)
 
 var extent: Vector2
+var atlas: Texture2D
+var bounds: Rect2
+var sections: Array[Rect2] = []
+var section_picker: OptionButton
+var map_frame: AspectRatioContainer
+var section := 0
+var return_available := false
 var map: TextureRect
 var routes: Node2D
 var leaders: Node2D
@@ -49,6 +56,8 @@ var boat_id := -1
 
 func setup(texture: Texture2D, world_extent: Vector2) -> void:
 	extent = world_extent
+	atlas = texture
+	bounds = Rect2(Vector2.ZERO, extent)
 	theme = MenuTheme.get_theme()
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	var backdrop := ColorRect.new()
@@ -71,6 +80,12 @@ func setup(texture: Texture2D, world_extent: Vector2) -> void:
 	var heading := MenuTheme.text("Ottawa River Chart", 39, MenuTheme.NAVY, true)
 	heading.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	header.add_child(heading)
+	section_picker = OptionButton.new()
+	section_picker.custom_minimum_size.x = 170
+	section_picker.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	section_picker.tooltip_text = "Choose the entire river or an 18 × 18 km regional chart."
+	section_picker.item_selected.connect(select_section)
+	header.add_child(section_picker)
 	guide_button = header_button(header, "Fish Index  ·  J", "fish", func(): guide_requested.emit())
 	close_button = header_button(header, "Close  ·  Tab", "back", func(): close_requested.emit())
 
@@ -102,10 +117,10 @@ func header_button(parent: Node, caption: String, icon: String, action: Callable
 
 
 func make_map(parent: VBoxContainer, texture: Texture2D) -> void:
-	var frame := AspectRatioContainer.new()
-	frame.ratio = extent.x / extent.y
-	frame.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	parent.add_child(frame)
+	map_frame = AspectRatioContainer.new()
+	map_frame.ratio = extent.x / extent.y
+	map_frame.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	parent.add_child(map_frame)
 	map = TextureRect.new()
 	map.texture = texture
 	map.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
@@ -114,7 +129,7 @@ func make_map(parent: VBoxContainer, texture: Texture2D) -> void:
 	var palette := ShaderMaterial.new()
 	palette.shader = preload("res://river_chart_palette.gdshader")
 	map.material = palette
-	frame.add_child(map)
+	map_frame.add_child(map)
 	map.resized.connect(layout_map)
 	routes = Node2D.new()
 	routes.name = "SupplyRoutes"
@@ -208,7 +223,7 @@ func make_sidebar(parent: HBoxContainer) -> void:
 
 
 func add_waypoint(id: int, caption: String, pin_text: String, title: String, description: String,
-		world_position: Vector3, offset: Vector2, tint: Color, is_boat := false) -> void:
+		world_position: Vector3, offset: Vector2, tint: Color, is_boat := false, region := 1) -> void:
 	var icon := MenuTheme.dot_texture(tint, 13)
 	var list_button := waypoint_button(caption, tint, icon, 34)
 	destinations.add_child(list_button)
@@ -224,7 +239,8 @@ func add_waypoint(id: int, caption: String, pin_text: String, title: String, des
 	var dot := waypoint_dot(tint)
 	leader.add_child(dot)
 	waypoints[id] = {"list": list_button, "pin": pin, "leader": leader, "dot": dot, "tint": tint,
-		"world": world_position, "offset": offset, "title": title, "description": description}
+		"world": world_position, "offset": offset, "title": title, "description": description,
+		"region": region}
 	if is_boat:
 		boat_id = id
 		set_return_available(false)
@@ -260,13 +276,54 @@ func waypoint_dot(tint: Color) -> Polygon2D:
 
 
 func map_point(world: Vector3) -> Vector2:
-	return Vector2(world.x, world.z) / extent * map.size
+	return (Vector2(world.x, world.z) - bounds.position) / bounds.size * map.size
+
+
+func setup_sections(names: Array, areas: Array[Rect2]) -> void:
+	sections = areas
+	for title: String in names:
+		section_picker.add_item(title)
+	select_section(0)
+
+
+func select_section(index: int) -> void:
+	section = index
+	bounds = sections[index]
+	section_picker.select(index)
+	if index == 0:
+		map.texture = atlas
+	else:
+		var crop := AtlasTexture.new()
+		crop.atlas = atlas
+		var scale := atlas.get_size() / extent
+		crop.region = Rect2(bounds.position * scale, bounds.size * scale)
+		map.texture = crop
+	map_frame.ratio = bounds.size.x / bounds.size.y
+	selected = -1
+	pulse.progress = 1.0
+	for id: int in waypoints:
+		update_waypoint_visibility(id)
+	if boat_id >= 0:
+		update_boat(waypoints[boat_id].world)
+	update_selection()
+	set_status("")
+	layout_map()
+	connect_focus()
+
+
+func update_waypoint_visibility(id: int) -> void:
+	var waypoint: Dictionary = waypoints[id]
+	var world: Vector3 = waypoint.world
+	waypoint.list.visible = return_available if id == boat_id else section == 0 or waypoint.region == section
+	var on_map := bounds.has_point(Vector2(world.x, world.z))
+	waypoint.pin.visible = waypoint.list.visible and on_map
+	waypoint.leader.visible = waypoint.pin.visible
 
 
 func layout_map() -> void:
 	if scale_bar == null:
 		return
-	scale_bar.custom_minimum_size = Vector2(5000.0 / extent.x * map.size.x, 2)
+	scale_bar.custom_minimum_size = Vector2(5000.0 / bounds.size.x * map.size.x, 2)
 	scale_frame.position = Vector2(12, map.size.y - 52)
 	for id: int in waypoints:
 		place_pin(id)
@@ -287,7 +344,8 @@ func place_pin(id: int) -> void:
 			pin.position = (origin + offset).clamp(inset, maximum)
 			var overlaps := false
 			for other: int in waypoints:
-				if other != boat_id and pin.get_rect().grow(4).intersects(waypoints[other].pin.get_rect()):
+				if other != boat_id and waypoints[other].pin.visible \
+						and pin.get_rect().grow(4).intersects(waypoints[other].pin.get_rect()):
 					overlaps = true
 					break
 			if not overlaps:
@@ -304,18 +362,17 @@ func place_pin(id: int) -> void:
 func update_boat(world: Vector3) -> void:
 	if boat_id < 0:
 		return
+	boat_marker.visible = bounds.has_point(Vector2(world.x, world.z))
 	boat_marker.position = map_point(world) - boat_marker.size * .5
-	if waypoints[boat_id].world != world:
-		waypoints[boat_id].world = world
-		if waypoints[boat_id].pin.visible:
-			place_pin(boat_id)
+	waypoints[boat_id].world = world
+	update_waypoint_visibility(boat_id)
+	if waypoints[boat_id].pin.visible:
+		place_pin(boat_id)
 
 
 func set_return_available(available: bool) -> void:
-	var waypoint: Dictionary = waypoints[boat_id]
-	waypoint.list.visible = available
-	waypoint.pin.visible = available
-	waypoint.leader.visible = available
+	return_available = available
+	update_waypoint_visibility(boat_id)
 
 
 func open(show_catches: bool) -> void:
@@ -325,7 +382,10 @@ func open(show_catches: bool) -> void:
 	show_journal(show_catches)
 	layout_map()
 	if not show_catches:
-		destinations.get_child(0).grab_focus()
+		for waypoint: Dictionary in waypoints.values():
+			if waypoint.list.visible:
+				waypoint.list.grab_focus()
+				break
 
 
 func show_journal(enabled: bool) -> void:
@@ -377,15 +437,15 @@ func set_status(message: String) -> void:
 
 
 func connect_focus() -> void:
-	var order: Array[Control] = [ways_tab, journal_tab]
+	var order: Array[Control] = [section_picker, ways_tab, journal_tab]
 	var map_order: Array[Control] = []
 	for id: int in waypoints:
 		var waypoint: Dictionary = waypoints[id]
 		if waypoint.list.is_visible_in_tree():
 			order.append(waypoint.list)
-			set_neighbor(waypoint.list, SIDE_LEFT, waypoint.pin)
+			set_neighbor(waypoint.list, SIDE_LEFT, waypoint.pin if waypoint.pin.visible else section_picker)
 			set_neighbor(waypoint.pin, SIDE_RIGHT, travel_button if id == selected else waypoint.list)
-			set_neighbor(waypoint.list, SIDE_RIGHT, travel_button if id == selected else waypoint.pin)
+			set_neighbor(waypoint.list, SIDE_RIGHT, travel_button if id == selected else journal_tab)
 		if waypoint.pin.is_visible_in_tree():
 			map_order.append(waypoint.pin)
 	if destinations.visible and selected >= 0:
@@ -405,6 +465,8 @@ func connect_focus() -> void:
 		set_neighbor(ways_tab, SIDE_LEFT, map_order[0])
 		set_neighbor(journal_tab, SIDE_LEFT, ways_tab)
 	set_neighbor(ways_tab, SIDE_RIGHT, journal_tab)
+	set_neighbor(section_picker, SIDE_RIGHT, guide_button)
+	set_neighbor(guide_button, SIDE_LEFT, section_picker)
 	set_neighbor(guide_button, SIDE_RIGHT, close_button)
 	set_neighbor(close_button, SIDE_LEFT, guide_button)
 

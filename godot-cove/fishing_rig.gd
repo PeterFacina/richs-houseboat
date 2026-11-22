@@ -7,6 +7,10 @@ const SEGMENTS := 16
 const GUIDES := [0.16, 0.31, 0.47, 0.62, 0.76, 0.89, 1.0]
 const PUNCH_DURATION := .36
 
+var remote_only := false
+var blank_mesh: MeshInstance3D
+var blank_surface := ArrayMesh.new()
+var last_blank_flex := Vector2.INF
 var rod: Node3D
 var tip: Node3D
 var net: Node3D
@@ -32,7 +36,8 @@ var punch_elapsed := PUNCH_DURATION
 func _ready() -> void:
 	name = "FishingTackle"
 	build_rod()
-	build_net()
+	if not remote_only:
+		build_net()
 
 
 func build_fists(camera: Camera3D) -> void:
@@ -83,88 +88,69 @@ func update_hands(delta: float, clock: float, show_hands: bool, fists_raised: bo
 
 func build_rod() -> void:
 	rod = Node3D.new()
-	rod.position = Vector3(.232, -.308, -.63)
+	rod.position = Vector3(.215, -.31, -.63)
 	add_child(rod)
-	var graphite := Kit.paint(Color("#263830"), .36, .21)
-	var windings := Kit.paint(Color("#a08350"), .4, .22)
-	var brushed := Kit.paint(Color("#9aaba3"), .34, .59)
-	var dark := Kit.paint(Color("#253138"), .57, .19)
-	var cork := Kit.paint(Color("#a58358"), .94)
-	var thread := Kit.paint(Color("#6d8276"), .69)
-	var rubber := Kit.paint(Color("#272a26"), .90)
-	cylinder(rod, Vector3(0, -.024, .276), Vector3(0, -.009, .027), .029, .026, cork)
-	for i in 8:
-		var z := .054 + i * .028
-		cylinder(rod, Vector3(0, -.009 - i * .0018, z), Vector3(0, -.009 - i * .0018, z + .003), .029, .029,
-			thread if i % 3 == 0 else cork)
-	cylinder(rod, Vector3(0, -.029, .291), Vector3(0, -.024, .265), .033, .029, rubber)
-	cylinder(rod, Vector3(0, -.006, .062), Vector3(0, .018, -.121), .022, .018, dark)
-	for z: float in [.030, -.068, -.09, -.12]:
-		cylinder(rod, Vector3(0, .007 - z * .09, z + .008), Vector3(0, .007 - z * .09, z), .026, .024, brushed)
-	cylinder(rod, Vector3(0, .019, -.13), Vector3(-.014, .032, -.239), .016, .014, cork)
-	for i in SEGMENTS:
-		var mesh := CylinderMesh.new()
-		mesh.height = 1.0
-		mesh.top_radius = lerpf(.012, .0026, float(i + 1) / SEGMENTS)
-		mesh.bottom_radius = lerpf(.012, .0026, float(i) / SEGMENTS)
-		mesh.radial_segments = 11
-		mesh.rings = 1
-		sections.append(no_shadow(Kit.mesh_at(rod, mesh, Vector3.ZERO, graphite)))
-	for i in GUIDES.size():
-		var size := lerpf(.030, .008, float(i) / (GUIDES.size() - 1))
+	var graphite := Kit.paint(Color("#202a2b"), .70, .08)
+	var metal := Kit.paint(Color("#a4ada7"), .63, .30)
+	var dark := Kit.paint(Color("#252e30"), .78, .08)
+	var cork := Kit.paint(Color("#aa875a"), .95)
+	var rubber := Kit.paint(Color("#272d2a"), .94)
+	# Separated grip / reel-seat sections avoid the old coplanar wrapping tubes.
+	cylinder(rod, Vector3(0, 0, .246), Vector3(0, 0, .035), .018, .0165, cork)
+	cylinder(rod, Vector3(0, 0, .265), Vector3(0, 0, .247), .019, .0185, rubber)
+	cylinder(rod, Vector3(0, 0, .034), Vector3(0, .012, -.105), .0155, .013, dark)
+	cylinder(rod, Vector3(0, .012, -.106), Vector3(-.014, .032, -.239), .014, .010, cork)
+	for z: float in [.025, -.085]:
+		cylinder(rod, Vector3(0, .004, z + .004), Vector3(0, .004, z), .0168, .0168, metal)
+	blank_mesh = no_shadow(Kit.mesh_at(rod, blank_surface, Vector3.ZERO, graphite))
+	for index in GUIDES.size():
+		var radius := lerpf(.016, .0035, float(index) / (GUIDES.size() - 1))
 		var guide := Node3D.new()
 		rod.add_child(guide)
 		guide_rings.append(guide)
 		var ring := TorusMesh.new()
-		ring.inner_radius = size * .80
-		ring.outer_radius = size
+		ring.inner_radius = radius * .80
+		ring.outer_radius = radius
 		ring.rings = 20
 		ring.ring_segments = 8
-		var eyelet := no_shadow(Kit.mesh_at(guide, ring, Vector3(0, -size * .94, 0), brushed))
-		eyelet.rotation.x = PI / 2
-		cylinder(guide, Vector3(-.003, -.001, .027), Vector3(-size * .51, -size * .50, 0), .0034, .0024, windings)
-		cylinder(guide, Vector3(.003, -.001, .027), Vector3(size * .51, -size * .50, 0), .0034, .0024, windings)
+		var eyelet := no_shadow(Kit.mesh_at(guide, ring, Vector3(0, -radius * 1.15, 0), metal))
+		eyelet.rotation.x = PI * .5
+		cylinder(guide, Vector3(0, 0, .014), Vector3(0, -radius * .65, 0), .0024, .0018, dark)
 	tip = Node3D.new()
 	guide_rings[-1].add_child(tip)
-	tip.position.y = -.008
-
-	var mount := Vector3(0, -.136, -.031)
-	cylinder(rod, Vector3(0, -.019, -.015), Vector3(0, -.105, -.006), .019, .027, dark)
-	oval(rod, mount, Vector3(.088, .107, .141), dark)
-	oval(rod, mount + Vector3(0, -.012, .044), Vector3(.087, .075, .071), graphite)
-	var spool := Vector3(0, -.145, -.158)
-	cylinder(rod, spool + Vector3.BACK * .060, spool + Vector3.FORWARD * .043, .050, .044, brushed)
-	var line := Kit.paint(Color("#637d6e"), .46, .09)
-	cylinder(rod, spool + Vector3.BACK * .029, spool + Vector3.FORWARD * .032, .044, .047, line)
-	for i in 7:
-		var band := spool + Vector3.FORWARD * (.026 - i * .0083)
-		cylinder(rod, band, band + Vector3.FORWARD * .0021, .047, .047, thread)
-	cylinder(rod, spool + Vector3.FORWARD * .045, spool + Vector3.FORWARD * .054, .052, .048, windings)
-	cylinder(rod, spool + Vector3.FORWARD * .057, spool + Vector3.FORWARD * .075, .029, .025, dark)
+	tip.position.y = -.004
+	# A compact 2500-size spinning reel, with one spool line surface and a bail.
+	cylinder(rod, Vector3(0, -.012, -.025), Vector3(0, -.071, -.035), .008, .011, dark)
+	oval(rod, Vector3(0, -.086, -.035), Vector3(.061, .066, .091), dark)
+	var spool := Vector3(0, -.098, -.122)
+	cylinder(rod, spool + Vector3.BACK * .026, spool + Vector3.FORWARD * .026, .027, .027, Kit.paint(Color("#5e6e63"), .83))
+	for end: float in [-.029, .029]:
+		cylinder(rod, spool + Vector3.BACK * (end + .002), spool + Vector3.BACK * (end - .002), .033, .033, metal)
+	cylinder(rod, spool + Vector3.FORWARD * .033, spool + Vector3.FORWARD * .043, .016, .013, dark)
 	rotor = Node3D.new()
-	rotor.position = spool
 	rod.add_child(rotor)
-	var bail := SurfaceTool.new()
-	bail.begin(Mesh.PRIMITIVE_TRIANGLES)
-	for i in 20:
-		var a := float(i) / 20 * PI * 1.04
-		var b := float(i + 1) / 20 * PI * 1.04
-		add_wire(bail, Vector3(cos(a) * .071, sin(a) * .071, .011 - sin(a) * .048),
-			Vector3(cos(b) * .071, sin(b) * .071, .011 - sin(b) * .048), .0026)
-	no_shadow(Kit.mesh_at(rotor, bail.commit(), Vector3.ZERO, brushed))
+	rotor.position = spool
+	var wire := SurfaceTool.new()
+	wire.begin(Mesh.PRIMITIVE_TRIANGLES)
+	for index in 24:
+		var a := index * PI / 24.0
+		var b := (index + 1) * PI / 24.0
+		add_wire(wire, Vector3(cos(a) * .044, sin(a) * .044, .005 - sin(a) * .025),
+			Vector3(cos(b) * .044, sin(b) * .044, .005 - sin(b) * .025), .0015)
+	no_shadow(Kit.mesh_at(rotor, wire.commit(), Vector3.ZERO, metal))
 	crank = Node3D.new()
-	crank.position = Vector3(-.044, -.144, -.025)
 	rod.add_child(crank)
+	crank.position = Vector3(-.029, -.087, -.025)
 	crank_knob = Node3D.new()
-	crank_knob.position = Vector3(-.051, -.057, .039)
 	crank.add_child(crank_knob)
-	cylinder(crank, Vector3.ZERO, Vector3(-.036, -.044, .031), .009, .008, brushed)
-	cylinder(crank, Vector3(-.036, -.044, .031), crank_knob.position, .009, .007, brushed)
-	oval(crank_knob, Vector3.LEFT * .012, Vector3(.037, .027, .034), rubber)
-	grip_hand = glove(1.0)
-	grip_hand.position = Vector3(.008, -.011, .141)
-	reel_hand = glove(-1.0)
-	reel_hand.position = Vector3(-.133, -.156, .051)
+	crank_knob.position = Vector3(-.037, -.041, .018)
+	cylinder(crank, Vector3.ZERO, crank_knob.position, .005, .004, metal)
+	oval(crank_knob, Vector3.LEFT * .007, Vector3(.024, .019, .027), rubber)
+	if not remote_only:
+		grip_hand = glove(1)
+		HandModel.align(grip_hand, Vector3(0, 0, .12), Basis.IDENTITY, "shaft")
+		reel_hand = glove(-1)
+		HandModel.align(reel_hand, Vector3(-.073, -.125, -.007), Basis(Vector3.UP, PI * .5), "shaft")
 	update_blank()
 
 
@@ -204,12 +190,13 @@ func pose_rod(delta: float, clock: float, tension: float, sideways: float, cast:
 	reel_angle = fposmod(reel_angle + retrieve * delta * 17.0, TAU)
 	crank.rotation.x = reel_angle
 	rotor.rotation.z = fposmod(rotor.rotation.z + delta * (retrieve * 21.0 - payout * 30.0), TAU)
-	var palm := Vector3(-.133, -.156, .051)
-	if retrieve > .03:
-		palm = rod.to_local(crank_knob.global_position) + Vector3(-.021, .004, -.015)
-	reel_hand.position = reel_hand.position.lerp(palm, 1.0 - exp(-delta * 24))
-	reel_hand.rotation.x = sin(reel_angle) * retrieve * .25
-	reel_hand.visible = net_up < .62
+	if not remote_only:
+		var palm := Vector3(-.095, -.10, .03)
+		if retrieve > .03:
+			palm = rod.to_local(crank_knob.global_position) + Vector3(-.005, .002, 0)
+		HandModel.align(grip_hand, Vector3(0, 0, .12), Basis.IDENTITY, "shaft")
+		HandModel.align(reel_hand, palm, Basis(Vector3.UP, PI * .5), "shaft")
+		reel_hand.visible = net_up < .62
 	update_blank()
 
 
@@ -219,16 +206,27 @@ func blank(t: float) -> Vector3:
 
 
 func update_blank() -> void:
-	for i in SEGMENTS:
-		var a := blank(float(i) / SEGMENTS)
-		var b := blank(float(i + 1) / SEGMENTS)
-		fit_cylinder(sections[i], a, b)
-	for i in GUIDES.size():
-		var t: float = GUIDES[i]
-		var a := blank(maxf(0, t - .012))
-		var b := blank(t)
-		guide_rings[i].position = b
-		guide_rings[i].basis = Basis.looking_at(a - b)
+	if Vector2(flex, side_flex).distance_to(last_blank_flex) > .002:
+		last_blank_flex = Vector2(flex, side_flex)
+		var surface := SurfaceTool.new()
+		surface.begin(Mesh.PRIMITIVE_TRIANGLES)
+		for ring in 32:
+			for side in 12:
+				for corner: Vector2i in [Vector2i(0,0), Vector2i(1,0), Vector2i(0,1), Vector2i(0,1), Vector2i(1,0), Vector2i(1,1)]:
+					var t := (ring + corner.x) / 32.0
+					var angle := (side + corner.y) * TAU / 12.0
+					var tangent := (blank(minf(1, t + .001)) - blank(maxf(0, t - .001))).normalized()
+					var u := tangent.cross(Vector3.UP).normalized()
+					var normal := u * cos(angle) + tangent.cross(u) * sin(angle)
+					var radius := lerpf(.008, .0014, t)
+					surface.set_normal(normal)
+					surface.add_vertex(blank(t) + normal * radius)
+		blank_surface.clear_surfaces()
+		surface.commit(blank_surface)
+	for index in GUIDES.size():
+		var t: float = GUIDES[index]
+		guide_rings[index].position = blank(t)
+		guide_rings[index].basis = Basis.looking_at(blank(maxf(0, t - .012)) - blank(t))
 
 
 func build_net() -> void:

@@ -1,6 +1,7 @@
 extends Node3D
 
 signal changed
+signal stopped
 signal requested(peer: int, action: String, argument: Variant)
 signal command_received(throttle: float, rudder: float)
 signal state_received(state: Dictionary, dock: int, captain: int, revision: int)
@@ -123,6 +124,7 @@ func stop(message := "") -> void:
 	avatars.clear()
 	poses.clear()
 	people.clear()
+	stopped.emit()
 	changed.emit()
 
 
@@ -235,7 +237,7 @@ func pose(position: Vector3, turn: float, onboard: bool, animation: Dictionary) 
 	var peer := multiplayer.get_remote_sender_id()
 	if not people.has(peer) or not position.is_finite() or not is_finite(turn):
 		return
-	if onboard and (absf(position.x) > 2.6 or absf(position.z) > 4.1 or absf(position.y) > 4.0):
+	if onboard and (absf(position.x) > 2.6 or position.z < -4.1 or position.z > 7.2 or absf(position.y) > 4.0):
 		return
 	if not onboard and (position.x < 0.0 or position.z < 0.0 or position.x > 31500 or position.z > 22600):
 		return
@@ -244,17 +246,33 @@ func pose(position: Vector3, turn: float, onboard: bool, animation: Dictionary) 
 		var point: Variant = animation.get(key)
 		if point is Vector3 and point.is_finite():
 			visual[key] = point
-	for key in ["rod", "line", "float"]:
+	for key in ["rod", "line", "float", "hand_left_visible", "hand_right_visible", "lighter_visible", "use_smoke"]:
 		visual[key] = animation.get(key, false) == true
-	for key in ["stage", "species", "length", "hook_id"]:
+	for key in ["stage", "species", "length", "hook_id", "hand_mode", "use_item", "use_serial"]:
 		var value: Variant = animation.get(key)
 		if value is int:
 			visual[key] = value
-	for key in ["age", "pitch", "tension", "reel", "reach", "scoop"]:
+	for key in ["age", "pitch", "tension", "reel", "reach", "scoop", "use_age", "view_roll"]:
 		var amount: Variant = animation.get(key)
 		if amount is float and is_finite(amount):
-			visual[key] = clampf(amount, -1.5, 20.0 if key == "age" else 1.5)
+			visual[key] = clampf(amount, -1.5, 20.0 if key in ["age", "use_age"] else 1.5)
+	for key in ["hand_left", "hand_right", "use_prop", "use_lighter", "rod_pose", "tool_pose"]:
+		var pose: Variant = animation.get(key)
+		if pose is Transform3D and pose.origin.is_finite() and pose.origin.length_squared() < 16 \
+				and pose.basis.x.is_finite() and pose.basis.y.is_finite() and pose.basis.z.is_finite() \
+				and pose.basis.determinant() > .2 and pose.basis.determinant() < 4:
+			visual[key] = Transform3D(pose.basis.orthonormalized(), pose.origin)
+	for key in ["rod_crank", "rod_rotor"]:
+		var angle: Variant = animation.get(key)
+		if angle is float and is_finite(angle):
+			visual[key] = wrapf(angle, -PI, PI)
+	for key in ["hand_left_pose", "hand_right_pose"]:
+		var pose: Variant = animation.get(key)
+		if pose is String and pose in ["relaxed", "fist", "shaft", "carry", "hold", "pinch", "bottle", "can"]:
+			visual[key] = pose
 	var tool: Variant = animation.get("tool")
+	if animation.get("seat", "") in ["", "bed", "toilet", "heli"]:
+		visual.seat = animation.get("seat", "")
 	if tool is String and tool in ["net", "cooler", "lamp", "helm", "fish"]:
 		visual.tool = tool
 	poses[peer] = {"at": position, "yaw": wrapf(turn, -PI, PI), "onboard": onboard, "animation": visual,

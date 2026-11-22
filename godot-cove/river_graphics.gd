@@ -36,11 +36,14 @@ func advance() -> void:
 
 
 func apply(river: Node3D, view: Camera3D) -> void:
+	var viewport := view.get_viewport()
+	viewport.msaa_3d = [Viewport.MSAA_2X, Viewport.MSAA_4X, Viewport.MSAA_8X][level]
+	viewport.screen_space_aa = Viewport.SCREEN_SPACE_AA_DISABLED
 	view.far = DRAW_DISTANCE[level]
 	river.landscape_light.directional_shadow_max_distance = SHADOW_DISTANCE[level]
 	river.set_water_grid(WATER_GRID[level])
 	river.fog_scale = pow(DRAW_DISTANCE[2] / DRAW_DISTANCE[level], .82)
-	river.landscape_environment.fog_density = lerpf(.000135, .00058, maxf(0.0, river.last_evening)) * river.fog_scale
+	river.landscape_environment.fog_density = lerpf(.00010, .00038, maxf(0.0, river.last_evening)) * river.fog_scale
 	for kind: String in RANGES:
 		for item: GeometryInstance3D in river.get_tree().get_nodes_in_group("river_graphics_" + kind):
 			if not river.is_ancestor_of(item):
@@ -53,4 +56,4 @@ func apply(river: Node3D, view: Camera3D) -> void:
 
 
 func description() -> String:
-	return "%s · %.1f km" % [NAMES[level], DRAW_DISTANCE[level] / 1000.0]
+	return "%s · %.1f km · %s" % [NAMES[level], DRAW_DISTANCE[level] / 1000.0, ["2x MSAA", "4x MSAA", "8x MSAA"][level]]

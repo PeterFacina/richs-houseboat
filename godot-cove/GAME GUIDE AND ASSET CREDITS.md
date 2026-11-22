@@ -61,3 +61,12 @@ While seated, use W/S to drive, A/D to steer, Q/R to lower or raise the throttle
 ## Public Works and mowing
 
 Follow Cedar Road to the Public Works yard. Open the bay or office doors with E when prompted. Speak to Shannon in the office to get the current mowing route, take either Zero Turn, and use the route markers to find the grass to cut. Return to Shannon to collect payment.
+## Houseboat, regional travel, and graphics
+
+The extended houseboat has an aft bedroom and bathroom. Aim at the bed or toilet and press **E**. Press **E** or **Space** to get up, and **F** to flush when seated. Nearby crew see the poses and hear the sounds. Press **E** at the TV to toggle power. The shared loop shows a placeholder until licensed media is installed. See [TV media instructions](ottawa/tv/README.txt).
+
+Open the chart with **Tab** and choose the entire river or an 18 × 18 km Deep River, Swisha, or Chalk River section. Use the destination list to fast travel. McAnulty Road, the cemetery footprint, and ski club and Grouse Park markers use data from [OpenStreetMap contributors under ODbL 1.0](https://www.openstreetmap.org/copyright). The helipad, generic grave markers, ski trail connection, and raised Swisha approach are gameplay adaptations.
+
+At the McAnulty helipad, **E** boards the four-seat survey helicopter. The first rider pilots with **WASD**, turns with **Q/Z**, and climbs or descends with **Space/Ctrl**. Land and slow down before using **E** to exit. Use **Esc > Unstuck** for emergency recovery. The helicopter model, rotor sound, TV tone, and 20 flush sounds are original procedural assets.
+
+Use **F4** or **Esc > Settings > Graphics quality / distance** to choose Performance, Balanced, or Scenic. The presets vary scenery and shadows, water detail, and 2×/4×/8× MSAA.

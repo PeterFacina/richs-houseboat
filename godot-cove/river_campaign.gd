@@ -11,6 +11,7 @@ const Boat = preload("res://houseboat.gd")
 const Kit = preload("res://scenery.gd")
 const CrewPlay = preload("res://crew_play.gd")
 const Rich = preload("res://rich_npc.gd")
+const Amenities = preload("res://boat_amenities.gd")
 
 var game: Node3D
 var ledger := Ledger.new()
@@ -20,6 +21,7 @@ var dive := Sub.new()
 var crew := Crew.new()
 var crewplay := CrewPlay.new()
 var rich := Rich.new()
+var amenities := Amenities.new()
 var board: Board
 var houseboat: Boat
 var skiff: Boat
@@ -76,6 +78,7 @@ func setup(fishing_game: Node3D) -> void:
 	crew.result_received.connect(receive_result)
 	crew.member_left.connect(member_left)
 	crew.changed.connect(refresh_board)
+	crew.stopped.connect(clear_shared_seats)
 	add_child(landings)
 	landings.setup(game.river, ledger)
 	houseboat.water_check = houseboat_route
@@ -84,6 +87,8 @@ func setup(fishing_game: Node3D) -> void:
 	crewplay.name = "DeckActions"
 	add_child(crewplay)
 	crewplay.setup(game, self)
+	add_child(amenities)
+	amenities.setup(game, self)
 	rich.setup(houseboat, game.hud)
 	crew.rich_heard.connect(rich.play)
 	rich.spoken.connect(share_rich_line)
@@ -220,6 +225,8 @@ func handle_modal(event: InputEventKey, key: Key) -> bool:
 
 
 func handle_world(event: InputEvent) -> bool:
+	if game.helicopter.input(event): return true
+	if amenities.input(event): return true
 	if board.visible:
 		return true
 	if dive.active:
@@ -268,6 +275,8 @@ func run_shortcuts(has_input: bool) -> void:
 
 
 func local_interact() -> bool:
+	if game.helicopter.interact(): return true
+	if amenities.interact(): return true
 	if at_rich():
 		request("rich_talk", null)
 		return true
@@ -439,6 +448,9 @@ func keep_player_on_deck(boat: Boat, relative: Vector3) -> void:
 
 
 func select_craft(requested: String, index: int) -> void:
+	if requested == "skiff" and not amenities.occupants.is_empty():
+		amenities.occupants.clear()
+		amenities.publish()
 	if requested == "skiff":
 		if not is_instance_valid(skiff):
 			skiff = Boat.new()
@@ -604,6 +616,7 @@ func tick(delta: float, has_input: bool) -> void:
 		elif game.driving:
 			crew.steer.rpc_id(1, vessel.throttle, float(game.axis(KEY_D, KEY_A)) if has_input else 0.0)
 	crewplay.tick(delta)
+	amenities.tick(delta)
 	tick_rich(delta)
 	if not crew.is_guest() and dock >= 0:
 		save_elapsed += delta
@@ -624,6 +637,8 @@ func remote_request(peer: int, action: String, value: Variant) -> void:
 	if action == "connected":
 		crew.share_state.rpc_id(peer, ledger.state, dock, captain, revision)
 		crewplay.welcome(peer)
+		amenities.welcome(peer)
+		game.helicopter.welcome(peer)
 		crew.result.rpc_id(peer, "Welcome aboard. B opens the shared notebook.", dock, actor_site(actor(1)) < 0)
 		crew.enter_river.rpc_id(peer, ship_packet())
 		return
@@ -673,6 +688,12 @@ func reward_mowing(amount := 5) -> void:
 
 
 func perform(peer: int, action: String, value: Variant) -> void:
+	if action.begins_with("aircraft_"):
+		game.helicopter.act(peer, action, value)
+		return
+	if action.begins_with("amenity_"):
+		amenities.act(peer, action, value)
+		return
 	if action == "houseboat_design":
 		if peer == crew.my_id() and not crew.is_guest() and game.vessel == houseboat and value is bool:
 			ledger.state.modern_houseboat = value
@@ -1222,12 +1243,25 @@ func begin_dive() -> void:
 func member_left(peer: int) -> void:
 	if not crew.started:
 		return
+	game.helicopter.remove_peer(peer)
+	amenities.remove_peer(peer)
 	crewplay.leave(peer)
 	if captain == peer:
 		stop_captain()
 	if diver == peer:
 		diver = 0
 	changed(false)
+
+
+func clear_shared_seats() -> void:
+	if not is_instance_valid(game.helicopter):
+		return
+	game.helicopter.seats.clear()
+	game.helicopter.apply_local_seat()
+	amenities.occupants.clear()
+	amenities.apply_local_seat()
+	amenities.tv_on = false
+	amenities.last_sound = -1
 
 
 func receive_helm(throttle: float, rudder: float) -> void:

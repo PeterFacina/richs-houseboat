@@ -9,7 +9,7 @@ const RIGHT = preload("res://ottawa/hands/Hand_Nails_R.gltf")
 const ALBEDO = preload("res://ottawa/hands/caucasian_realistic_baseColor.png")
 const NORMAL = preload("res://ottawa/hands/hands_normal.png")
 const ORM = preload("res://ottawa/hands/hands_occlusionRoughnessMetallic.png")
-const POSES := {"relaxed": "Default_pose", "fist": "Grip", "shaft": "Grip_Shaft", "carry": "Cup", "hold": "Hold"}
+const POSES := {"relaxed": "Default_pose", "fist": "Grip", "shaft": "Grip_Shaft", "carry": "Cup", "hold": "Hold", "pinch": "Pinch_Tight", "bottle": "Grip_2", "can": "Grip_3"}
 var skeleton: Skeleton3D
 var model: Node3D
 var wrist_anchor := Vector3.ZERO
@@ -96,3 +96,12 @@ func _process(delta: float) -> void:
 	var blend := 1.0 - exp(-delta * 16)
 	for bone: int in targets:
 		skeleton.set_bone_pose_rotation(bone, skeleton.get_bone_pose_rotation(bone).slerp(targets[bone], blend))
+
+
+func contact_point() -> Vector3:
+	var suffix := "R" if side > 0 else "L"
+	var first := "Thumb_Tip_" if current_pose == "pinch" else "Middle_Proximal_"
+	var second := "Index_Tip_" if current_pose == "pinch" else "Middle_Tip_"
+	var a := skeleton.get_bone_global_pose(skeleton.find_bone(first + suffix)).origin
+	var b := skeleton.get_bone_global_pose(skeleton.find_bone(second + suffix)).origin
+	return model.transform * a.lerp(b, .5 if current_pose == "pinch" else .55)

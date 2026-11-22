@@ -181,7 +181,7 @@ func build_settings(settings: VBoxContainer) -> void:
 	slider(settings, "Hand motion", "hand_motion", 0, 1, .05)
 	var row := HBoxContainer.new()
 	settings.add_child(row)
-	text(row, "Scenery distance", 16, MIST).size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	text(row, "Graphics quality / distance", 16, MIST).size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	graphics_option = OptionButton.new()
 	MenuTheme.animate_press(graphics_option)
 	for title: String in Graphics.NAMES:

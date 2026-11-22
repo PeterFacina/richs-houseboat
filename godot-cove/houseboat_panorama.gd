@@ -106,12 +106,9 @@ static func build_cabin(parent: Node3D, siding: Material, graphite: Material,
 		for y in [.82, 1.12, 2.63]:
 			Kit.box_at(parent, Vector3(x, y, -.444), Vector3(.40, .053, .12), graphite)
 	Kit.box_at(parent, Vector3(0, 2.69, -.444), Vector3(1.98, .15, .13), graphite)
-	Kit.box_at(parent, Vector3(0, 1.14, 2.70), Vector3(1.98, .78, .116), siding)
-	pane(parent, Vector3(0, 2.065, 2.70), Vector3(1.85, 1.07, .026), glass)
-	for x in [-.94, 0.0, .94]:
-		Kit.box_at(parent, Vector3(x, 2.08, 2.70), Vector3(.071, 1.18, .128), graphite)
-	for y in [1.51, 2.65]:
-		Kit.box_at(parent, Vector3(0, y, 2.70), Vector3(1.98, .074, .13), graphite)
+	for side in [-1.0, 1.0]:
+		Kit.box_at(parent, Vector3(side * .77, 1.66, 2.70), Vector3(.49, 1.8, .12), siding)
+	Kit.box_at(parent, Vector3(0, 2.65, 2.70), Vector3(1.98, .074, .13), graphite)
 
 
 static func build_roof(parent: Node3D, timber: Material, graphite: Material,
