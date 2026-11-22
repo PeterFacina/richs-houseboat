@@ -99,7 +99,7 @@ func school_returns(transducer: Vector3, time: float, beam_width: float) -> Arra
 	return echoes
 
 
-func pick_for_bait(point: Vector3, slot: int, time: float, random: RandomNumberGenerator) -> int:
+func pick_for_bait(point: Vector3, slot: int, time: float, random: RandomNumberGenerator, rare_bonus := 0.0) -> int:
 	var bottom := river.depth_at(point)
 	var bait_depth := Species.leader(slot, bottom)
 	var pool := Species.local()
@@ -109,6 +109,8 @@ func pick_for_bait(point: Vector3, slot: int, time: float, random: RandomNumberG
 		var natural := Species.feeding_depth(row, bottom)
 		var depth_fit := exp(-absf(natural - bait_depth) / maxf(1.15, bottom * .23))
 		var local_abundance := 2.4 if index < 4 else (0.27 if row.form in ["gar", "esox", "salmonid"] else .61)
+		if local_abundance < .3:
+			local_abundance *= 1.0 + rare_bonus
 		weights.append(Species.rig_affinity(row, slot) * Species.habitat(row, bottom) * depth_fit * local_abundance)
 	for school: School in schools.values():
 		if school == null or school.anchor.distance_squared_to(point) > 31.0 * 31.0:

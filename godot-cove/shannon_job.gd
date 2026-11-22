@@ -33,6 +33,7 @@ var name_tag: Label3D
 var progress: Label
 var calendar: Label
 var route_name := ""
+var commercial := false
 var job_day := -1
 var job_state: Dictionary
 var markers: Node3D
@@ -166,14 +167,19 @@ func in_range() -> bool:
 	return game.player.global_position.distance_squared_to(global_position) <= TALK_DISTANCE * TALK_DISTANCE
 
 
+func commercial_available() -> bool:
+	var campaign = game.campaign
+	return campaign.rank_for(campaign.crew.my_id(), "commercial_contractor") > 0 and int(campaign.ledger.state.last_commercial_day) != current_day()
+
+
 func prompt() -> String:
 	match status:
 		Status.CUTTING: return "E  Talk to " + Voice.SPEAKER
-		Status.RETURNING: return "E  Collect $%d from %s" % [PAY, Voice.SPEAKER]
+		Status.RETURNING: return "E  Collect $%d from %s" % [game.campaign.mowing_pay(PAY * (2 if commercial else 1)), Voice.SPEAKER]
 		Status.OFFERED: return "E  Accept today's mowing route"
 		_:
 			if int(game.campaign.ledger.state.last_mowing_day) == current_day():
-				return "Today's mowing route is finished"
+				return "E  Ask for a commercial route" if commercial_available() else "Today's mowing route is finished"
 			return "E  Ask %s for today's mowing route" % Voice.SPEAKER
 
 
@@ -185,7 +191,8 @@ func interact() -> void:
 	var distance: float = game.player.global_position.distance_to(global_position)
 	match status:
 		Status.AVAILABLE:
-			if int(game.campaign.ledger.state.last_mowing_day) == current_day():
+			commercial = int(game.campaign.ledger.state.last_mowing_day) == current_day()
+			if commercial and not commercial_available():
 				game.notify_angling("The next mowing route opens at midnight.", 4.0)
 				return
 			job_day = current_day()
@@ -198,6 +205,10 @@ func interact() -> void:
 				interact()
 				return
 			var route: Dictionary = game.river.waterfront.mowing_routes[job_day % Routes.DAYS.size()]
+			if commercial:
+				route = route.duplicate(true)
+				route.zones.append_array(game.river.waterfront.mowing_routes[(job_day + 1) % Routes.DAYS.size()].zones)
+				route.name = "Commercial • " + str(route.name)
 			route_name = route.name
 			build_lawn(route)
 			if tuft_cells.is_empty():
@@ -212,10 +223,13 @@ func interact() -> void:
 			reminder_index = (reminder_index + 1) % REMINDERS.size()
 			voice.say(reminder, distance)
 		Status.RETURNING:
-			job_state.last_mowing_day = job_day
+			if commercial:
+				job_state.last_commercial_day = job_day
+			else:
+				job_state.last_mowing_day = job_day
 			clear_job()
-			game.campaign.reward_mowing(PAY)
-			game.notify_angling("Grass cutting  ·  +$%d" % PAY, 4.0)
+			var paid: int = game.campaign.reward_mowing(PAY * (2 if commercial else 1), commercial)
+			game.notify_angling("Grass cutting  ·  +$%d" % paid, 4.0)
 			voice.say(FINISH, distance)
 
 
@@ -234,10 +248,15 @@ func grass_trimmed(index: int) -> void:
 	if status != Status.CUTTING or not tuft_cells.has(index):
 		return
 	cut_count += 1
-	if cut_count == tuft_cells.size():
+	if cut_count % 100 == 0:
+		var campaign = game.campaign
+		if campaign.XP.award(campaign.progression_for(campaign.crew.my_id()), "grass", "grass:%d:%d:%d" % [job_day, int(commercial), cut_count]) > 0:
+			campaign.changed()
+	var precision: float = game.campaign.skill_effect(game.campaign.crew.my_id(), "precision_cutting")
+	if cut_count >= ceili(tuft_cells.size() * (1.0 - .01 * precision)):
 		status = Status.RETURNING
 		markers.hide()
-	guides_dirty = cut_count * 100 >= tuft_cells.size() * 80
+	guides_dirty = cut_count * 100 >= tuft_cells.size() * 80 or game.campaign.rank_for(game.campaign.crew.my_id(), "route_planner") > 0
 	update_progress()
 
 
@@ -262,7 +281,7 @@ func update_guides() -> void:
 
 func update_progress() -> void:
 	if status == Status.RETURNING:
-		progress.text = "JOB COMPLETE!\nGrass Cut: 100%  ·  Return to Shannon Larping"
+		progress.text = "JOB COMPLETE!\nRoute requirement met  ·  Return to Shannon Larping"
 	else:
 		progress.text = "%s  ·  %d%% cut" % [route_name, floori(100.0 * cut_count / tuft_cells.size())]
 

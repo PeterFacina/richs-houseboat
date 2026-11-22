@@ -25,6 +25,7 @@ const REVERSE_SPEED := 2.05
 const TURN_SPEED := 2.35
 
 var river: Node3D
+var cut_width := .71
 var rider: CharacterBody3D
 var body_shape: Shape3D
 var motor: AudioStreamPlayer3D
@@ -376,12 +377,12 @@ func grass_point(index: int) -> Vector3:
 func cut_grass() -> void:
 	last_cut = to_global(CUT_DECK)
 	if shared_grass == null:
-		trim_at(global_transform)
+		trim_at(global_transform, cut_width)
 	else:
-		shared_grass.trim_at(global_transform)
+		shared_grass.trim_at(global_transform, cut_width)
 
 
-func trim_at(pose: Transform3D) -> void:
+func trim_at(pose: Transform3D, width := .71) -> void:
 	if not is_instance_valid(grass):
 		return
 	var deck := pose * CUT_DECK
@@ -395,7 +396,7 @@ func trim_at(pose: Transform3D) -> void:
 					continue
 				var tuft := grass_transforms[index]
 				var local := inverse * grass.to_global(tuft.origin) - CUT_DECK
-				if absf(local.x) <= .71 and absf(local.z) <= .39:
+				if absf(local.x) <= width and absf(local.z) <= .39:
 					tuft.basis.y *= CUT_HEIGHT
 					instances.set_instance_transform(index, tuft)
 					grass_cut[index] = 1

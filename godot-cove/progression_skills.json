@@ -1,0 +1,559 @@
+{
+  "steady_hands": {
+    "name": "Steady Hands",
+    "requires": {},
+    "cap": 3,
+    "effect": "Fishing control +5%/rank",
+    "category": "Fishing",
+    "enabled": true,
+    "level": 1,
+    "column": 0,
+    "row": 0,
+    "per_rank": 5
+  },
+  "quick_reel": {
+    "name": "Quick Reel",
+    "requires": {
+      "steady_hands": 1
+    },
+    "cap": 3,
+    "effect": "Reel speed +5%/rank",
+    "category": "Fishing",
+    "enabled": true,
+    "level": 3,
+    "column": 1,
+    "row": 0,
+    "per_rank": 5
+  },
+  "experienced_angler": {
+    "name": "Experienced Angler",
+    "requires": {},
+    "cap": 3,
+    "effect": "Fishing XP +5%/rank",
+    "category": "Fishing",
+    "enabled": true,
+    "level": 1,
+    "column": 0,
+    "row": 1,
+    "per_rank": 5
+  },
+  "fish_finder": {
+    "name": "Fish Finder",
+    "requires": {
+      "steady_hands": 2
+    },
+    "cap": 1,
+    "effect": "Widen the sonar beam to reveal nearby schools",
+    "category": "Fishing",
+    "enabled": true,
+    "level": 3,
+    "column": 1,
+    "row": 1,
+    "per_rank": 0.35
+  },
+  "lucky_catch": {
+    "name": "Lucky Catch",
+    "requires": {
+      "quick_reel": 2
+    },
+    "cap": 3,
+    "effect": "Rare fish selection weight +5% per rank",
+    "category": "Fishing",
+    "enabled": true,
+    "level": 5,
+    "column": 2,
+    "row": 0,
+    "per_rank": 5
+  },
+  "trophy_hunter": {
+    "name": "Trophy Hunter",
+    "requires": {
+      "lucky_catch": 1
+    },
+    "cap": 2,
+    "effect": "Trophy fish rewards +5%/rank",
+    "category": "Fishing",
+    "enabled": true,
+    "level": 7,
+    "column": 3,
+    "row": 0,
+    "per_rank": 5
+  },
+  "master_angler": {
+    "name": "Master Angler",
+    "requires": {
+      "trophy_hunter": 2,
+      "fish_finder": 1
+    },
+    "cap": 1,
+    "effect": "Catch XP +10%",
+    "category": "Fishing",
+    "enabled": true,
+    "level": 9,
+    "column": 4,
+    "row": 0,
+    "per_rank": 10
+  },
+  "sharp_blades": {
+    "name": "Sharp Blades",
+    "requires": {},
+    "cap": 3,
+    "effect": "Effective cutting width +5%/rank",
+    "category": "Lawn Care",
+    "enabled": true,
+    "level": 1,
+    "column": 0,
+    "row": 0,
+    "per_rank": 5
+  },
+  "efficient_operator": {
+    "name": "Efficient Operator",
+    "requires": {},
+    "cap": 3,
+    "effect": "Mower fuel use -5%/rank",
+    "category": "Lawn Care",
+    "enabled": false,
+    "level": 1,
+    "column": 0,
+    "row": 1,
+    "unavailable": "The mower does not consume fuel."
+  },
+  "lawn_professional": {
+    "name": "Lawn Professional",
+    "requires": {},
+    "cap": 3,
+    "effect": "Mowing payout +5%/rank",
+    "category": "Lawn Care",
+    "enabled": true,
+    "level": 1,
+    "column": 0,
+    "row": 2,
+    "per_rank": 5
+  },
+  "route_planner": {
+    "name": "Route Planner",
+    "requires": {
+      "sharp_blades": 2
+    },
+    "cap": 1,
+    "effect": "Show current mowing route and completion overlay",
+    "category": "Lawn Care",
+    "enabled": true,
+    "level": 3,
+    "column": 1,
+    "row": 0
+  },
+  "precision_cutting": {
+    "name": "Precision Cutting",
+    "requires": {
+      "route_planner": 1
+    },
+    "cap": 2,
+    "effect": "Required grass coverage -1 percentage point per rank",
+    "category": "Lawn Care",
+    "enabled": true,
+    "level": 5,
+    "column": 2,
+    "row": 0,
+    "per_rank": 1
+  },
+  "commercial_contractor": {
+    "name": "Commercial Contractor",
+    "requires": {
+      "lawn_professional": 2
+    },
+    "cap": 1,
+    "effect": "Unlock advanced mowing contracts",
+    "category": "Lawn Care",
+    "enabled": true,
+    "level": 3,
+    "column": 1,
+    "row": 1
+  },
+  "landscaping_master": {
+    "name": "Landscaping Master",
+    "requires": {
+      "commercial_contractor": 1,
+      "precision_cutting": 2
+    },
+    "cap": 1,
+    "effect": "Mowing XP +10%",
+    "category": "Lawn Care",
+    "enabled": true,
+    "level": 7,
+    "column": 3,
+    "row": 0,
+    "per_rank": 10
+  },
+  "experienced_captain": {
+    "name": "Experienced Captain",
+    "requires": {},
+    "cap": 3,
+    "effect": "Boat handling +5%/rank",
+    "category": "Boating",
+    "enabled": true,
+    "level": 1,
+    "column": 0,
+    "row": 0,
+    "per_rank": 5
+  },
+  "fuel_conservation": {
+    "name": "Fuel Conservation",
+    "requires": {},
+    "cap": 3,
+    "effect": "Boat fuel use -5%/rank",
+    "category": "Boating",
+    "enabled": true,
+    "level": 1,
+    "column": 0,
+    "row": 1,
+    "per_rank": 5
+  },
+  "marine_navigator": {
+    "name": "Marine Navigator",
+    "requires": {
+      "experienced_captain": 2
+    },
+    "cap": 1,
+    "effect": "Navigation markers",
+    "category": "Boating",
+    "enabled": true,
+    "level": 3,
+    "column": 1,
+    "row": 0
+  },
+  "smooth_sailing": {
+    "name": "Smooth Sailing",
+    "requires": {
+      "experienced_captain": 2
+    },
+    "cap": 3,
+    "effect": "Wave-driven bilge intake -5% per rank",
+    "category": "Boating",
+    "enabled": true,
+    "level": 3,
+    "column": 1,
+    "row": 1,
+    "per_rank": 5
+  },
+  "marine_explorer": {
+    "name": "Marine Explorer",
+    "requires": {
+      "marine_navigator": 1
+    },
+    "cap": 2,
+    "effect": "Landing discovery XP +5% per rank",
+    "category": "Boating",
+    "enabled": true,
+    "level": 5,
+    "column": 2,
+    "row": 0,
+    "per_rank": 5
+  },
+  "expert_captain": {
+    "name": "Expert Captain",
+    "requires": {
+      "smooth_sailing": 2
+    },
+    "cap": 1,
+    "effect": "Advanced boating contracts",
+    "category": "Boating",
+    "enabled": true,
+    "level": 5,
+    "column": 2,
+    "row": 1
+  },
+  "master_mariner": {
+    "name": "Master Mariner",
+    "requires": {
+      "expert_captain": 1,
+      "marine_explorer": 2
+    },
+    "cap": 1,
+    "effect": "Boating XP +10%",
+    "category": "Boating",
+    "enabled": true,
+    "level": 7,
+    "column": 3,
+    "row": 0,
+    "per_rank": 10
+  },
+  "smooth_driver": {
+    "name": "Smooth Driver",
+    "requires": {},
+    "cap": 3,
+    "effect": "Vehicle handling +5%/rank",
+    "category": "Driving",
+    "enabled": true,
+    "level": 1,
+    "column": 0,
+    "row": 0,
+    "per_rank": 5
+  },
+  "fuel_saver": {
+    "name": "Fuel Saver",
+    "requires": {},
+    "cap": 3,
+    "effect": "Vehicle fuel use -5%/rank",
+    "category": "Driving",
+    "enabled": false,
+    "level": 1,
+    "column": 0,
+    "row": 1,
+    "unavailable": "Road vehicles have no fuel tank."
+  },
+  "delivery_specialist": {
+    "name": "Delivery Specialist",
+    "requires": {},
+    "cap": 3,
+    "effect": "Freight delivery payout +5% per rank",
+    "category": "Driving",
+    "enabled": true,
+    "level": 1,
+    "column": 0,
+    "row": 2,
+    "per_rank": 5
+  },
+  "mechanics_touch": {
+    "name": "Mechanics Touch",
+    "requires": {
+      "smooth_driver": 2
+    },
+    "cap": 2,
+    "effect": "Reduce vehicle wear",
+    "category": "Driving",
+    "enabled": false,
+    "level": 3,
+    "column": 1,
+    "row": 0,
+    "unavailable": "Road vehicles have no wear meter."
+  },
+  "professional_driver": {
+    "name": "Professional Driver",
+    "requires": {
+      "delivery_specialist": 2
+    },
+    "cap": 1,
+    "effect": "Premium delivery contracts",
+    "category": "Driving",
+    "enabled": false,
+    "level": 3,
+    "column": 1,
+    "row": 1,
+    "unavailable": "Freight contracts currently use river landings. Road delivery contracts are unavailable."
+  },
+  "road_veteran": {
+    "name": "Road Veteran",
+    "requires": {
+      "smooth_driver": 2
+    },
+    "cap": 1,
+    "effect": "Acceleration +10% for one second after a collision",
+    "category": "Driving",
+    "enabled": true,
+    "level": 5,
+    "column": 2,
+    "row": 0,
+    "per_rank": 10
+  },
+  "transport_master": {
+    "name": "Transport Master",
+    "requires": {
+      "professional_driver": 1,
+      "road_veteran": 1
+    },
+    "cap": 1,
+    "effect": "Configurable transport mastery reward",
+    "category": "Driving",
+    "enabled": false,
+    "level": 7,
+    "column": 3,
+    "row": 0,
+    "unavailable": "Requires a road delivery contract system."
+  },
+  "hard_worker": {
+    "name": "Hard Worker",
+    "requires": {},
+    "cap": 3,
+    "effect": "Job completion XP +5%/rank",
+    "category": "Business",
+    "enabled": true,
+    "level": 1,
+    "column": 0,
+    "row": 0,
+    "per_rank": 5
+  },
+  "better_negotiator": {
+    "name": "Better Negotiator",
+    "requires": {},
+    "cap": 3,
+    "effect": "Job payout +5%/rank",
+    "category": "Business",
+    "enabled": true,
+    "level": 1,
+    "column": 0,
+    "row": 1,
+    "per_rank": 5
+  },
+  "trusted_contractor": {
+    "name": "Trusted Contractor",
+    "requires": {
+      "hard_worker": 2
+    },
+    "cap": 1,
+    "effect": "Higher-reputation contracts",
+    "category": "Business",
+    "enabled": true,
+    "level": 3,
+    "column": 1,
+    "row": 0
+  },
+  "business_connections": {
+    "name": "Business Connections",
+    "requires": {
+      "trusted_contractor": 1
+    },
+    "cap": 1,
+    "effect": "Special client contracts",
+    "category": "Business",
+    "enabled": true,
+    "level": 5,
+    "column": 2,
+    "row": 0
+  },
+  "efficient_management": {
+    "name": "Efficient Management",
+    "requires": {
+      "better_negotiator": 2
+    },
+    "cap": 3,
+    "effect": "Business operating expense reduction",
+    "category": "Business",
+    "enabled": false,
+    "level": 3,
+    "column": 1,
+    "row": 1,
+    "unavailable": "The campaign has no business operating expenses."
+  },
+  "entrepreneur": {
+    "name": "Entrepreneur",
+    "requires": {
+      "business_connections": 1
+    },
+    "cap": 1,
+    "effect": "Business ownership unlock if supported",
+    "category": "Business",
+    "enabled": false,
+    "level": 7,
+    "column": 3,
+    "row": 0,
+    "unavailable": "Land claims are available. The campaign has no business ownership system."
+  },
+  "business_tycoon": {
+    "name": "Business Tycoon",
+    "requires": {
+      "entrepreneur": 1,
+      "efficient_management": 2
+    },
+    "cap": 1,
+    "effect": "Configurable business mastery reward",
+    "category": "Business",
+    "enabled": false,
+    "level": 9,
+    "column": 4,
+    "row": 0,
+    "unavailable": "Requires business ownership and operating expenses."
+  },
+  "endurance": {
+    "name": "Endurance",
+    "requires": {},
+    "cap": 3,
+    "effect": "Maximum stamina +5%/rank",
+    "category": "Exploration",
+    "enabled": false,
+    "level": 1,
+    "column": 0,
+    "row": 0,
+    "unavailable": "The player has no stamina meter."
+  },
+  "athletic": {
+    "name": "Athletic",
+    "requires": {},
+    "cap": 3,
+    "effect": "Sprint stamina use -5%/rank",
+    "category": "Exploration",
+    "enabled": false,
+    "level": 1,
+    "column": 0,
+    "row": 1,
+    "unavailable": "Sprinting does not consume stamina."
+  },
+  "explorer": {
+    "name": "Explorer",
+    "requires": {},
+    "cap": 2,
+    "effect": "Landing discovery XP +5% per rank",
+    "category": "Exploration",
+    "enabled": true,
+    "level": 1,
+    "column": 0,
+    "row": 2,
+    "per_rank": 5
+  },
+  "local_knowledge": {
+    "name": "Local Knowledge",
+    "requires": {
+      "explorer": 1
+    },
+    "cap": 1,
+    "effect": "Reveal select points of interest",
+    "category": "Exploration",
+    "enabled": true,
+    "level": 3,
+    "column": 1,
+    "row": 0
+  },
+  "outdoorsman": {
+    "name": "Outdoorsman",
+    "requires": {
+      "endurance": 2
+    },
+    "cap": 3,
+    "effect": "Environmental stamina penalty reduction",
+    "category": "Exploration",
+    "enabled": false,
+    "level": 3,
+    "column": 1,
+    "row": 1,
+    "unavailable": "Weather does not drain stamina."
+  },
+  "treasure_hunter": {
+    "name": "Treasure Hunter",
+    "requires": {
+      "local_knowledge": 1
+    },
+    "cap": 1,
+    "effect": "Collectible hints",
+    "category": "Exploration",
+    "enabled": false,
+    "level": 5,
+    "column": 2,
+    "row": 0,
+    "unavailable": "The campaign has no collectible treasure registry."
+  },
+  "town_legend": {
+    "name": "Town Legend",
+    "requires": {
+      "outdoorsman": 2,
+      "treasure_hunter": 1
+    },
+    "cap": 1,
+    "effect": "Configurable exploration mastery reward",
+    "category": "Exploration",
+    "enabled": false,
+    "level": 7,
+    "column": 3,
+    "row": 0,
+    "unavailable": "Requires collectible hunting and environmental stamina."
+  }
+}

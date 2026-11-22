@@ -59,6 +59,7 @@ var sonar_overlay: TextureRect
 var fish_guide: Guide
 var cabin: Cabin
 var trophy: Trophy
+var skill_screen := preload("res://progression_screen.tscn").instantiate()
 var campaign: Campaign
 var marina_cars: MarinaCars
 var backpack: Backpack
@@ -192,6 +193,8 @@ func _ready() -> void:
 	campaign = Campaign.new()
 	add_child(campaign)
 	campaign.setup(self)
+	add_child(skill_screen)
+	skill_screen.setup(self)
 	regions = Regions.new()
 	add_child(regions)
 	regions.setup(self)
@@ -312,6 +315,17 @@ func build_tension_display() -> void:
 
 
 func _input(event: InputEvent) -> void:
+	if skill_screen.is_inside_tree() and not get_tree().paused:
+		if event is InputEventJoypadButton and event.pressed and ((event.button_index == JOY_BUTTON_BACK and (skill_screen.panel.visible or not menu_blocks_play())) or (event.button_index == JOY_BUTTON_B and skill_screen.panel.visible)):
+			skill_screen.toggle()
+			get_viewport().set_input_as_handled()
+			return
+		if event is InputEventKey and event.pressed and not event.echo and ((event.physical_keycode == KEY_K and (skill_screen.panel.visible or not menu_blocks_play())) or (event.physical_keycode == KEY_ESCAPE and skill_screen.panel.visible)):
+			skill_screen.toggle()
+			get_viewport().set_input_as_handled()
+			return
+		if skill_screen.panel.visible:
+			return
 	if pause_menu.visible:
 		return
 	if event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_ESCAPE \
@@ -393,6 +407,8 @@ func _input(event: InputEvent) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if skill_screen.panel.visible:
+		return
 	if pause_menu.visible or fish_guide.visible or teleport_dialog.visible or backpack.inventory.visible or cheats.visible:
 		return
 	if flying or mower.rider != null:
@@ -544,6 +560,7 @@ func _physics_process(delta: float) -> void:
 		step_vessel(delta, 0.0)
 		var throttle := axis(KEY_W, KEY_S) if has_input else 0.0
 		var steering := axis(KEY_A, KEY_D) if has_input else 0.0
+		mower.cut_width = .71 * (1.0 + campaign.skill_effect(campaign.crew.my_id(), "sharp_blades") / 100.0)
 		yaw += mower.drive(delta, throttle, steering)
 		update_view()
 	else:
@@ -599,7 +616,7 @@ func _process(delta: float) -> void:
 
 
 func menu_blocks_play() -> bool:
-	return pause_menu.visible or chart.visible or fish_guide.visible or backpack.inventory.visible or cheats.visible or campaign.controls_blocked()
+	return skill_screen.panel.visible or pause_menu.visible or chart.visible or fish_guide.visible or backpack.inventory.visible or cheats.visible or campaign.controls_blocked()
 
 
 func close_cheats() -> void:
@@ -798,7 +815,7 @@ func update_fish_finder(delta: float) -> void:
 	var current_speed: Vector3 = river.downstream(vessel.center, clock) * (.78 if vessel.departed else 0.0)
 	var movement: Vector3 = -vessel.global_basis.z.slide(Vector3.UP).normalized() * vessel.speed + current_speed
 	var read_echoes := func() -> Array[Vector2]:
-		var echoes := stock.school_returns(source, clock, .51)
+		var echoes := stock.school_returns(source, clock, .51 + campaign.skill_effect(campaign.crew.my_id(), "fish_finder"))
 		var draft := maxf(0.0, surface - source.y)
 		for index in echoes.size():
 			echoes[index].x += draft
@@ -978,7 +995,7 @@ func floating(node: Node3D, location: Vector3) -> void:
 
 
 func choose_species() -> int:
-	return stock.pick_for_bait(float_site, rig_slot, clock, random)
+	return stock.pick_for_bait(float_site, rig_slot, clock, random, campaign.skill_effect(campaign.crew.my_id(), "lucky_catch") / 100.0)
 
 
 func landing_position(at: Vector3) -> Vector3:
@@ -1005,6 +1022,8 @@ func landing_position(at: Vector3) -> Vector3:
 
 func set_hook() -> void:
 	hook_id += 1
+	if not campaign.crew.is_guest():
+		campaign.ledger.state.catch_serial += 1
 	var hooked_trophy := trophy.hook(random.randf()) if trophy.can_bite(float_site, clock) else -1
 	catch_type = hooked_trophy if hooked_trophy >= 0 else choose_species()
 	fight_profile = Species.profile(catch_type)
@@ -1061,14 +1080,14 @@ func tick_fight(delta: float, held: bool, lifting: bool) -> void:
 	var separation := hooked_head - rig.tip.global_position
 	var reach := separation.length()
 	var spring := maxf(0.0, (reach - line_out) * .88)
-	line_tension = lerpf(line_tension, clampf(spring + burst * .075, 0, 1.30), 1.0 - exp(-delta * 15.0))
+	line_tension = lerpf(line_tension, clampf((spring + burst * .075) / (1.0 + campaign.skill_effect(campaign.crew.my_id(), "steady_hands") / 100.0), 0, 1.30), 1.0 - exp(-delta * 15.0))
 	line_tension = maxf(line_tension, trophy.strain_floor(fight_age))
 	payout = maxf(0.0, line_tension - drag_setting) * (5.7 + burst * 1.7)
 	line_out += payout * delta
 	var can_crank := held and payout < .39
 	if can_crank:
 		reel_rate = 1.0 - smoothstep(.58, .92, line_tension) * .61
-		line_out = maxf(1.0, line_out - reel_rate * delta * (1.67 if lifting else 2.55))
+		line_out = maxf(1.0, line_out - reel_rate * delta * (1.0 + campaign.skill_effect(campaign.crew.my_id(), "quick_reel") / 100.0) * (1.67 if lifting else 2.55))
 
 	var radial := (hooked_head - net_site).slide(Vector3.UP)
 	var outward := radial.normalized()
@@ -1268,6 +1287,12 @@ func record_catch() -> void:
 	var name_in_journal: String = "Trophy muskellunge" if trophy.hooked else Species.profile(catch_type).name
 	var landed_with := "  ·  Netted by " + crew_scoop_name if not crew_scoop_name.is_empty() else ""
 	notify_angling("%s  ·  %d cm  ·  %s%s" % [name_in_journal, catch_length, weight, landed_with], 5.0)
+	if not campaign.crew.is_guest():
+		var reward := "trophy" if trophy.hooked else ("small_fish" if catch_length < 25 else "fish")
+		campaign.XP.award(campaign.progression_for(campaign.crew.my_id()), reward, "catch:%d" % campaign.ledger.state.catch_serial)
+		if crew_scoop_helper > 1 and campaign.crew.people.has(crew_scoop_helper):
+			campaign.XP.award(campaign.progression_for(crew_scoop_helper), reward, "catch:%d" % campaign.ledger.state.catch_serial)
+		campaign.changed()
 	catch_count += 1
 	journal.push_front(catch_note)
 	if journal.size() > 25:
