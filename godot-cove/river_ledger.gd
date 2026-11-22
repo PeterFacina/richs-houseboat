@@ -21,6 +21,7 @@ func fresh() -> Dictionary:
 		"job": -1, "stage": "", "job_fish": [], "freight_run": 0.0, "last_dock": -1, "craft": "houseboat", "tow": false,
 		"bilge": 0.0, "pump_on": true, "modern_houseboat": false,
 		"ice_chest": [], "meals": 0, "held_fish": {}, "camp_fish": {},
+		"work_minutes": 480.0, "last_mowing_day": -1,
 	}
 
 

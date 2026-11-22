@@ -34,6 +34,10 @@ var trunk_mesh: CylinderMesh
 var bark_material: Material
 var wharf := Wharf.new()
 var fleet := Fleet.new()
+const Routes = preload("res://mowing_routes.gd")
+
+var mowing_routes: Array[Dictionary]
+var grass_transforms: Array[Transform3D]
 var park_grass: MultiMeshInstance3D
 
 
@@ -318,31 +322,38 @@ func build_park_grass(parent: Node3D, pavilion: Vector3, shore: Callable) -> voi
 				var scale := Vector3(random.randf_range(.85, 1.75), random.randf_range(.24, .73), 1.18)
 				var angle := Basis(Vector3.UP, random.randf_range(0.0, TAU)).scaled_local(scale)
 				grass.append(Transform3D(angle, p))
-	# Add mowable tufts on the open turf beside the pavilion.
-	var lawn := PackedVector2Array(MOWING_LAWN)
-	var bounds := mowing_lawn_bounds()
-	var rows := ceili(bounds.size.y / .43)
-	var columns := ceili(bounds.size.x / .43)
-	for z in rows:
-		for x in columns:
-			var at := bounds.position + Vector2(
-				(x + random.randf_range(.15, .85)) / columns, (z + random.randf_range(.15, .85)) / rows) * bounds.size
-			if not Geometry2D.is_point_in_polygon(at, lawn):
-				continue
-			var p := pavilion + Vector3(at.x, 0, at.y)
-			p.y = ground.call(p.x, p.z)
-			if p.y < .26 or shore.call(p) > 0.0:
-				continue
-			var scale := Vector3(.47, random.randf_range(.18, .36), .52)
-			var angle := Basis(Vector3.UP, random.randf_range(0.0, TAU)).scaled_local(scale)
-			grass.append(Transform3D(angle, p))
+	mowing_routes = Routes.load_routes(Vector2(pavilion.x, pavilion.z))
+	var occupied := {}
+	for route in mowing_routes:
+		for zone: PackedVector2Array in route.zones:
+			add_route_grass(zone, grass, occupied, random, shore)
 	if not grass.is_empty():
 		var material := ShaderMaterial.new()
 		material.shader = preload("res://river_reeds.gdshader")
 		var verge := Kit.new().scatter(parent, reed_mesh(random), grass, material)
 		park_grass = verge
+		grass_transforms = grass
 		verge.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		verge.visibility_range_end = 180.0
+		# The shared MultiMesh also includes routes outside the marina.
+
+
+func add_route_grass(zone: PackedVector2Array, grass: Array[Transform3D], occupied: Dictionary,
+		random: RandomNumberGenerator, shore: Callable) -> void:
+	const SPACING := .43
+	var area := Routes.bounds(zone)
+	for z in range(floori(area.position.y / SPACING), ceili(area.end.y / SPACING)):
+		for x in range(floori(area.position.x / SPACING), ceili(area.end.x / SPACING)):
+			var cell := Vector2i(x, z)
+			var at := (Vector2(cell) + Vector2(.5, .5)) * SPACING
+			if occupied.has(cell) or not Geometry2D.is_point_in_polygon(at, zone):
+				continue
+			var p := Vector3(at.x, ground.call(at.x, at.y), at.y)
+			if p.y < .26 or shore.call(p) > 0.0:
+				continue
+			occupied[cell] = true
+			var scale := Vector3(.47, random.randf_range(.18, .36), .52)
+			var angle := Basis(Vector3.UP, random.randf_range(0.0, TAU)).scaled_local(scale)
+			grass.append(Transform3D(angle, p))
 
 
 func build_trees(parent: Node3D, woodland: Array, buildings: Array) -> void:

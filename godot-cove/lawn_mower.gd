@@ -3,7 +3,9 @@ extends AnimatableBody3D
 signal grass_trimmed(index: int)
 
 const Kit = preload("res://scenery.gd")
-const PARKING_OFFSET := Vector2(14, 9.6)
+const Tools = preload("res://crew_tools.gd")
+const VehicleExit = preload("res://vehicle_exit.gd")
+const Driver = preload("res://vehicle_driver.gd")
 const TRACK := .51
 const HALF_WHEELBASE := .69
 const WHEEL_POINTS := [
@@ -18,17 +20,21 @@ const CUT_DECK := Vector3(0, .22, -.21)
 const CUT_HEIGHT := .22
 const DRIVE_SPEEDS := [2.4, 4.35, 5.8, 7.2]
 const THROTTLE_NAMES := ["Low", "Normal", "High", "Transport"]
+const LOWEST_UP := .68
 const REVERSE_SPEED := 2.05
 const TURN_SPEED := 2.35
 
 var river: Node3D
 var rider: CharacterBody3D
 var body_shape: Shape3D
-var exit_shape := CapsuleShape3D.new()
 var motor: AudioStreamPlayer3D
 var wheels: Array[Node3D] = []
 var casters: Array[Node3D] = []
 var levers: Array[Node3D] = []
+var hands: Array[Node3D] = []
+var arms: Array[MeshInstance3D] = []
+var rider_visual := Node3D.new()
+var seated := Driver.new()
 var chase_view := false
 var rider_camera: Camera3D
 var throttle_lever := Node3D.new()
@@ -39,23 +45,23 @@ var blades := false
 var grass: MultiMeshInstance3D
 var grass_cells: Dictionary = {}
 var grass_cut := PackedByteArray()
-var grass_heights := PackedVector3Array()
+var grass_transforms: Array[Transform3D]
 var last_cut := Vector3.INF
+var shared_grass: AnimatableBody3D
 
 
-func setup(map: Node3D) -> void:
+func setup(map: Node3D, parking: Vector3, heading: float, grass_owner: AnimatableBody3D = null) -> void:
 	river = map
-	name = "ZeroTurnMower"
+	shared_grass = grass_owner
+	yaw = heading
+	name = "ZeroTurnMower" if shared_grass == null else "SpareMower"
 	sync_to_physics = false
 	build_model()
 	Kit.collider(self, BODY_CENTER, BODY_SIZE)
 	var collider := get_child(get_child_count() - 1) as CollisionShape3D
 	body_shape = collider.shape
-	exit_shape.radius = .26
-	exit_shape.height = 1.62
-	var park: Array = river.meta.marina.pavilion
-	var parking := Vector3(park[0] + PARKING_OFFSET.x, 0, park[1] + PARKING_OFFSET.y)
-	global_transform = ground_pose(parking, yaw)
+	var pose := ground_pose(parking, yaw)
+	global_transform = pose if pose.origin.is_finite() else Transform3D(Basis(Vector3.UP, yaw), parking)
 	update_wheels(0.0, 0.0, 0.0)
 	motor = AudioStreamPlayer3D.new()
 	motor.stream = engine_loop()
@@ -64,8 +70,10 @@ func setup(map: Node3D) -> void:
 	motor.max_distance = 35.0
 	motor.volume_db = -20.0
 	add_child(motor)
-	grass = river.waterfront.park_grass
-	index_grass()
+	if shared_grass == null:
+		grass = river.waterfront.park_grass
+		grass_transforms = river.waterfront.grass_transforms
+		index_grass()
 
 
 func build_model() -> void:
@@ -92,6 +100,12 @@ func build_model() -> void:
 		Kit.beam(lever, Vector3.ZERO, Vector3(0, .47, -.10), .038, steel)
 		Kit.beam(lever, Vector3(0, .47, -.10), Vector3(-side * .22, .47, -.10), .062, rubber)
 		levers.append(lever)
+	add_child(rider_visual)
+	rider_visual.hide()
+	build_rider()
+	rider_visual.add_child(seated)
+	seated.build(Vector3(0, 1.66, .29), Vector3(0, .82, .29))
+	seated.pose(Vector3(-.30, 1.04, -.05), Vector3(.30, 1.04, -.05), 0, true, true)
 	add_child(throttle_lever)
 	throttle_lever.position = Vector3(.56, .71, .32)
 	Kit.box_at(self, Vector3(.56, .707, .32), Vector3(.085, .045, .21), dark)
@@ -121,6 +135,61 @@ func build_model() -> void:
 			block.rotation.x = angle
 
 
+func build_rider() -> void:
+	var skin := Kit.paint(Color("#bd896f"), .84)
+	var sleeve := Kit.paint(Color("#354549"))
+	for i in levers.size():
+		var side := float(2 * i - 1)
+		var glove := Node3D.new()
+		rider_visual.add_child(glove)
+		hands.append(glove)
+		Tools.shell(glove, Vector3(0, .020, .019), Vector3(.089, .054, .098), skin)
+		for finger in 4:
+			var x := -.031 + finger * .019
+			Tools.shell(glove, Vector3(x, .009, -.025), Vector3(.019, .055, .045), skin).rotation.x = -.45
+			Tools.shell(glove, Vector3(x, -.017, -.013), Vector3(.019, .021, .043), skin)
+		Tools.shell(glove, Vector3(-side * .038, .002, .017), Vector3(.028, .033, .067), skin).rotation.y = side * .38
+		for item: Array in [[sleeve, .078], [skin, .058]]:
+			var cylinder := CylinderMesh.new()
+			cylinder.height = 1.0
+			cylinder.top_radius = item[1] * .5
+			cylinder.bottom_radius = item[1] * .72
+			arms.append(Kit.mesh_at(rider_visual, cylinder, Vector3.ZERO, item[0]))
+	pose_rider_arms()
+
+
+func pose_rider_arms() -> void:
+	for index in levers.size():
+		var side := float(2 * index - 1)
+		var grip := Vector3(-side * .128, .47, -.10)
+		var lever := levers[index]
+		var hand := hands[index]
+		hand.transform = lever.transform * Transform3D(Basis.IDENTITY, grip)
+		var shoulder := Vector3(side * .26, 1.38, .31)
+		var elbow := Vector3(side * .32, 1.095, .37 + .25 * hand.position.z)
+		pose_arm(arms[index * 2], shoulder, elbow)
+		pose_arm(arms[index * 2 + 1], elbow, hand.position + Vector3(0, .013, .052))
+
+
+func pose_arm(segment: MeshInstance3D, a: Vector3, b: Vector3) -> void:
+	var span := b - a
+	segment.position = (a + b) * .5
+	segment.basis = Basis(Quaternion(Vector3.UP, span.normalized())).scaled_local(Vector3(1, span.length(), 1))
+
+
+func shift_throttle(change: int) -> void:
+	throttle_index = clampi(throttle_index + change, 0, DRIVE_SPEEDS.size() - 1)
+	update_throttle_lever()
+
+
+func update_throttle_lever() -> void:
+	throttle_lever.rotation.x = lerpf(.49, -.54, float(throttle_index) / (DRIVE_SPEEDS.size() - 1))
+
+
+func throttle_label() -> String:
+	return THROTTLE_NAMES[throttle_index]
+
+
 func add_wheel_mesh(parent: Node3D, radius: float, width: float, material: Material) -> void:
 	var mesh := CylinderMesh.new()
 	mesh.top_radius = radius
@@ -136,24 +205,31 @@ func ground_pose(at: Vector3, heading: float) -> Transform3D:
 	for wheel: Vector3 in WHEEL_POINTS:
 		var point := at + flat * wheel
 		point.y = river.ground_height(point.x, point.z)
-		if point.y < .14 or river.wet_clearance(point) > .26:
+		if point.y < .14 or (point.y < .55 and river.wet_clearance(point) > .26):
 			return Transform3D(Basis.IDENTITY, Vector3.INF)
 		contacts.append(point)
 	var forward := (contacts[0] + contacts[1] - contacts[2] - contacts[3]) * .5
 	var right := (contacts[1] + contacts[3] - contacts[0] - contacts[2]) * .5
 	var up := right.cross(forward).normalized()
-	if up.y < .91:
+	if up.y < LOWEST_UP:
 		return Transform3D(Basis.IDENTITY, Vector3.INF)
-	return Transform3D(Basis.looking_at(forward, up), (contacts[0] + contacts[1] + contacts[2] + contacts[3]) * .25)
+	var center := (contacts[0] + contacts[1] + contacts[2] + contacts[3]) * .25
+	center.y = maxf(center.y, river.ground_height(at.x, at.z) - .11)
+	return Transform3D(Basis.looking_at(forward, up), center)
 
 
-func clear_at(shape: Shape3D, pose: Transform3D, ignored: Array[RID]) -> bool:
+func clear_at(shape: Shape3D, pose: Transform3D, ignored: Array[RID], check_ground := true) -> bool:
 	var query := PhysicsShapeQueryParameters3D.new()
 	query.shape = shape
 	query.transform = pose
 	query.collision_mask = 1
 	query.exclude = ignored
-	return get_world_3d().direct_space_state.intersect_shape(query, 1).is_empty()
+	var hits := get_world_3d().direct_space_state.intersect_shape(query, 1 if check_ground else 16)
+	for hit in hits:
+		var obstacle: Node = hit.collider
+		if check_ground or obstacle == null or not obstacle.is_in_group("ottawa_terrain"):
+			return false
+	return true
 
 
 func near(player: CharacterBody3D, eye: Camera3D) -> bool:
@@ -168,26 +244,20 @@ func near(player: CharacterBody3D, eye: Camera3D) -> bool:
 func mount(player: CharacterBody3D) -> void:
 	rider = player
 	rider.add_collision_exception_with(self)
+	rider_visual.show()
 	position_rider()
 	rider.reset_physics_interpolation()
 	motor.play()
 
 
 func dismount() -> bool:
-	for offset: Vector3 in [Vector3(1.05, 0, .18), Vector3(-1.05, 0, .18),
-			Vector3(0, 0, 1.43), Vector3(0, 0, -1.37), Vector3(1.45, 0, -.72), Vector3(-1.45, 0, -.72)]:
-		var point := global_position + Basis(Vector3.UP, yaw) * offset
-		point.y = river.ground_height(point.x, point.z) + .065
-		if point.y < .16 or absf(point.y - global_position.y) > .65 or river.wet_clearance(point) > .26:
-			continue
-		var pose := Transform3D(Basis.IDENTITY, point + Vector3.UP * .84)
-		if not clear_at(exit_shape, pose, [rider.get_rid()]):
-			continue
-		rider.global_position = point
-		leave_seat()
-		return true
-	return false
-
+	var clear := VehicleExit.find(self, rider, Vector2(.77, 1.07), yaw, true)
+	if not clear.is_finite():
+		return false
+	rider.global_position = clear
+	rider.velocity = Vector3.UP * VehicleExit.LIFT
+	leave_seat()
+	return true
 
 func leave_for_flight() -> void:
 	if dismount():
@@ -205,28 +275,18 @@ func leave_seat() -> void:
 	rider_camera = null
 	chase_view = false
 	rider = null
+	rider_visual.hide()
 	speed = 0.0
 	blades = false
+	last_cut = Vector3.INF
 	motor.stop()
 	for lever in levers:
 		lever.rotation.x = 0.0
 
 
-func shift_throttle(change: int) -> void:
-	throttle_index = clampi(throttle_index + change, 0, DRIVE_SPEEDS.size() - 1)
-	update_throttle_lever()
-
-
-func update_throttle_lever() -> void:
-	throttle_lever.rotation.x = lerpf(.49, -.54, float(throttle_index) / (DRIVE_SPEEDS.size() - 1))
-
-
-func throttle_label() -> String:
-	return THROTTLE_NAMES[throttle_index]
-
-
 func update_rider_camera(camera: Camera3D) -> void:
 	rider_camera = camera
+	seated.head.visible = chase_view
 	if not chase_view:
 		camera.position = Vector3.UP * 1.58
 		camera.rotation = Vector3(camera.rotation.x, 0, 0)
@@ -247,7 +307,8 @@ func position_rider() -> void:
 func drive(delta: float, throttle: float, steering: float) -> float:
 	var start_yaw := yaw
 	var top_speed: float = DRIVE_SPEEDS[throttle_index]
-	var desired := throttle * (top_speed if throttle >= 0.0 else REVERSE_SPEED)
+	var grade := lerpf(.52, 1.0, smoothstep(LOWEST_UP, .96, global_basis.y.y))
+	var desired := throttle * (top_speed if throttle >= 0.0 else REVERSE_SPEED) * grade
 	var acceleration := 3.15 if absf(desired) > absf(speed) and desired * speed >= 0.0 else 6.8
 	speed = move_toward(speed, desired, delta * acceleration)
 	var turn := steering * TURN_SPEED * lerpf(1.0, .58, clampf(absf(speed) / top_speed, 0.0, 1.0)) * delta
@@ -262,6 +323,7 @@ func drive(delta: float, throttle: float, steering: float) -> float:
 	update_wheels(speed * delta, turned, steering)
 	for index in levers.size():
 		levers[index].rotation.x = -.27 * clampf(throttle + steering * (1.0 if index == 0 else -1.0), -1.0, 1.0)
+	pose_rider_arms()
 	var load := maxf(clampf(absf(speed) / top_speed, 0.0, 1.0), absf(steering) * .42)
 	motor.pitch_scale = lerpf(motor.pitch_scale, .82 + .44 * load + (.19 if blades else 0.0), minf(1.0, delta * 5.0))
 	motor.volume_db = -20.0 + 6.0 * load + (3.0 if blades else 0.0)
@@ -273,9 +335,10 @@ func drive(delta: float, throttle: float, steering: float) -> float:
 
 func try_pose(at: Vector3, heading: float) -> bool:
 	var pose := ground_pose(at, heading)
-	if not pose.origin.is_finite() or absf(pose.origin.y - global_position.y) > .19:
+	var run := Vector2(at.x - global_position.x, at.z - global_position.z).length()
+	if not pose.origin.is_finite() or absf(pose.origin.y - global_position.y) > .16 + run * 1.12:
 		return false
-	if not clear_at(body_shape, pose.translated_local(BODY_CENTER), [get_rid(), rider.get_rid()]):
+	if not clear_at(body_shape, pose.translated_local(BODY_CENTER), [get_rid(), rider.get_rid()], false):
 		return false
 	global_transform = pose
 	yaw = heading
@@ -297,32 +360,41 @@ func update_wheels(distance: float, turned: float, steering: float) -> void:
 func index_grass() -> void:
 	if not is_instance_valid(grass):
 		return
-	var instances := grass.multimesh
-	grass_cut.resize(instances.instance_count)
-	grass_heights.resize(instances.instance_count)
-	for index in instances.instance_count:
-		var tuft := instances.get_instance_transform(index)
-		grass_heights[index] = tuft.basis.y
-		var at := grass.to_global(tuft.origin)
+	grass_cut.resize(grass_transforms.size())
+	for index in grass_transforms.size():
+		var at := grass_point(index)
 		var cell := Vector2i(floori(at.x), floori(at.z))
 		if not grass_cells.has(cell):
 			grass_cells[cell] = []
 		grass_cells[cell].append(index)
 
 
+func grass_point(index: int) -> Vector3:
+	return grass.to_global(grass_transforms[index].origin)
+
+
 func cut_grass() -> void:
 	last_cut = to_global(CUT_DECK)
+	if shared_grass == null:
+		trim_at(global_transform)
+	else:
+		shared_grass.trim_at(global_transform)
+
+
+func trim_at(pose: Transform3D) -> void:
 	if not is_instance_valid(grass):
 		return
-	var center := Vector2i(floori(last_cut.x), floori(last_cut.z))
+	var deck := pose * CUT_DECK
+	var center := Vector2i(floori(deck.x), floori(deck.z))
+	var inverse := pose.affine_inverse()
 	var instances := grass.multimesh
 	for z in range(center.y - 1, center.y + 2):
 		for x in range(center.x - 1, center.x + 2):
 			for index: int in grass_cells.get(Vector2i(x, z), []):
 				if grass_cut[index]:
 					continue
-				var tuft := instances.get_instance_transform(index)
-				var local := to_local(grass.to_global(tuft.origin)) - CUT_DECK
+				var tuft := grass_transforms[index]
+				var local := inverse * grass.to_global(tuft.origin) - CUT_DECK
 				if absf(local.x) <= .71 and absf(local.z) <= .39:
 					tuft.basis.y *= CUT_HEIGHT
 					instances.set_instance_transform(index, tuft)
@@ -334,9 +406,7 @@ func regrow_grass(indices: Array) -> void:
 	for index: int in indices:
 		if not grass_cut[index]:
 			continue
-		var tuft := grass.multimesh.get_instance_transform(index)
-		tuft.basis.y = grass_heights[index]
-		grass.multimesh.set_instance_transform(index, tuft)
+		grass.multimesh.set_instance_transform(index, grass_transforms[index])
 		grass_cut[index] = 0
 	last_cut = Vector3.INF
 
