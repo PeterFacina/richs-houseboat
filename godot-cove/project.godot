@@ -1,0 +1,8 @@
+config_version=5
+
+[application]
+config/name="Temporary startup alert fixture"
+run/main_scene="res://fixture.tscn"
+
+[rendering]
+renderer/rendering_method="gl_compatibility"
