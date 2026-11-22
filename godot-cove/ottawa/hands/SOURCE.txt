@@ -9,6 +9,7 @@ Source: https://github.com/GodotVR/godot-xr-tools/tree/6c6189bdfcdf855052ef1aeb9
 Revision: 6c6189bdfcdf855052ef1aeb9f3e0ec4c7a7eb60
 
 Included: left/right Hand_Nails models, realistic skin/normal/ORM textures,
-and authored Default pose, Grip, Grip Shaft, Cup and Hold animations.
+and authored Default pose, Grip, Grip Shaft, Cup, Hold, Pinch Tight,
+Grip 2 and Grip 3 animations, all from the pinned revision above.
 The game supplies its own desktop hand controller and attachments.
 No XR plugin or headset is required. No assets are downloaded at runtime.

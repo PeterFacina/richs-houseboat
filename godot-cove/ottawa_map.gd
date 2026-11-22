@@ -121,15 +121,18 @@ func build() -> void:
 	day_sky = scanned_surface("day_sky")
 	bind_day_sky(sky_paint)
 	world.environment.sky.sky_material = sky_paint
-	world.environment.fog_density = 0.000135
-	world.environment.fog_light_color = Color("#95abb4")
-	world.environment.ambient_light_color = Color("#dce3eb")
-	world.environment.ambient_light_energy = 0.41
+	world.environment.fog_density = .00010
+	world.environment.fog_light_color = Color("#b7bdb4")
+	world.environment.ambient_light_color = Color("#d1dce0")
+	world.environment.ambient_light_energy = .29
+	world.environment.tonemap_mode = Environment.TONE_MAPPER_FILMIC
+	world.environment.tonemap_white = 6.0
+	world.environment.tonemap_exposure = 1.05
 	var sun: DirectionalLight3D = get_child(1)
 	landscape_light = sun
 	landscape_environment = world.environment
 	sun.light_color = Color("#fff6ed")
-	sun.light_energy = 0.68
+	sun.light_energy = .82
 	sun.rotation_degrees = Vector3(-48.0, -42.0, 0)
 	sun.directional_shadow_max_distance = 230
 	sun_direction = sun.global_basis.z
@@ -532,11 +535,11 @@ func set_evening(amount: float) -> void:
 	last_evening = amount
 	landscape_light.rotation_degrees = Vector3(lerpf(-48.0, -7.5, amount), lerpf(-42.0, -34.0, amount), 0)
 	landscape_light.light_color = Color("#fff6ed").lerp(Color("#ffbe87"), amount)
-	landscape_light.light_energy = lerpf(.68, .49, amount)
-	landscape_environment.ambient_light_color = Color("#dce3eb").lerp(Color("#a3b8eb"), amount)
-	landscape_environment.ambient_light_energy = lerpf(.41, .54, amount)
-	landscape_environment.fog_light_color = Color("#95abb4").lerp(Color("#7687a5"), amount)
-	landscape_environment.fog_density = lerpf(.000135, .00058, amount) * fog_scale
+	landscape_light.light_energy = lerpf(.82, .52, amount)
+	landscape_environment.ambient_light_color = Color("#d1dce0").lerp(Color("#a6b3d0"), amount)
+	landscape_environment.ambient_light_energy = lerpf(.29, .36, amount)
+	landscape_environment.fog_light_color = Color("#b7bdb4").lerp(Color("#8190a4"), amount)
+	landscape_environment.fog_density = lerpf(.00010, .00038, amount) * fog_scale
 	sun_direction = landscape_light.global_basis.z
 	sky_paint.set_shader_parameter("evening", amount)
 	windows.set_shader_parameter("evening", amount)

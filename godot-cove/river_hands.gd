@@ -16,3 +16,9 @@ static func set_pose(hand: Node3D, pose: String) -> void:
 
 static func wrist(hand: Node3D) -> Vector3:
 	return hand.get("wrist_anchor")
+
+
+static func align(hand: Node3D, point: Vector3, orientation: Basis, pose := "shaft") -> void:
+	set_pose(hand, pose)
+	var contact: Vector3 = hand.call("contact_point")
+	hand.transform = Transform3D(orientation, point - orientation * contact)

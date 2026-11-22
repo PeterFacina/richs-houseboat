@@ -2,6 +2,7 @@ shader_type spatial;
 render_mode diffuse_burley;
 
 uniform sampler2D portrait : source_color, filter_linear_mipmap_anisotropic, repeat_disable;
+uniform vec4 skin_tone : source_color = vec4(.757, .545, .443, 1.0);
 uniform float jaw_open : hint_range(0.0, 1.0) = 0.0;
 uniform mat3 pose_basis = mat3(1.0);
 varying float face_weight;
@@ -30,8 +31,9 @@ void fragment() {
 		float teeth = (1.0 - smoothstep(.16, .36, space / opening)) * smoothstep(.65, .98, width);
 		skin = mix(vec3(.067, .016, .020), vec3(.69, .55, .42), teeth);
 	}
-	vec3 side = texture(portrait, vec2(.10 + .029 * sin(UV.y * 10.0), .46)).rgb;
-	ALBEDO = mix(side * vec3(.89, .92, .96), skin, face_weight);
+	float warmth = .975 + .025 * sin(UV.y * 5.0);
+	vec3 side = skin_tone.rgb * warmth;
+	ALBEDO = mix(side, skin, face_weight);
 	ROUGHNESS = .82;
 	SPECULAR = .30;
 }

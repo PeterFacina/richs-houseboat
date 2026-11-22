@@ -1,5 +1,5 @@
 shader_type spatial;
-render_mode diffuse_burley, shadows_disabled;
+render_mode diffuse_burley;
 
 uniform vec4 skin : source_color;
 uniform float elbow_angle = -.24;

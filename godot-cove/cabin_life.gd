@@ -10,6 +10,8 @@ const Boat = preload("res://houseboat.gd")
 const Map = preload("res://ottawa_map.gd")
 const WaterFX = preload("res://fishing_water_fx.gd")
 const Rig = preload("res://fishing_rig.gd")
+const Hands = preload("res://river_hands.gd")
+const Actions = preload("res://river_hand_actions.gd")
 const Props = preload("res://cabin_props.gd")
 const HIGH_SECONDS := 96.0
 const GRAVITY := 11.8
@@ -55,6 +57,8 @@ var bud: MeshInstance3D
 var towel: MeshInstance3D
 var active := -1
 var action_age := 0.0
+var action_serial := 0
+var rig_model: Rig
 var reach := Vector3.ZERO
 var high_from := -100.0
 var high_until := 0.0
@@ -80,6 +84,7 @@ var liquid_mesh: SphereMesh
 
 func setup(boat: Boat, character: CharacterBody3D, camera: Camera3D, map: Map,
 		water_fx: WaterFX, rig: Rig, hud: Control) -> void:
+	rig_model = rig
 	vessel = boat
 	player = character
 	eye = camera
@@ -185,7 +190,7 @@ func build_viewmodel(rig: Rig) -> void:
 	towel = Kit.box_at(holding, Vector3.ZERO, Vector3(.141, .022, .115), Kit.paint(Color("#bbad7b"), .88))
 	var fabric := Kit.paint(Color("#4a5549"), .93)
 	for _side in 2:
-		sleeves.append(Props.tube(holding, Vector3.UP, Vector3.ZERO, .054, .037, fabric))
+		sleeves.append(rig.make_sleeve(holding))
 	for prop in holding.find_children("*", "GeometryInstance3D", true, false):
 		prop.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	holding.hide()
@@ -305,6 +310,7 @@ func use_focus() -> bool:
 	if focus == SPILL:
 		return true
 	active = focus
+	action_serial += 1
 	action_age = 0.0
 	reach = eye.to_local(supplies[active].global_position)
 	reach.x = clampf(reach.x, -.65, .65)
@@ -347,10 +353,7 @@ func update_action(delta: float) -> void:
 			animate_pen(item, previous)
 		_:
 			animate_beer(item, previous)
-	right_hand.position = item.transform * Vector3(.051, .014 if active == Props.Item.BONG else .016, .032)
-	right_hand.rotation = item.rotation + Vector3(-.12, -.08, -.21 if active == Props.Item.BONG else -.07)
-	if action_age < .30:
-		right_hand.position = base + Vector3(.044, -.008, .021)
+	pose_action(action_age)
 
 
 func animate_bong(item: Node3D, previous: float) -> void:
@@ -434,9 +437,7 @@ func update_sleeves() -> void:
 		if sleeve.visible:
 			var wrist: Vector3 = hand.transform * hand.get("wrist_anchor")
 			var shoulder := Vector3(side * .38, -.655, -.165)
-			sleeve.position = wrist.lerp(shoulder, .5)
-			sleeve.quaternion = Quaternion(Vector3.UP, (wrist - shoulder).normalized())
-			sleeve.scale = Vector3(1, wrist.distance_to(shoulder), 1)
+			rig_model.fit_cylinder(sleeve, wrist, shoulder)
 
 
 func crossed(previous: float, point: float) -> bool:
@@ -725,3 +726,47 @@ func smoke_card() -> QuadMesh:
 	mesh.material = paint
 	mesh.size = Vector2(.48, .39)
 	return mesh
+
+
+func pose_action(age: float) -> void:
+	if active < 0 or not holding.visible:
+		return
+	var item := hand_items[active]
+	item.transform = Actions.prop_pose(active, age, reach)
+	Actions.attach(right_hand, item.transform, Actions.right_grip(active), Actions.right_pose(active))
+	left_hand.hide()
+	if active == Props.Item.BONG:
+		var packing := age >= .59 and age < 1.82
+		var lighting := age >= 1.72 and age < 3.48
+		var bowl: Vector3 = item.transform * Vector3(-.108, .151, .005)
+		if packing and not lighting:
+			Hands.align(left_hand, bowl + Vector3.UP * .035, Basis.from_euler(Vector3(.3, -.2, -.2)), "pinch")
+			left_hand.show()
+			bud.position = bowl + Vector3.UP * .025
+		if lighting:
+			lighter.basis = Basis.from_euler(Vector3(.08, .0, -.15))
+			lighter.position = bowl + Vector3.UP * .008 - lighter.basis * Vector3(.003, .076, 0)
+			Actions.attach(left_hand, lighter.transform, Vector3(0, .025, 0), "pinch")
+			left_hand.show()
+	elif active in [Props.Item.MOLSON, Props.Item.MILLER] and age >= .58 and age < 1.23:
+		Actions.attach(left_hand, item.transform, Vector3(0, .125, -.004), "pinch")
+		left_hand.show()
+	update_sleeves()
+
+
+func _process(_delta: float) -> void:
+	if active >= 0:
+		pose_action(action_age + Engine.get_physics_interpolation_fraction() / float(Engine.physics_ticks_per_second))
+
+
+func visual_packet() -> Dictionary:
+	if active < 0 or not holding.visible:
+		return {"use_item": -1}
+	var prop_pose := hand_items[active].transform
+	var lighter_pose := lighter.transform
+	var offset := Actions.world_offset(active, action_age)
+	prop_pose.origin += offset
+	lighter_pose.origin += offset
+	return {"use_item": active, "use_age": action_age, "use_serial": action_serial,
+		"use_prop": prop_pose, "use_lighter": lighter_pose,
+		"lighter_visible": lighter.visible, "use_smoke": active in [Props.Item.BONG, Props.Item.PEN]}

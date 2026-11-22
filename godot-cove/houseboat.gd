@@ -8,6 +8,8 @@ const BERTH := Vector3(0.0, 0.0, 12.0)
 const HELM := Vector3(0.0, 0.80, -1.44)
 const SPAN := [Vector2(-3.8, 0.0), Vector2(-3.31, 0.76), Vector2(-2.63, 1.30),
 	Vector2(-1.66, 1.43), Vector2(1.84, 1.43), Vector2(3.15, 1.17), Vector2(3.30, 0.97)]
+const LONG_SPAN := [Vector2(-3.8, 0), Vector2(-3.31, .76), Vector2(-2.63, 1.3),
+	Vector2(-1.66, 1.43), Vector2(5.95, 1.43), Vector2(6.55, 1.25), Vector2(6.66, 1.12)]
 
 var center := BERTH
 var heading := 0.0
@@ -38,7 +40,7 @@ func _ready() -> void:
 	geometry()
 	if river_engine:
 		motor = Outboard.new()
-		motor.position = Vector3(0, .30, 2.11) if skiff else Vector3(0, .55, 3.37)
+		motor.position = Vector3(0, .30, 2.11) if skiff else Vector3(0, .55, 6.72)
 		if skiff:
 			motor.electric = true
 			motor.scale = Vector3.ONE * .60
@@ -58,7 +60,7 @@ func supports_deck(world: Vector3) -> bool:
 	var local := to_local(world)
 	if skiff:
 		return absf(local.x) < 1.03 and local.z > -2.28 and local.z < 2.05 and local.y > .19 and local.y < 2.26
-	return absf(local.x) < 1.52 and local.z > -3.65 and local.z < 3.3 and local.y > .37 and local.y < 2.9
+	return absf(local.x) < 1.52 and local.z > -3.65 and local.z < 6.6 and local.y > .25 and local.y < 2.9
 
 
 func sail(delta: float, clock: float, driving: bool, rudder: float) -> void:
@@ -109,7 +111,7 @@ func sail_river(delta: float, clock: float) -> void:
 	if departed:
 		var current: Vector3 = water_flow.call(center, clock)
 		var next := center + (fore * speed + current * .78) * delta
-		if in_channel(next) and in_channel(next + fore * 3.35 * length) and in_channel(next - fore * 3.61 * length) \
+		if in_channel(next) and in_channel(next + fore * 3.35 * length) and in_channel(next - fore * (3.61 if skiff else 6.65) * length) \
 				and in_channel(next + right * 1.39 * beam) and in_channel(next - right * 1.39 * beam):
 			center = next
 		else:
@@ -117,10 +119,10 @@ func sail_river(delta: float, clock: float) -> void:
 	var port := sample(center - right * 1.21 * beam, clock)
 	var starboard := sample(center + right * 1.21 * beam, clock)
 	var bow := sample(center + fore * 2.78 * length, clock)
-	var stern := sample(center - fore * 2.61 * length, clock)
+	var stern := sample(center - fore * (2.61 if skiff else 5.35) * length, clock)
 	foil_lift = lerpf(foil_lift, smoothstep(4.8, 9.6, speed) if foil else 0.0, 1.0 - exp(-delta * 1.8))
 	var ride := Vector3((port + starboard + bow + stern) * .25,
-		clampf(atan2(bow - stern, 5.39), -.093, .093) + smoothstep(1.05, top_speed, absf(speed)) * .027,
+		clampf(atan2(bow - stern, 5.39 if skiff else 8.13), -.093, .093) + smoothstep(1.05, top_speed, absf(speed)) * .027,
 		clampf(atan2(starboard - port, 2.42) + motor.steering * steer_force * .054, -.145, .145))
 	wave_pose = wave_pose.lerp(ride, 1.0 - exp(-delta * 6.7))
 	var wave_scale := lerpf(1.0, .22, foil_lift)
@@ -149,9 +151,10 @@ func sample(point: Vector3, clock: float) -> float:
 func band(low: float, high: float, low_scale: float, high_scale: float, material: Material, parent: Node3D) -> MeshInstance3D:
 	var mesh := SurfaceTool.new()
 	mesh.begin(Mesh.PRIMITIVE_TRIANGLES)
-	for i in range(SPAN.size() - 1):
-		var a: Vector2 = SPAN[i]
-		var b: Vector2 = SPAN[i + 1]
+	var outline := SPAN if skiff else LONG_SPAN
+	for i in range(outline.size() - 1):
+		var a: Vector2 = outline[i]
+		var b: Vector2 = outline[i + 1]
 		for side in [-1.0, 1.0]:
 			var ll := Vector3(a.y * low_scale * side, low, a.x)
 			var lr := Vector3(b.y * low_scale * side, low, b.x)
@@ -240,9 +243,10 @@ func geometry() -> void:
 		float_bumper.radial_segments = 10
 		for z in [-1.1, 1.70]:
 			SceneKit.mesh_at(self, float_bumper, Vector3(side * 1.44, 0.55, z), rubber)
-	SceneKit.box_at(classic_exterior, Vector3(0, 1.38, 2.70), Vector3(2.03, 1.23, 0.11), red)
-	SceneKit.box_at(classic_exterior, Vector3(0, 2.12, 2.69), Vector3(1.60, 0.48, 0.12), glass)
-	SceneKit.collider(self, Vector3(0, 1.65, 2.70), Vector3(2.03, 1.8, 0.12))
+	for side in [-1.0, 1.0]:
+		SceneKit.box_at(classic_exterior, Vector3(side * .77, 1.66, 2.70), Vector3(.49, 1.8, .12), red)
+		SceneKit.collider(self, Vector3(side * .77, 1.66, 2.70), Vector3(.49, 1.8, .12))
+	SceneKit.box_at(classic_exterior, Vector3(0, 2.50, 2.70), Vector3(1.05, .08, .12), cream)
 	for x in [-0.76, 0.76]:
 		SceneKit.box_at(classic_exterior, Vector3(x, 1.63, -0.44), Vector3(0.41, 1.69, 0.15), red)
 		SceneKit.collider(self, Vector3(x, 1.63, -0.44), Vector3(0.41, 1.69, 0.15))
@@ -281,8 +285,7 @@ func geometry() -> void:
 	sign.rotation.y = -PI / 2.0
 	sign.modulate = Color("#eeddb1")
 	classic_exterior.add_child(sign)
-	if river_engine:
-		stern_fittings(black, cream)
+	# The old ladder across the aft bulkhead is removed for the new doorway.
 
 
 func skiff_geometry() -> void:

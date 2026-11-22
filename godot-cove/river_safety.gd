@@ -55,8 +55,8 @@ func find_near(center: Vector3, radius := 4.0) -> Vector3:
 
 func tick(delta: float) -> void:
 	cooldown = maxf(0, cooldown - delta)
-	if game.flying or game.swimming or game.driving or game.mower.rider != null \
-			or game.marina_cars.active >= 0 or game.campaign.dive.active:
+	if game.flying or game.swimming or game.driving or game.in_aircraft() or game.mower.rider != null \
+			or game.marina_cars.active >= 0 or game.campaign.dive.active or game.campaign.amenities.seated():
 		embedded_time = 0
 		return
 	var at: Vector3 = game.player.global_position

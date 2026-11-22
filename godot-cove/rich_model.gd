@@ -24,7 +24,7 @@ func build() -> void:
 	var shirt := fabric(Color("#c6a5a0"), .80)
 	var collar := fabric(Color("#b69592"), .28)
 	var arm_skin := Kit.paint(Color("#c18b71"), .83)
-	arm_skin.disable_receive_shadows = true
+	arm_skin.roughness = .87
 	for side: float in [-1.0, 1.0]:
 		build_leg(side, shorts, arm_skin)
 	var seat := loft(self, [
@@ -140,6 +140,7 @@ func build_head(skin: Material) -> void:
 	face = ShaderMaterial.new()
 	face.shader = preload("res://rich_skin.gdshader")
 	face.set_shader_parameter("portrait", ImageTexture.create_from_image(photo))
+	face.set_shader_parameter("skin_tone", skin.albedo_color)
 	# Keep the collar end in torso space so the skin can bend into the head.
 	var skin_mesh := loft(torso, [
 		Vector4(-.066, .065, .064, .068), Vector4(-.051, .062, .061, .065),
@@ -326,6 +327,15 @@ static func fabric(color: Color, wear: float) -> ShaderMaterial:
 
 static func loft(parent: Node3D, rings: Array[Vector4], paint: Material, sides := 28,
 		folds := 0.0, portrait := false) -> MeshInstance3D:
+	if portrait:
+		# More vertical samples let the nose, eye sockets and mouth shaping exist
+		# in the mesh instead of depending entirely on the front portrait.
+		var detailed: Array[Vector4] = []
+		for row in rings.size() - 1:
+			for sub in 3:
+				detailed.append(rings[row].lerp(rings[row + 1], sub / 3.0))
+		detailed.append(rings[-1])
+		rings = detailed
 	var shape := SurfaceTool.new()
 	shape.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var vertices := PackedVector3Array()
@@ -348,7 +358,11 @@ static func loft(parent: Node3D, rings: Array[Vector4], paint: Material, sides :
 				var tip := .036 * exp(-pow(x / .020, 2) - pow((y - .103) / .012, 2))
 				var cheeks := .010 * exp(-pow((absf(x) - .043) / .018, 2) - pow((y - .108) / .026, 2))
 				var lip := .008 * exp(-pow(x / .038, 2) - pow((y - .073) / .021, 2))
-				z += (bridge + tip + cheeks + lip) * smoothstep(.07, .67, toward)
+				var sockets := -.004 * exp(-pow((absf(x) - .033) / .020, 2) - pow((y - .136) / .012, 2))
+				var chin := .006 * exp(-pow(x / .032, 2) - pow((y - .041) / .017, 2))
+				var mouth := -.0025 * exp(-pow(x / .029, 2) - pow((y - .075) / .003, 2))
+				var nostrils := -.0025 * exp(-pow((absf(x) - .014) / .005, 2) - pow((y - .100) / .005, 2))
+				z += (bridge + tip + cheeks + lip + sockets + chin + mouth + nostrils) * smoothstep(.07, .67, toward)
 				z -= .024 * (1.0 - smoothstep(-.043, .058, y))
 				uv = Vector2(.50 + x / .243, lerpf(.988, .014, clampf(y / HEAD_HEIGHT, 0.0, 1.0)))
 			vertices.append(Vector3(x, ring.x, z))
