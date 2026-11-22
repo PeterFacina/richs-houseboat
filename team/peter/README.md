@@ -9,3 +9,9 @@
 
 - Record the baseline commit and engine version after a clean clone runs.
 - Link active branches, pull requests, and playtest releases here.
+
+## Workflow demo
+
+- Task: document the first team playtest.
+- When the newest game arrives, record the baseline commit and Godot version.
+- Have one player host and one join. Record whether both players see crew movement and pointing.
