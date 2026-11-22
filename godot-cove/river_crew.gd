@@ -1,0 +1,262 @@
+extends Node3D
+
+signal changed
+signal requested(peer: int, action: String, argument: Variant)
+signal command_received(throttle: float, rudder: float)
+signal state_received(state: Dictionary, dock: int, captain: int, revision: int)
+signal ship_received(state: Dictionary)
+signal result_received(message: String, board_at: int, use_boat: bool)
+signal rich_heard(line_id: String, toward: Vector3)
+signal member_left(peer: int)
+
+const Avatar = preload("res://crew_avatar.gd")
+const PORT := 28460
+const MAX_GUESTS := 3
+
+var mode := "solo"
+var people: Dictionary = {}
+var poses: Dictionary = {}
+var avatars: Dictionary = {}
+var local_name := "Rich"
+var local_profile := ""
+var last_address := ""
+var status := ""
+var packet_timer := 0.0
+var boat: Node3D
+
+
+func _ready() -> void:
+	multiplayer.peer_connected.connect(peer_arrived)
+	multiplayer.peer_disconnected.connect(peer_departed)
+	multiplayer.connected_to_server.connect(joined_server)
+	multiplayer.connection_failed.connect(connection_failed)
+	multiplayer.server_disconnected.connect(server_closed)
+
+
+func on_server() -> bool:
+	return mode == "host"
+
+
+func is_guest() -> bool:
+	return mode == "guest" or mode == "joining"
+
+
+func my_id() -> int:
+	return multiplayer.get_unique_id() if mode != "solo" else 1
+
+
+func clean_name(display_name: String) -> String:
+	var result := display_name.strip_edges().replace("\n", " ").replace("\r", "").substr(0, 18)
+	return result if not result.is_empty() else "River crew"
+
+
+func host(display_name: String) -> void:
+	if mode != "solo":
+		return
+	var listener := ENetMultiplayerPeer.new()
+	var fail := listener.create_server(PORT, MAX_GUESTS, 3)
+	if fail != OK:
+		status = "Could not host on UDP %d (%s)." % [PORT, error_string(fail)]
+		changed.emit()
+		return
+	local_name = clean_name(display_name)
+	people[1] = {"name": local_name, "profile": local_profile}
+	mode = "host"
+	multiplayer.multiplayer_peer = listener
+	status = "Hosting on UDP %d   •   %s" % [PORT, local_addresses()]
+	changed.emit()
+
+
+func join(display_name: String, host_address: String) -> void:
+	if mode != "solo":
+		return
+	last_address = host_address.strip_edges()
+	if last_address.is_empty():
+		status = "Enter the host's LAN IP."
+		changed.emit()
+		return
+	var connection := ENetMultiplayerPeer.new()
+	var fail := connection.create_client(last_address, PORT, 3)
+	if fail != OK:
+		status = "Could not join (%s)." % error_string(fail)
+		changed.emit()
+		return
+	local_name = clean_name(display_name)
+	mode = "joining"
+	multiplayer.multiplayer_peer = connection
+	status = "Connecting to %s…" % last_address
+	changed.emit()
+
+
+func local_addresses() -> String:
+	var found := PackedStringArray()
+	for address: String in IP.get_local_addresses():
+		if "." in address and not address.begins_with("127.") and not address.begins_with("169.254."):
+			found.append(address)
+	return " / ".join(found) if not found.is_empty() else "127.0.0.1"
+
+
+func stop(message := "Returned to solo play.") -> void:
+	mode = "solo"
+	status = message
+	multiplayer.multiplayer_peer = OfflineMultiplayerPeer.new()
+	for avatar: Node3D in avatars.values():
+		avatar.queue_free()
+	avatars.clear()
+	poses.clear()
+	people.clear()
+	changed.emit()
+
+
+func peer_arrived(_id: int) -> void:
+	if on_server():
+		status = "Hosting on UDP %d   •   %s" % [PORT, local_addresses()]
+
+
+func peer_departed(id: int) -> void:
+	people.erase(id)
+	poses.erase(id)
+	if avatars.has(id):
+		avatars[id].queue_free()
+		avatars.erase(id)
+	member_left.emit(id)
+	changed.emit()
+
+
+func joined_server() -> void:
+	mode = "guest"
+	status = "Joined %s." % last_address
+	register.rpc_id(1, local_name, local_profile)
+	changed.emit()
+
+
+func connection_failed() -> void:
+	stop("Could not reach the host. Check the address and UDP %d." % PORT)
+
+
+func server_closed() -> void:
+	stop("The host left. Your solo river has been restored.")
+
+
+func person(peer: int) -> Dictionary:
+	return {"name": local_name, "profile": local_profile} if peer == my_id() else people.get(peer, {})
+
+
+@rpc("any_peer", "call_remote", "reliable")
+func register(display_name: String, profile: String) -> void:
+	if not on_server() or profile.length() != 32:
+		return
+	var peer := multiplayer.get_remote_sender_id()
+	if profile == local_profile:
+		# Two local test instances can share a Godot user directory.
+		profile = ("%032x" % peer).right(32)
+	people[peer] = {"name": clean_name(display_name), "profile": profile}
+	roster.rpc(people)
+	requested.emit(peer, "connected", null)
+	changed.emit()
+
+
+@rpc("authority", "call_remote", "reliable")
+func roster(names: Dictionary) -> void:
+	people = names
+	changed.emit()
+
+
+@rpc("any_peer", "call_remote", "reliable")
+func order(action: String, argument: Variant) -> void:
+	var peer := multiplayer.get_remote_sender_id()
+	if on_server() and people.has(peer) and action != "connected":
+		requested.emit(peer, action, argument)
+
+
+@rpc("authority", "call_remote", "reliable")
+func share_state(state: Dictionary, dock: int, captain: int, revision: int) -> void:
+	state_received.emit(state, dock, captain, revision)
+
+
+@rpc("authority", "call_remote", "reliable")
+func result(message: String, board_at: int, use_boat: bool) -> void:
+	result_received.emit(message, board_at, use_boat)
+
+
+@rpc("authority", "call_remote", "reliable")
+func rich_line(line_id: String, toward: Vector3) -> void:
+	rich_heard.emit(line_id, toward)
+
+
+@rpc("authority", "call_remote", "unreliable_ordered", 1)
+func share_ship(state: Dictionary) -> void:
+	ship_received.emit(state)
+
+
+@rpc("any_peer", "call_remote", "unreliable_ordered", 2)
+func steer(throttle: float, rudder: float) -> void:
+	if on_server() and is_finite(throttle) and is_finite(rudder):
+		if int(get_meta("captain", 0)) == multiplayer.get_remote_sender_id():
+			command_received.emit(clampf(throttle, -.32, 1.0), clampf(rudder, -1.0, 1.0))
+
+
+@rpc("any_peer", "call_remote", "unreliable_ordered", 2)
+func pose(position: Vector3, turn: float, onboard: bool, animation: Dictionary) -> void:
+	var peer := multiplayer.get_remote_sender_id()
+	if not people.has(peer) or not position.is_finite() or not is_finite(turn):
+		return
+	if onboard and (absf(position.x) > 2.6 or absf(position.z) > 4.1 or absf(position.y) > 4.0):
+		return
+	if not onboard and (position.x < 0.0 or position.z < 0.0 or position.x > 31500 or position.z > 22600):
+		return
+	var visual := {}
+	for key in ["move", "end", "fish", "direction"]:
+		var point: Variant = animation.get(key)
+		if point is Vector3 and point.is_finite():
+			visual[key] = point
+	for key in ["rod", "line", "float"]:
+		visual[key] = animation.get(key, false) == true
+	for key in ["stage", "species", "length", "hook_id"]:
+		var value: Variant = animation.get(key)
+		if value is int:
+			visual[key] = value
+	for key in ["age", "pitch", "tension", "reel", "reach", "scoop"]:
+		var amount: Variant = animation.get(key)
+		if amount is float and is_finite(amount):
+			visual[key] = clampf(amount, -1.5, 20.0 if key == "age" else 1.5)
+	var tool: Variant = animation.get("tool")
+	if tool is String and tool in ["net", "cooler", "lamp", "helm"]:
+		visual.tool = tool
+	poses[peer] = {"at": position, "yaw": wrapf(turn, -PI, PI), "onboard": onboard, "animation": visual,
+		"received": Time.get_ticks_msec()}
+
+
+func last_pose(peer: int) -> Dictionary:
+	var sample: Dictionary = poses.get(peer, {})
+	if sample.is_empty():
+		return sample
+	var at: Vector3 = sample.at
+	var facing: float = sample.yaw + (boat.rotation.y if sample.onboard else 0.0)
+	return {"at": boat.to_global(at) if sample.onboard else at, "onboard": sample.onboard,
+		"yaw": facing, "pitch": sample.animation.get("pitch", 0.0)}
+
+
+func tick(delta: float, actor: CharacterBody3D, onboard: bool, yaw: float, visual: Callable, clock: float, eye: Vector3) -> bool:
+	if mode not in ["host", "guest"]:
+		return false
+	if mode == "host" and people.size() < 2:
+		return false
+	for peer: int in poses:
+		if not people.has(peer):
+			continue
+		if not avatars.has(peer):
+			var avatar := Avatar.new()
+			add_child(avatar)
+			avatar.setup(str(people[peer].name), people.keys().find(peer))
+			avatars[peer] = avatar
+		var avatar: Avatar = avatars[peer]
+		var sample: Dictionary = poses[peer]
+		avatar.apply_sample(sample, boat, delta, clock, eye)
+	packet_timer += delta
+	if packet_timer < .064:
+		return false
+	packet_timer = 0.0
+	pose.rpc(boat.to_local(actor.global_position) if onboard else actor.global_position,
+		yaw - boat.rotation.y if onboard else yaw, onboard, visual.call())
+	return true

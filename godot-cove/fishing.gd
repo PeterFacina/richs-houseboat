@@ -1,0 +1,1510 @@
+extends "res://cove.gd"
+
+const Ottawa = preload("res://ottawa_map.gd")
+const Rig = preload("res://fishing_rig.gd")
+const WaterFX = preload("res://fishing_water_fx.gd")
+const Fish = preload("res://river_fish.gd")
+const Species = preload("res://fish_species.gd")
+const Stock = preload("res://river_stock.gd")
+const Finder = preload("res://fish_finder.gd")
+const Guide = preload("res://fish_guide.gd")
+const Cabin = preload("res://cabin_life.gd")
+const Trophy = preload("res://trophy_muskie.gd")
+const Campaign = preload("res://river_campaign.gd")
+const MarinaCars = preload("res://marina_cars.gd")
+const Wharf = preload("res://marina_wharf.gd")
+const Backpack = preload("res://river_backpack.gd")
+const Cheats = preload("res://river_cheats.gd")
+const LawnMower = preload("res://lawn_mower.gd")
+const ShannonJob = preload("res://shannon_job.gd")
+const PublicWorks = preload("res://public_works.gd")
+const JOURNAL := "user://ottawa_catches.json"
+const WINDUP := 0.19
+const SWIM_ENTRY_DEPTH := 1.16
+const SWIM_EXIT_DEPTH := .95
+const SWIM_FEET_DEPTH := 1.22
+enum Fishing { READY, CASTING, WAITING, BITE, FIGHT, RETRIEVING, NET_READY, LANDING, DISPLAY, RELEASING }
+enum ChartDestination { MARINA, SWISHA, CHALK_RIVER, LAMURE, BOAT }
+const TELEPORT_NAMES := {
+	ChartDestination.MARINA: "Deep River Marina",
+	ChartDestination.SWISHA: "Swisha Dam",
+	ChartDestination.CHALK_RIVER: "Chalk River Labs",
+	ChartDestination.LAMURE: "Lamure Beach",
+	ChartDestination.BOAT: "Return to boat",
+}
+
+var river: Ottawa
+var rig: Rig
+var effects: WaterFX
+var fish: Fish
+var stock: Stock
+var sonar: Finder
+var sonar_overlay: TextureRect
+var fish_guide: Guide
+var cabin: Cabin
+var trophy: Trophy
+var campaign: Campaign
+var marina_cars: MarinaCars
+var backpack: Backpack
+var cheats: Cheats
+var cheat_mouse_mode := Input.MOUSE_MODE_CONFINED
+var backpack_mouse_mode := Input.MOUSE_MODE_CONFINED
+var rig_slot := 0
+var strike_depth := .45
+var fight_profile: Dictionary = {}
+var fishing := Fishing.READY
+var cast_site: Vector3
+var float_site: Vector3
+var line_end: Vector3
+var hooked_head: Vector3
+var hooked_motion := Vector3.ZERO
+var swim_heading := Vector3.FORWARD
+var net_site: Vector3
+var state_age := 0.0
+var flight_time := 0.65
+var bite_at := 0.0
+var tap_at := 0.0
+var tap_done := false
+var drag_setting := 0.61
+var line_out := 0.0
+var line_tension := 0.0
+var strain := 0.0
+var slack_seconds := 0.0
+var fight_age := 0.0
+var run_start := 0.0
+var run_end := 1.0
+var run_turn := 1.0
+var jump_at := -10.0
+var jumps := 0
+var on_top := false
+var reel_rate := 0.0
+var payout := 0.0
+var hook_motion := 0.0
+var catch_type := 0
+var catch_length := 0
+var catch_weight := 0.0
+var hook_id := 0
+var crew_scoop_helper := 0
+var crew_scoop_name := ""
+var catch_count := 0
+var catch_note := ""
+var note_until := 0.0
+var live_label: Label
+var tension_fill: StyleBoxFlat
+var random := RandomNumberGenerator.new()
+var journal: Array = []
+var chart: Control
+var chart_map: TextureRect
+var boat_dot: Label
+var journal_label: Label
+var graphics := preload("res://river_graphics.gd").new()
+var teleport_dialog: ConfirmationDialog
+var teleport_status: Label
+var return_button: Button
+var teleport_destination: ChartDestination
+var can_return_to_boat := false
+var swimming := false
+var target_index := -1
+var rod_pressed := false
+var interact_pressed := false
+var mower := LawnMower.new()
+var spare_mower := LawnMower.new()
+var shannon_job := ShannonJob.new()
+var public_works := PublicWorks.new()
+var flying := false
+
+
+func _ready() -> void:
+	random.randomize()
+	river = Ottawa.new()
+	add_child(river)
+	river.build()
+	vessel = Boat.new()
+	vessel.center = river.point(1)
+	vessel.top_speed = 6.5
+	vessel.water_check = river.can_sail
+	vessel.water_flow = river.downstream
+	vessel.wave_sampler = river.wave_height
+	vessel.river_engine = true
+	vessel.hull_name = "RICH'S"
+	vessel.heading = 0.0
+	add_child(vessel)
+	spawn_point = vessel.to_global(Vector3(-0.31, 0.81, -2.62))
+	yaw = 1.07
+	pitch = -0.27
+	build_player()
+	eye.near = .070
+	graphics.load_setting()
+	graphics.apply(river, eye)
+	boarded = true
+	rig = Rig.new()
+	eye.add_child(rig)
+	rig.build_fists(eye)
+	rig.hide()
+	effects = WaterFX.new()
+	effects.wave_sampler = river.wave_height
+	add_child(effects)
+	fish = Fish.new()
+	add_child(fish)
+	fish.hide()
+	build_hud()
+	fps.offset_left = -228
+	fps.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	build_tension_display()
+	backpack = Backpack.new()
+	hud.add_child(backpack)
+	backpack.equip_requested.connect(equip_gear)
+	backpack.open_requested.connect(open_backpack)
+	backpack.dismissed.connect(close_backpack)
+	trophy = Trophy.new(river)
+	cabin = Cabin.new()
+	add_child(cabin)
+	cabin.setup(vessel as Boat, player, eye, river, effects, rig, hud)
+	cabin.occupied.connect(release_line)
+	cabin.went_under.connect(pass_out)
+	cabin.spill_overboard.connect(register_slick)
+	cabin.message.connect(notify_angling)
+	read_journal()
+	river.meta.places.append({"name": "Public Works", "point": [PublicWorks.SITE.x, PublicWorks.SITE.y]})
+	make_chart()
+	stock = Stock.new(river)
+	stock.update(vessel.center)
+	build_fish_finder()
+	fish_guide = Guide.new()
+	fish_guide.hide()
+	hud.add_child(fish_guide)
+	fish_guide.closed.connect(close_guide)
+	campaign = Campaign.new()
+	add_child(campaign)
+	campaign.setup(self)
+	marina_cars = MarinaCars.new()
+	marina_cars.name = "MarinaCars"
+	add_child(marina_cars)
+	marina_cars.setup(self, river, campaign.crew)
+	var cheat_center := CenterContainer.new()
+	cheat_center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hud.add_child(cheat_center)
+	cheat_center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	cheats = Cheats.new()
+	cheat_center.add_child(cheats)
+	cheats.dismissed.connect(close_cheats)
+	add_child(public_works)
+	public_works.build(river)
+	add_child(mower)
+	mower.setup(river, public_works.at_ground(PublicWorks.PARKING[0]), PublicWorks.HEADING + PI)
+	add_child(spare_mower)
+	spare_mower.setup(river, public_works.at_ground(PublicWorks.PARKING[1]), PublicWorks.HEADING + PI, mower)
+	add_child(shannon_job)
+	shannon_job.setup(self, mower, public_works.to_global(Vector3(PublicWorks.SHANNON.x, public_works.office_floor, PublicWorks.SHANNON.y)),
+		PublicWorks.HEADING, public_works.monitor_focus)
+	Input.mouse_mode = Input.MOUSE_MODE_CONFINED
+
+
+func build_tension_display() -> void:
+	tension_fill = StyleBoxFlat.new()
+	tension_fill.bg_color = Color("#71b69b")
+	tension_fill.set_corner_radius_all(4)
+	var back := StyleBoxFlat.new()
+	back.bg_color = Color("#233638d8")
+	back.set_corner_radius_all(4)
+	progress.add_theme_stylebox_override("background", back)
+	progress.add_theme_stylebox_override("fill", tension_fill)
+	progress.custom_minimum_size = Vector2(250, 8)
+	live_label = label("", 14, Color("#dddcd0"))
+	progress.get_parent().add_child(live_label)
+	live_label.hide()
+
+
+func _input(event: InputEvent) -> void:
+	if teleport_dialog.visible:
+		return
+	if not event is InputEventKey or not event.pressed or event.echo:
+		return
+	var key: Key = event.physical_keycode if event.physical_keycode != 0 else event.keycode
+	if cheats.visible:
+		if key == KEY_F2 or key == KEY_ESCAPE:
+			close_cheats()
+			get_viewport().set_input_as_handled()
+		return
+	if key == KEY_F2 and not chart.visible and not fish_guide.visible and not backpack.inventory.visible \
+			and not campaign.controls_blocked() and not cabin.busy() and marina_cars.active < 0 and mower.rider == null:
+		if campaign.crew.mode == "solo":
+			cheat_mouse_mode = Input.mouse_mode
+			sonar_overlay.hide()
+			cheats.show()
+			Input.mouse_mode = Input.MOUSE_MODE_CONFINED
+		else:
+			notify_angling("Cheats are available in solo play.", 3.0)
+		get_viewport().set_input_as_handled()
+		return
+	if backpack.inventory.visible:
+		if key == KEY_I or key == KEY_ESCAPE:
+			close_backpack()
+			get_viewport().set_input_as_handled()
+		return
+	if key == KEY_I and not chart.visible and not fish_guide.visible and not campaign.controls_blocked():
+		open_backpack()
+		get_viewport().set_input_as_handled()
+		return
+	if mower.rider != null:
+		if key == KEY_E and play_input():
+			interact_pressed = true
+		elif key == KEY_X and play_input():
+			mower.blades = not mower.blades
+		elif key == KEY_C and play_input():
+			mower.chase_view = not mower.chase_view
+		elif key in [KEY_Q, KEY_R] and play_input():
+			mower.shift_throttle(1 if key == KEY_R else -1)
+		elif key in [KEY_ESCAPE, KEY_F3, KEY_F4, KEY_F5]:
+			return
+		get_viewport().set_input_as_handled()
+		return
+	if marina_cars.active >= 0:
+		return
+	if campaign.handle_modal(event, key):
+		get_viewport().set_input_as_handled()
+		return
+	if campaign.controls_blocked():
+		return
+	if cabin.busy() and (key == KEY_J or key == KEY_TAB or key == KEY_M):
+		get_viewport().set_input_as_handled()
+		return
+	if key == KEY_J and not (fish_guide.visible and get_viewport().gui_get_focus_owner() is LineEdit):
+		if fish_guide.visible:
+			close_guide()
+		else:
+			chart.hide()
+			sonar_overlay.hide()
+			release_line()
+			fish_guide.show()
+			Input.mouse_mode = Input.MOUSE_MODE_CONFINED
+		get_viewport().set_input_as_handled()
+		return
+	if fish_guide.visible:
+		if key == KEY_ESCAPE:
+			close_guide()
+			get_viewport().set_input_as_handled()
+		return
+	if key == KEY_TAB or key == KEY_M or (key == KEY_ESCAPE and chart.visible):
+		chart.visible = not chart.visible
+		if chart.visible:
+			sonar_overlay.hide()
+			Input.mouse_mode = Input.MOUSE_MODE_CONFINED
+			release_line()
+		elif DisplayServer.get_name() != "headless":
+			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+		get_viewport().set_input_as_handled()
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	if fish_guide.visible or teleport_dialog.visible or backpack.inventory.visible or cheats.visible:
+		return
+	if flying or mower.rider != null:
+		if event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_F4:
+			change_draw_distance()
+		elif not flying or not event is InputEventKey or event.physical_keycode in [KEY_ESCAPE, KEY_F3, KEY_F5]:
+			super._unhandled_input(event)
+		return
+	if marina_cars.active >= 0:
+		if event is InputEventMouseMotion and play_input():
+			marina_cars.orbit(event.relative)
+			return
+		if event is InputEventKey and event.pressed and not event.echo:
+			match event.physical_keycode:
+				KEY_E:
+					interact_pressed = play_input()
+					return
+				KEY_H:
+					if play_input():
+						marina_cars.toggle_lights()
+					return
+				KEY_C:
+					if play_input():
+						marina_cars.cycle_camera()
+					return
+				KEY_F4:
+					change_draw_distance()
+					return
+				KEY_ESCAPE, KEY_F3, KEY_F5:
+					super._unhandled_input(event)
+			return
+		if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+			super._unhandled_input(event)
+		return
+	if (not chart.visible or campaign.controls_blocked()) and campaign.handle_world(event):
+		return
+	if not chart.visible and campaign.crewplay.input(event):
+		return
+	if event is InputEventKey and event.pressed and not event.echo:
+		var hotbar_slot := Backpack.HOTBAR_KEYS.find(event.physical_keycode)
+		if hotbar_slot >= 0 and not chart.visible:
+			backpack.reveal_hotbar()
+			var gear := backpack.shortcuts[hotbar_slot]
+			equip_gear(Backpack.NONE if gear == backpack.equipped else gear)
+			return
+		match event.physical_keycode:
+			KEY_F4:
+				change_draw_distance()
+				return
+			KEY_1, KEY_2, KEY_3, KEY_4, KEY_5:
+				var place := int(event.physical_keycode - KEY_1)
+				if chart.visible and place < river.meta.places.size():
+					target_index = place
+				return
+			KEY_R:
+				if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and not chart.visible:
+					rod_pressed = true
+				return
+			KEY_F:
+				if aboard() and not chart.visible:
+					sonar_overlay.visible = not sonar_overlay.visible
+				return
+			KEY_E:
+				interact_pressed = Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and not chart.visible
+				return
+	if chart.visible and (event is InputEventMouseButton or event is InputEventMouseMotion):
+		return
+	if event is InputEventMouseButton and event.pressed and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+		if event.button_index == MOUSE_BUTTON_LEFT and fists_available():
+			rig.punch()
+			return
+		if not driving and event.button_index in [MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_DOWN]:
+			var amount := .055 if event.button_index == MOUSE_BUTTON_WHEEL_UP else -.055
+			drag_setting = clampf(drag_setting + amount, .28, .96)
+			if fishing == Fishing.READY:
+				notify_angling("Drag set to %d%%" % roundi(drag_setting * 100.0), 1.7)
+			return
+	super._unhandled_input(event)
+
+
+func change_draw_distance() -> void:
+	graphics.advance()
+	graphics.apply(river, eye)
+	notify_angling("Draw distance · " + graphics.description(), 3.0)
+
+
+func _physics_process(delta: float) -> void:
+	clock += delta
+	var wants_flight := campaign.crew.mode == "solo" and cheats.flight.button_pressed
+	if wants_flight and marina_cars.active >= 0:
+		cheats.flight.button_pressed = false
+		wants_flight = false
+	if flying != wants_flight:
+		update_flight_mode(wants_flight)
+	var has_input := play_input()
+	campaign.run_shortcuts(has_input and not flying and mower.rider == null and marina_cars.active < 0)
+	has_input = play_input()
+	var use_cabin: bool = has_input and not flying and mower.rider == null and marina_cars.active < 0 and aboard() and not vessel.skiff and not driving and absf(vessel.speed) <= 1.20
+	var did_use := cabin.update(delta, clock, use_cabin, interact_pressed, Input.is_physical_key_pressed(KEY_E))
+	var can_use_yard := interact_pressed and has_input and can_talk_to_shannon()
+	var office_leaf := public_works.office_handle(eye) if can_use_yard else -1
+	var bay := public_works.nearby_door(eye) if can_use_yard else null
+	public_works.advance(delta, player, mower, spare_mower)
+	if interact_pressed and has_input and not did_use and not cabin.busy():
+		if marina_cars.active >= 0:
+			marina_cars.interact()
+		elif mower.rider != null:
+			if not mower.dismount():
+				notify_angling("Move to clear, level ground to get off the mower.", 2.4)
+		elif office_leaf >= 0:
+			public_works.toggle_office(office_leaf, eye)
+		elif can_talk_to_shannon() and shannon_job.in_range():
+			shannon_job.interact()
+		elif bay != null:
+			bay.toggle()
+		elif can_mount_mower():
+			if not mower.near(player, eye):
+				var previous := mower
+				mower = spare_mower
+				spare_mower = previous
+			release_line()
+			sonar_overlay.hide()
+			mower.mount(player)
+			yaw = mower.yaw
+			pitch = -.10
+			update_view()
+		elif can_board_from_water():
+			campaign.keep_player_on_deck(vessel, vessel.board_anchor())
+			set_swimming(false)
+		elif not marina_cars.interact() and not campaign.local_interact() and (driving or near_wheel()):
+			release_line()
+			campaign.helm()
+	interact_pressed = false
+	has_input = play_input()
+	walk_multiplier = cabin.walk_scale() * campaign.crewplay.movement_scale()
+	if flying:
+		fly(delta, has_input)
+	elif marina_cars.active >= 0:
+		step_vessel(delta, 0.0)
+	elif mower.rider != null:
+		step_vessel(delta, 0.0)
+		var throttle := axis(KEY_W, KEY_S) if has_input else 0.0
+		var steering := axis(KEY_A, KEY_D) if has_input else 0.0
+		yaw += mower.drive(delta, throttle, steering)
+		update_view()
+	else:
+		move_on_river(delta, has_input and not cabin.busy())
+	if mower.rider != null:
+		eye.rotation.x = pitch
+		mower.update_rider_camera(eye)
+	elif marina_cars.active < 0:
+		eye.rotation.x = pitch + cabin.camera_pitch
+	marina_cars.step(delta, axis(KEY_W, KEY_S), axis(KEY_D, KEY_A), Input.is_physical_key_pressed(KEY_SPACE),
+		has_input and not cabin.busy())
+	var viewpoint: Vector3 = vessel.center if aboard() else player.global_position
+	river.update_water(viewpoint, clock)
+	var wake: Vector3 = vessel.global_basis.z.slide(Vector3.UP).normalized()
+	if vessel.speed < -.13:
+		wake = -wake
+	river.set_wake(vessel.motor.prop.global_position, wake, absf(vessel.speed), vessel.motor.thrust, vessel.motor.wash_direction())
+	if trophy.update(delta, clock) and viewpoint.distance_squared_to(trophy.slick) < 48.0 * 48.0:
+		var roll := trophy.circling(clock)
+		effects.break_surface(effects.on_water(roll, clock), .94, "splash")
+		notify_angling("A big fish rolled by the slick. Cast near the ripples.", 7.1)
+	stock.update(viewpoint)
+	update_fish_finder(delta)
+	var free_hands := has_input and hands_available()
+	if rod_pressed:
+		rod_pressed = false
+		if free_hands:
+			use_rod()
+	var lift := free_hands and Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT) and fishing == Fishing.FIGHT
+	tick_fishing(delta, free_hands and Input.is_physical_key_pressed(KEY_R), lift)
+	render_fishing(delta, lift)
+	var fists_raised := fists_available()
+	var empty_handed := backpack.equipped == Backpack.NONE and not menu_blocks_play() and hands_available()
+	rig.update_hands(delta, clock, empty_handed or fists_raised, fists_raised)
+	campaign.tick(delta, has_input)
+	marina_cars.hide_drivers()
+	shannon_job.tick(delta, play_input() and can_talk_to_shannon())
+	update_hud()
+	campaign.mark_world()
+
+
+func play_input() -> bool:
+	return Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and not menu_blocks_play()
+
+
+func menu_blocks_play() -> bool:
+	return chart.visible or fish_guide.visible or backpack.inventory.visible or cheats.visible or campaign.controls_blocked()
+
+
+func close_cheats() -> void:
+	cheats.hide()
+	if DisplayServer.get_name() != "headless":
+		Input.mouse_mode = cheat_mouse_mode
+
+
+func open_backpack() -> void:
+	if flying or mower.rider != null or marina_cars.active >= 0:
+		return
+	if chart.visible or fish_guide.visible or campaign.controls_blocked() or backpack.inventory.visible:
+		return
+	if fishing != Fishing.READY:
+		notify_angling("Press the equipped slot again to stow the rod and clear the line.", 3.8)
+		return
+	if cabin.busy() or not campaign.preview_id.is_empty():
+		return
+	backpack_mouse_mode = Input.mouse_mode
+	if backpack.equipped != Backpack.NONE:
+		backpack.select_gear(backpack.equipped)
+	sonar_overlay.hide()
+	backpack.inventory.show()
+	Input.mouse_mode = Input.MOUSE_MODE_CONFINED
+
+
+func close_backpack() -> void:
+	backpack.inventory.hide()
+	backpack.reveal_hotbar()
+	if DisplayServer.get_name() != "headless":
+		Input.mouse_mode = backpack_mouse_mode
+
+
+func equip_gear(gear: int) -> void:
+	if gear == backpack.equipped:
+		return
+	if fishing != Fishing.READY:
+		if gear != Backpack.NONE:
+			notify_angling("Stow the rod before switching gear.", 3.2)
+			return
+		release_line()
+	backpack.set_equipped(gear)
+
+
+func fists_available() -> bool:
+	return backpack.equipped == Backpack.FISTS and play_input() and hands_available()
+
+
+func hands_available() -> bool:
+	return not flying and mower.rider == null and marina_cars.active < 0 and not swimming and not driving and not cabin.hands_in_use() and not campaign.dive.active \
+		and campaign.preview_id.is_empty() and not campaign.crewplay.hands_busy()
+
+
+func move_on_foot(delta: float, walk: Vector3, jump: bool) -> void:
+	if campaign.crew.mode != "solo":
+		cheats.flight.button_pressed = false
+		cheats.speed.button_pressed = false
+	var boost := 3.0 if cheats.speed.button_pressed else 1.0
+	if cheats.flight.button_pressed:
+		set_swimming(false)
+		player.motion_mode = CharacterBody3D.MOTION_MODE_FLOATING
+		var climb := axis(KEY_SPACE, KEY_CTRL) if play_input() and not cabin.busy() else 0.0
+		player.velocity = (walk + Vector3.UP * climb).limit_length(1.0) * 9.0 * boost
+		player.move_and_slide()
+		return
+	if not swimming:
+		player.motion_mode = CharacterBody3D.MOTION_MODE_GROUNDED
+	walk *= boost
+	var at := player.global_position
+	var depth := river.depth_at(at) if at.y < .12 else 0.0
+	if swimming:
+		if depth <= SWIM_EXIT_DEPTH:
+			set_swimming(false)
+	elif at.y < -.46 and depth >= SWIM_ENTRY_DEPTH:
+		set_swimming(true)
+	if not swimming:
+		if depth > 0.0:
+			walk *= lerpf(1.0, .46, smoothstep(.04, .96, -at.y))
+		super.move_on_foot(delta, walk, jump)
+		return
+	var current := river.downstream(at, clock) * .35
+	var speed := 2.05 * walk_multiplier
+	var surface := river.wave_height(at, clock)
+	var height := maxf(surface - SWIM_FEET_DEPTH, -depth + .14)
+	var velocity := walk * speed + current
+	velocity.y = clampf((height - at.y) * 7.0, -2.8, 3.5)
+	player.velocity = player.velocity.lerp(velocity, 1.0 - exp(-delta * 9.0))
+	player.move_and_slide()
+
+
+func set_swimming(active: bool) -> void:
+	if swimming == active:
+		return
+	swimming = active
+	player.motion_mode = CharacterBody3D.MOTION_MODE_FLOATING if active else CharacterBody3D.MOTION_MODE_GROUNDED
+	if active:
+		release_line()
+		effects.break_surface(effects.on_water(player.global_position, clock), .45, "splash")
+
+
+func can_board_from_water() -> bool:
+	if flying or mower.rider != null or marina_cars.active >= 0:
+		return false
+	if not swimming or absf(vessel.speed) > 1.2:
+		return false
+	var entry: Vector3 = vessel.to_global(vessel.board_anchor())
+	var gap := entry - player.global_position
+	return Vector2(gap.x, gap.z).length_squared() <= 2.15 * 2.15
+
+
+func step_vessel(delta: float, rudder: float) -> void:
+	campaign.step_boat(delta, rudder)
+
+
+func recover_after_fall() -> Vector3:
+	if river.lamure.blocks_swim_area(player.global_position):
+		var beach := river.point(3)
+		beach.y = river.ground_height(beach.x, beach.z) + .10
+		return beach
+	return campaign.after_fall()
+
+
+func can_wade_at(point: Vector3) -> bool:
+	return river.depth_at(point) > 0.0
+
+
+func close_guide() -> void:
+	fish_guide.hide()
+	if DisplayServer.get_name() != "headless":
+		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+
+
+func pass_out() -> void:
+	if driving:
+		campaign.relinquish_helm()
+	vessel.throttle = 0.0
+	chart.hide()
+	sonar_overlay.hide()
+	fish_guide.hide()
+	backpack.inventory.hide()
+	release_line()
+
+
+func register_slick(at: Vector3) -> void:
+	trophy.start_slick(at, clock)
+	if trophy.attracted:
+		notify_angling("Over the side. Something might come up to the slick.", 4.8)
+
+
+func build_fish_finder() -> void:
+	var view := SubViewport.new()
+	view.size = Finder.SIZE
+	view.disable_3d = true
+	view.render_target_update_mode = SubViewport.UPDATE_WHEN_VISIBLE
+	add_child(view)
+	sonar = Finder.new()
+	view.add_child(sonar)
+	var mount := Node3D.new()
+	vessel.add_child(mount)
+	mount.name = "HelmFishFinder"
+	mount.position = Vector3(.63, 1.66, -2.36)
+	mount.rotation = Vector3(-.36, -.17, .0)
+	var dark := Kit.paint(Color("#273238"), .66)
+	Kit.box_at(vessel, Vector3(.63, 1.14, -2.36), Vector3(.084, .76, .101), dark)
+	Kit.box_at(mount, Vector3.ZERO, Vector3(.42, .255, .086), dark)
+	var glass := QuadMesh.new()
+	glass.size = Vector2(.379, .218)
+	var active := StandardMaterial3D.new()
+	active.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	active.albedo_texture = view.get_texture()
+	Kit.mesh_at(mount, glass, Vector3(0, .005, .045), active)
+	var transducer := Kit.box_at(vessel, Vector3(-.66, -.36, 3.31), Vector3(.17, .096, .235), dark)
+	transducer.name = "Transducer"
+	sonar_overlay = TextureRect.new()
+	sonar_overlay.texture = view.get_texture()
+	sonar_overlay.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	sonar_overlay.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	sonar_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hud.add_child(sonar_overlay)
+	sonar_overlay.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
+	sonar_overlay.offset_left = -501.0
+	sonar_overlay.offset_right = -23.0
+	sonar_overlay.offset_top = 26.0
+	sonar_overlay.offset_bottom = 300.0
+	sonar_overlay.hide()
+
+
+func update_fish_finder(delta: float) -> void:
+	var source: Vector3 = vessel.to_global(Vector3(-.40, -.30, 2.12) if vessel.skiff else Vector3(-.66, -.36, 3.39))
+	var surface := river.wave_height(source, clock)
+	var water_column := river.depth_at(source)
+	var depth := water_column + surface if surface > source.y and water_column > .25 else 0.0
+	var bottom := clampf(.56 + .25 * sin(source.x * .027) * cos(source.z * .026), .05, .95)
+	var current_speed: Vector3 = river.downstream(vessel.center, clock) * (.78 if vessel.departed else 0.0)
+	var movement: Vector3 = -vessel.global_basis.z.slide(Vector3.UP).normalized() * vessel.speed + current_speed
+	var read_echoes := func() -> Array[Vector2]:
+		var echoes := stock.school_returns(source, clock, .51)
+		var draft := maxf(0.0, surface - source.y)
+		for index in echoes.size():
+			echoes[index].x += draft
+		var large_echo := trophy.echo(source, clock, draft)
+		if large_echo.y > 0.0:
+			echoes.append(large_echo)
+		return echoes
+	sonar.update_pings(delta, depth, movement.length(), vessel.motor.rpm, read_echoes, bottom)
+
+
+func notify_angling(message: String, length: float) -> void:
+	catch_note = message
+	note_until = clock + length
+
+
+func change_state(next: Fishing) -> void:
+	fishing = next
+	state_age = 0.0
+
+
+func release_line() -> void:
+	change_state(Fishing.READY)
+	line_tension = 0.0
+	reel_rate = 0.0
+	payout = 0.0
+	effects.bobber.hide()
+	effects.line.hide()
+	effects.crank_sounds(0.0, 0.0)
+	rig.net.hide()
+	fish.hide()
+	crew_scoop_helper = 0
+	crew_scoop_name = ""
+	river.clear_fish_shadow()
+	trophy.hooked = false
+
+
+func cast_position() -> Vector3:
+	var direction := -eye.global_basis.z
+	if direction.y > -0.038:
+		return Vector3.INF
+	var distance := (0.05 - eye.global_position.y) / direction.y
+	if distance < 2.7 or distance > 37.0:
+		return Vector3.INF
+	var target := eye.global_position + direction * distance
+	if not river.can_fish(target):
+		return Vector3.INF
+	var ray := PhysicsRayQueryParameters3D.create(eye.global_position, target, 1, [player.get_rid()])
+	if not get_world_3d().direct_space_state.intersect_ray(ray).is_empty():
+		return Vector3.INF
+	return target
+
+
+func rod_in_hand() -> bool:
+	return backpack.equipped == Backpack.ROD and hands_available()
+
+
+func can_use_rod() -> bool:
+	return rod_in_hand() and (absf(vessel.speed) <= 1.45 if aboard() else campaign.can_fish_from_shore())
+
+
+func use_rod() -> void:
+	if not can_use_rod():
+		return
+	match fishing:
+		Fishing.READY:
+			var target := cast_position()
+			if not target.is_finite():
+				notify_angling("Aim the dot at open water.", 2.5)
+				return
+			cast_site = target
+			flight_time = clampf(rig.tip.global_position.distance_to(target) / 15.0, .43, 1.24)
+			change_state(Fishing.CASTING)
+			effects.play_sound(rig.tip.global_position, "cast", -13.0)
+		Fishing.WAITING:
+			cast_origin = float_site
+			change_state(Fishing.RETRIEVING)
+		Fishing.BITE:
+			set_hook()
+		Fishing.NET_READY:
+			change_state(Fishing.LANDING)
+		Fishing.DISPLAY:
+			change_state(Fishing.RELEASING)
+
+
+func tick_fishing(delta: float, held: bool, lift := false) -> void:
+	state_age += delta
+	reel_rate = 0.0
+	payout = 0.0
+	hook_motion = minf(1, hook_motion + delta * 3.1)
+	if fishing == Fishing.READY:
+		return
+	if not can_use_rod():
+		release_line()
+		return
+	match fishing:
+		Fishing.CASTING:
+			tick_cast()
+		Fishing.WAITING, Fishing.BITE:
+			tick_float(delta)
+		Fishing.RETRIEVING:
+			var target := landing_position(cast_site)
+			var seconds := clampf(cast_origin.distance_to(target) / 12.0, .42, 2.15)
+			float_site = cast_origin.lerp(target, clampf(state_age / seconds, 0, 1))
+			reel_rate = .95
+			if state_age >= seconds:
+				notify_angling("Line in. Tap R to cast again.", 1.6)
+				release_line()
+		Fishing.FIGHT:
+			tick_fight(delta, held, lift)
+		Fishing.NET_READY:
+			var wave := river.wave_height(net_site, clock)
+			hooked_head = hooked_head.lerp(Vector3(net_site.x, wave - .045, net_site.z), minf(1, delta * 4.5))
+			if state_age > 11.0:
+				notify_angling("The fish shook the hook.", 3.8)
+				release_line()
+		Fishing.LANDING:
+			if state_age >= 1.06:
+				record_catch()
+				change_state(Fishing.DISPLAY)
+		Fishing.RELEASING:
+			if state_age >= .77 and state_age - delta < .77:
+				effects.break_surface(effects.on_water(net_site, clock), .68, "splash")
+			if state_age >= 1.44:
+				notify_angling("Released  ·  %s" % Species.profile(catch_type).name, 3.2)
+				release_line()
+
+
+func tick_cast() -> void:
+	if state_age < WINDUP:
+		return
+	if not effects.bobber.visible:
+		cast_origin = rig.tip.global_position
+		effects.bobber.show()
+	var t := clampf((state_age - WINDUP) / flight_time, 0.0, 1.0)
+	var water_y := river.wave_height(cast_site, clock)
+	float_site = cast_origin.lerp(Vector3(cast_site.x, water_y, cast_site.z), t)
+	float_site.y += 4.0 * t * (1.0 - t) * (0.58 + flight_time * 1.18)
+	if t >= 1.0:
+		effects.break_surface(float_site, .59, "splash")
+		var depth := river.depth_at(cast_site)
+		bite_at = clock + random.randf_range(5.0, 12.5) + Species.leader(rig_slot, depth) * .17
+		if trophy.draws_bait(cast_site, clock):
+			bite_at = maxf(clock + 2.6, trophy.ready_at + 1.1)
+		tap_at = bite_at - random.randf_range(.70, 1.75)
+		tap_done = false
+		change_state(Fishing.WAITING)
+
+
+func tick_float(delta: float) -> void:
+	var flow := river_drift(float_site)
+	var next := float_site + flow * delta
+	if river.can_fish(next) and next.distance_to(cast_site) < 6.1:
+		float_site = next
+	if not tap_done and clock >= tap_at:
+		tap_done = true
+		effects.break_surface(effects.on_water(float_site, clock), .18)
+	if fishing == Fishing.WAITING and clock >= bite_at:
+		change_state(Fishing.BITE)
+		effects.break_surface(effects.on_water(float_site, clock), .60, "bite")
+	elif fishing == Fishing.BITE and state_age >= 2.27:
+		notify_angling("Missed the bite. Strike when the float goes under.", 3.8)
+		change_state(Fishing.WAITING)
+		bite_at = clock + random.randf_range(6.0, 12.0)
+		tap_at = bite_at - 1.25
+		tap_done = false
+
+
+func river_drift(point: Vector3) -> Vector3:
+	return river.downstream(point, clock)
+
+
+func floating(node: Node3D, location: Vector3) -> void:
+	var height := river.wave_height(location, clock)
+	node.position = Vector3(location.x, height, location.z)
+	node.rotation.x = (river.wave_height(location + Vector3.BACK * .25, clock) - height) * -3.0
+	node.rotation.z = (river.wave_height(location + Vector3.RIGHT * .25, clock) - height) * 3.0
+
+
+func choose_species() -> int:
+	return stock.pick_for_bait(float_site, rig_slot, clock, random)
+
+
+func landing_position(at: Vector3) -> Vector3:
+	if not aboard():
+		var feet := player.global_position
+		feet.y = 0
+		var toward := (Vector3(at.x, 0, at.z) - feet).normalized()
+		for i in 18:
+			var target := feet + toward * (.85 + i * .40)
+			if river.can_fish(target):
+				return target
+		return at
+	var outside: Vector3 = vessel.to_local(at)
+	var deck: Vector3 = vessel.to_local(player.global_position)
+	var edge := Vector3(signf(outside.x) * 1.68, 0, clampf(deck.z, -2.7, 2.8))
+	if outside.z < -3.6 and absf(outside.x) < 2.5:
+		edge = Vector3(clampf(outside.x * .20, -.64, .64), 0, -4.10)
+	if vessel.skiff:
+		edge = Vector3(signf(outside.x) * 1.18, 0, clampf(deck.z, -1.6, 1.6))
+	var waterline: Vector3 = vessel.to_global(edge)
+	waterline.y = 0.0
+	return waterline
+
+
+func set_hook() -> void:
+	hook_id += 1
+	var hooked_trophy := trophy.hook(random.randf()) if trophy.can_bite(float_site, clock) else -1
+	catch_type = hooked_trophy if hooked_trophy >= 0 else choose_species()
+	fight_profile = Species.profile(catch_type)
+	var limits: Array = fight_profile.length_cm
+	var sample := (random.randf() + random.randf()) * .5
+	catch_length = roundi(lerpf(limits[0], limits[1], sample))
+	if trophy.hooked:
+		catch_length = random.randi_range(128, 141)
+	catch_weight = Species.typical_weight(fight_profile, catch_length) * random.randf_range(.87, 1.12)
+	fish.select_species(catch_type, catch_length)
+	fish.show()
+	change_state(Fishing.FIGHT)
+	net_site = landing_position(float_site)
+	strike_depth = Species.leader(rig_slot, river.depth_at(float_site))
+	hooked_head = effects.on_water(float_site, clock) - Vector3.UP * strike_depth
+	swim_heading = (hooked_head - net_site).slide(Vector3.UP).normalized()
+	hooked_motion = swim_heading * .38
+	line_out = rig.tip.global_position.distance_to(hooked_head) - .09
+	line_tension = .12
+	strain = 0.0
+	slack_seconds = 0.0
+	fight_age = 0.0
+	run_start = 0.0
+	run_end = 1.47
+	run_turn = -1.0 if random.randf() < .5 else 1.0
+	hook_motion = 0.0
+	jump_at = -10.0
+	jumps = 0
+	on_top = false
+	if trophy.hooked:
+		notify_angling("Trophy muskie on the line. Let it run when the drag starts clicking.", 5.2)
+	effects.break_surface(effects.on_water(float_site, clock), 1.08 if trophy.hooked else .75, "splash")
+
+
+func tick_fight(delta: float, held: bool, lifting: bool) -> void:
+	fight_age += delta
+	var limits: Array = fight_profile.length_cm
+	var percent_size := clampf(inverse_lerp(float(limits[0]), float(limits[1]), float(catch_length)), 0.0, 1.0)
+	var endurance := lerpf(1.0, .46, smoothstep(8, 35, fight_age))
+	if fight_age >= run_end + 1.29:
+		run_start = fight_age
+		run_end = fight_age + lerpf(.69, 1.75, smoothstep(7.0, 94.0, catch_length)) * random.randf_range(.79, 1.24)
+		run_turn *= -1
+		if jumps < 2 and fight_profile.form in ["bass", "esox", "salmonid", "gar"] and line_tension > .24 and -hooked_head.y < 2.2:
+			jump_at = fight_age + .31
+			jumps += 1
+	var burst := smoothstep(run_start, run_start + .28, fight_age) * (1.0 - smoothstep(run_end - .35, run_end, fight_age))
+	var final_run := fight_age - Trophy.LAST_RUN
+	if trophy.hooked and final_run >= 0.0 and final_run < Trophy.RUN_SECONDS:
+		burst = maxf(burst, smoothstep(0.0, .30, final_run) * (1.0 - smoothstep(.96, Trophy.RUN_SECONDS, final_run)))
+		if final_run < delta:
+			notify_angling("The muskie turned for one last run.", 3.4)
+			effects.break_surface(effects.on_water(hooked_head, clock), 1.06, "splash")
+	var separation := hooked_head - rig.tip.global_position
+	var reach := separation.length()
+	var spring := maxf(0.0, (reach - line_out) * .88)
+	line_tension = lerpf(line_tension, clampf(spring + burst * .075, 0, 1.30), 1.0 - exp(-delta * 15.0))
+	line_tension = maxf(line_tension, trophy.strain_floor(fight_age))
+	payout = maxf(0.0, line_tension - drag_setting) * (5.7 + burst * 1.7)
+	line_out += payout * delta
+	var can_crank := held and payout < .39
+	if can_crank:
+		reel_rate = 1.0 - smoothstep(.58, .92, line_tension) * .61
+		line_out = maxf(1.0, line_out - reel_rate * delta * (1.67 if lifting else 2.55))
+
+	var radial := (hooked_head - net_site).slide(Vector3.UP)
+	var outward := radial.normalized()
+	var lateral := outward.cross(Vector3.UP)
+	var thrust := (.23 + .29 * percent_size + burst * Species.burst(fight_profile, catch_length)) * endurance
+	if trophy.hooked and not trophy.can_net(fight_age):
+		thrust += .22 + .45 * burst
+	var swimming := outward * thrust + lateral * (run_turn * burst * .91 + sin(fight_age * 3.4) * .18)
+	var pulling := maxf(0.0, line_tension - .025) * (4.05 if lifting else 3.65)
+	var rod_heading := separation.slide(Vector3.UP).normalized()
+	var net_lead := 1.0 - smoothstep(1.45, 4.0, radial.length())
+	var toward := rod_heading.lerp(outward, net_lead).normalized()
+	var desired := swimming - toward * pulling + river_drift(hooked_head)
+	if radial.length() < 1.85 and held:
+		desired -= outward * .53
+	hooked_motion = hooked_motion.lerp(desired, 1.0 - exp(-delta * 7.8))
+	var candidate := hooked_head + hooked_motion * delta
+	if river.can_fish(candidate):
+		hooked_head = candidate
+	else:
+		run_turn *= -1
+		hooked_motion *= -.15
+
+	var jump := fight_age - jump_at
+	var leaping := jump >= 0 and jump < .73
+	var initial_depth := lerpf(strike_depth, minf(strike_depth, 1.57), smoothstep(0.0, 6.0, fight_age) * smoothstep(.09, .72, line_tension))
+	var target_depth := lerpf(initial_depth + burst * .36, .027, 1.0 - smoothstep(.6, 5.8, radial.length()))
+	target_depth = minf(target_depth, maxf(.063, river.depth_at(hooked_head) - .16))
+	var water_y := river.wave_height(hooked_head, clock)
+	if leaping:
+		hooked_head.y = water_y + sin(jump / .73 * PI) * (.43 + percent_size * .15)
+		if not on_top:
+			effects.break_surface(effects.on_water(hooked_head, clock), .49, "splash")
+	elif on_top:
+		effects.break_surface(effects.on_water(hooked_head, clock), .76, "splash")
+		hooked_head.y = water_y - .06
+	else:
+		hooked_head.y = lerpf(hooked_head.y, water_y - target_depth, 1.0 - exp(-delta * 4.6))
+	on_top = leaping
+	if hooked_motion.length_squared() > .05:
+		swim_heading = swim_heading.lerp(hooked_motion.normalized(), 1.0 - exp(-delta * 8.0)).normalized()
+	if line_tension > .99:
+		strain += delta * (line_tension * 2.3 - 1.63)
+	else:
+		strain = maxf(0.0, strain - delta * .79)
+	slack_seconds = slack_seconds + delta if reach < line_out - .34 else maxf(0, slack_seconds - delta * 2.6)
+	if strain > .21:
+		effects.play_sound(rig.tip.global_position, "snap", -5.5)
+		var lost := "The muskie’s last run snapped your line." if trophy.strain_floor(fight_age) > 0.0 else "Line snapped. Back off the drag or let the fish run."
+		notify_angling(lost, 4.9)
+		campaign.request("rich_lost", null)
+		release_line()
+	elif slack_seconds > 4.3:
+		notify_angling("The fish shook the hook. Reel in slack to keep tension.", 4.1)
+		release_line()
+	elif radial.length() <= .91 and line_tension < .94 and not leaping and trophy.can_net(fight_age):
+		effects.break_surface(effects.on_water(hooked_head, clock), .35)
+		change_state(Fishing.NET_READY)
+
+
+func render_fishing(delta: float, lift: bool) -> void:
+	rig.visible = rod_in_hand()
+	if not trophy.hooked and trophy.attracted and clock >= trophy.ready_at and fishing < Fishing.FIGHT:
+		var roll := trophy.circling(clock)
+		var heading := (trophy.circling(clock + .15) - roll).slide(Vector3.UP).normalized()
+		river.set_fish_shadow(roll, heading, maxf(0.0, river.wave_height(roll, clock) - roll.y), 1.34)
+	elif fishing < Fishing.FIGHT:
+		river.clear_fish_shadow()
+	var cast_amount := state_age / WINDUP if fishing == Fishing.CASTING else -1.0
+	var net_amount := clampf(state_age / 1.06, 0, 1) if fishing == Fishing.LANDING else (1.0 if fishing == Fishing.DISPLAY else 0.0)
+	if fishing == Fishing.RELEASING:
+		net_amount = 1.0 - smoothstep(0.0, .80, state_age)
+	var bend_side := 0.0
+	if fishing == Fishing.FIGHT or fishing == Fishing.NET_READY:
+		var apparent := (hooked_head - eye.global_position).normalized()
+		bend_side = eye.global_basis.x.dot(apparent)
+	rig.pose_rod(delta, clock, line_tension, bend_side, cast_amount, hook_motion, lift, reel_rate, payout, net_amount)
+	effects.crank_sounds(reel_rate, payout)
+	effects.tick(delta, clock, eye.global_position)
+	match fishing:
+		Fishing.CASTING:
+			if not effects.bobber.visible:
+				return
+			effects.bobber.global_position = float_site
+			effects.bobber.rotation = Vector3(state_age * 6.5, state_age * 4.4, -.24)
+			line_end = float_site
+		Fishing.WAITING, Fishing.BITE, Fishing.RETRIEVING:
+			floating(effects.bobber, float_site)
+			var nibble := maxf(0, 1.0 - (clock - tap_at) * 2.1) if tap_done else 0.0
+			effects.bobber.position.y -= .025 * nibble
+			if fishing == Fishing.BITE:
+				effects.bobber.position.y -= smoothstep(0.0, .31, state_age) * .189 + sin(state_age * 14.0) * .017
+				effects.bobber.rotation.x += .49 * smoothstep(0.0, .16, state_age)
+			line_end = effects.bobber.global_position + Vector3.UP * .047
+		Fishing.FIGHT, Fishing.NET_READY:
+			var wave := river.wave_height(hooked_head, clock)
+			if fishing == Fishing.NET_READY:
+				line_tension = move_toward(line_tension, .27, delta * .56)
+			var attitude := -.26 * sin(clock * 7.5) if not on_top else sin(clampf((fight_age - jump_at) / .73, 0, 1) * PI * 2.0) * .54
+			var heading := (swim_heading + Vector3.UP * attitude).normalized()
+			fish.pose(hooked_head, heading, sin(clock * 10.7) * .24,
+				.08 + .11 * minf(1, hooked_motion.length() / 2.15), clock * lerpf(16.0, 9.5, smoothstep(5.0, 94.0, catch_length)))
+			river.set_fish_shadow(hooked_head, swim_heading, maxf(0, wave - hooked_head.y), fish.metres)
+			line_end = hooked_head
+		Fishing.LANDING, Fishing.DISPLAY, Fishing.RELEASING:
+			effects.bobber.hide()
+			effects.line.hide()
+			river.clear_fish_shadow()
+			rig.reel_hand.hide()
+			var reach := effects.on_water(net_site, clock) if fishing == Fishing.RELEASING else hooked_head
+			if fishing != Fishing.RELEASING and crew_scoop_helper != 0 and campaign.crew.avatars.has(crew_scoop_helper) \
+					and campaign.crewplay.gear.net.owner == crew_scoop_helper:
+				var holder: Transform3D = campaign.crew.avatars[crew_scoop_helper].tool_grip
+				var in_net := holder * Vector3(0, -.15, -1.06)
+				var display := reach.lerp(in_net, smoothstep(.17, .97, net_amount))
+				fish.pose(display, -holder.basis.x, .25, .06, clock * 12.0)
+				rig.net.hide()
+				return
+			rig.net.scale = Vector3.ONE * clampf(fish.metres / .73, 1.0, 1.83 if trophy.hooked else 1.52)
+			rig.show_net(reach, net_amount)
+			if fishing == Fishing.RELEASING and state_age >= .77:
+				var reference: Vector3 = vessel.center if aboard() else player.global_position
+				var heading := (net_site - reference).slide(Vector3.UP).normalized()
+				var dart := state_age - .77
+				var swim: Vector3 = net_site + heading * dart * 1.54
+				var wave := river.wave_height(swim, clock)
+				var depth := .045 + dart * .72
+				swim.y = wave - depth
+				fish.pose(swim, heading + Vector3.DOWN * .21, sin(dart * 8.0) * .16, .15, clock * 18.0)
+				river.set_fish_shadow(swim, heading, depth, fish.metres)
+				return
+			var angle := rig.net.global_basis.orthonormalized()
+			var nose: Vector3 = rig.net.to_global(Vector3(-minf(.38, fish.metres * .44 / rig.net.scale.x), -.085, -.021))
+			fish.pose(nose, -angle.x, .29 + sin(clock * 9.3) * .08,
+				.047 if fishing == Fishing.DISPLAY else .12, clock * 15.0)
+			return
+		_:
+			return
+	var slack := (.18 if fishing == Fishing.WAITING else .085)
+	var leader := 0.0
+	if fishing == Fishing.FIGHT or fishing == Fishing.NET_READY:
+		slack = clampf(line_out - rig.tip.global_position.distance_to(line_end), 0.025, .94)
+		leader = clampf(minf(strike_depth, -hooked_head.y * .46 + .54), .18, 2.4)
+	effects.draw_line(rig.tip.global_position, line_end, eye.global_position, slack, clock, leader)
+
+
+func capture_crew_pose() -> Dictionary:
+	var data := campaign.crewplay.style()
+	data.move = player.velocity
+	data.pitch = pitch
+	data.stage = int(fishing)
+	data.age = state_age
+	data.rod = rig.visible
+	data.tension = line_tension
+	data.reel = reel_rate
+	data.line = effects.line.visible
+	data.float = effects.bobber.visible
+	data.hook_id = hook_id
+	if data.line or data.float:
+		data.end = line_end
+	if fish.visible:
+		data.fish = fish.global_position
+		data.direction = -fish.global_basis.z.normalized()
+		data.species = catch_type
+		data.length = catch_length
+	return data
+
+
+func accept_crew_scoop(serial: int, helper: int, display_name: String) -> void:
+	if serial == hook_id and fishing == Fishing.NET_READY:
+		crew_scoop_helper = helper
+		crew_scoop_name = display_name
+		change_state(Fishing.LANDING)
+		effects.break_surface(effects.on_water(hooked_head, clock), .61, "splash")
+
+
+func read_journal() -> void:
+	var saved: Variant = JSON.parse_string(FileAccess.get_file_as_string(JOURNAL)) if FileAccess.file_exists(JOURNAL) else null
+	if saved is Array:
+		for entry: Variant in saved:
+			if entry is String:
+				journal.append(entry)
+
+
+func record_catch() -> void:
+	var weight := "%d g" % roundi(catch_weight * 1000.0) if catch_weight < .12 else "%.2f kg" % catch_weight
+	var name_in_journal: String = "Trophy muskellunge" if trophy.hooked else Species.profile(catch_type).name
+	var landed_with := "  ·  Netted by " + crew_scoop_name if not crew_scoop_name.is_empty() else ""
+	notify_angling("%s  ·  %d cm  ·  %s%s" % [name_in_journal, catch_length, weight, landed_with], 5.0)
+	catch_count += 1
+	journal.push_front(catch_note)
+	if journal.size() > 25:
+		journal.resize(25)
+	var file := FileAccess.open(JOURNAL, FileAccess.WRITE)
+	if file:
+		file.store_string(JSON.stringify(journal))
+	refresh_journal()
+	campaign.request("catch", [name_in_journal, catch_length])
+
+
+func make_chart() -> void:
+	var layer := CanvasLayer.new()
+	layer.layer = 2
+	add_child(layer)
+	chart = Control.new()
+	layer.add_child(chart)
+	chart.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	var mask := ColorRect.new()
+	mask.color = Color("#141d24f5")
+	chart.add_child(mask)
+	mask.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	var title := label("OTTAWA RIVER CHART", 28, Color("#f6e8ca"))
+	title.position = Vector2(35, 24)
+	chart.add_child(title)
+	var locations := "1 Swisha     2 Deep River     3 Chalk River Labs"
+	if river.meta.has("lamure"):
+		locations += "     4 Lamure Beach"
+	locations += "     %d Public Works" % river.meta.places.size()
+	var help := label(locations + "     J Fish guide     Tab Close", 16, Color("#c3d5ce"))
+	help.position = Vector2(37, 62)
+	chart.add_child(help)
+	chart_map = TextureRect.new()
+	chart_map.texture = river.chart_texture
+	chart_map.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	chart_map.position = Vector2(36, 105)
+	chart_map.size = Vector2(844, 585)
+	chart.add_child(chart_map)
+	for index in river.meta.places.size():
+		var text := label(river.meta.places[index].name, 17, Color("#f7dfac"))
+		var label_offset := Vector2(8, 4 if index == 3 else -24)
+		if river.meta.places[index].name == "Public Works":
+			label_offset = Vector2(-110, 6)
+		text.position = chart_screen(river.point(index)) + label_offset
+		chart.add_child(text)
+		var spot := label("●", 17, Color("#e9b97b"))
+		spot.position = chart_screen(river.point(index)) + Vector2(-7, -10)
+		chart.add_child(spot)
+	boat_dot = label("◆", 20, Color("#fff4d2"))
+	chart.add_child(boat_dot)
+	make_teleport_menu()
+	var catches_title := label("CATCH JOURNAL", 20, Color("#e6bd85"))
+	catches_title.position = Vector2(912, 392)
+	chart.add_child(catches_title)
+	var journal_scroll := ScrollContainer.new()
+	journal_scroll.position = Vector2(912, 427)
+	journal_scroll.size = Vector2(332, 204)
+	journal_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	chart.add_child(journal_scroll)
+	journal_label = label("", 17, Color("#e2ebdf"))
+	journal_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	journal_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	journal_scroll.add_child(journal_label)
+	var credits := label("© OpenStreetMap contributors\nElevation: Natural Resources Canada", 13, Color("#a3b1aa"))
+	credits.position = Vector2(912, 647)
+	chart.add_child(credits)
+	refresh_journal()
+	chart.hide()
+
+
+func make_teleport_menu() -> void:
+	var heading := label("TELEPORT", 20, Color("#e6bd85"))
+	heading.position = Vector2(912, 105)
+	chart.add_child(heading)
+	var destinations := VBoxContainer.new()
+	destinations.position = Vector2(912, 142)
+	destinations.custom_minimum_size.x = 332
+	destinations.add_theme_constant_override("separation", 6)
+	chart.add_child(destinations)
+	for destination: ChartDestination in TELEPORT_NAMES:
+		if destination == ChartDestination.LAMURE and not river.meta.has("lamure"):
+			continue
+		var button := Button.new()
+		button.text = TELEPORT_NAMES[destination]
+		button.custom_minimum_size.y = 34
+		button.pressed.connect(ask_to_teleport.bind(destination))
+		destinations.add_child(button)
+		if destination == ChartDestination.BOAT:
+			return_button = button
+	teleport_status = label("", 15, Color("#f7dfac"))
+	teleport_status.position = Vector2(912, 343)
+	teleport_status.size.x = 332
+	teleport_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	chart.add_child(teleport_status)
+	teleport_dialog = ConfirmationDialog.new()
+	teleport_dialog.title = "Confirm teleport"
+	teleport_dialog.ok_button_text = "Yes"
+	teleport_dialog.cancel_button_text = "No"
+	teleport_dialog.confirmed.connect(teleport_from_chart)
+	chart.add_child(teleport_dialog)
+	chart.visibility_changed.connect(update_teleport_menu)
+
+
+func update_teleport_menu() -> void:
+	teleport_status.text = ""
+	if chart.visible:
+		return_button.visible = can_return_to_boat and not aboard()
+	else:
+		teleport_dialog.hide()
+
+
+func teleport_blocker() -> String:
+	if mower.rider != null or marina_cars.active >= 0:
+		return "Leave the vehicle before teleporting."
+	if driving or campaign.captain == campaign.crew.my_id():
+		return "Leave the helm before teleporting."
+	if cabin.busy() or cabin.hands_in_use() or campaign.crewplay.hands_busy():
+		return "Put away your gear before teleporting."
+	if campaign.preview_id != "":
+		return "Finish or cancel building before teleporting."
+	if campaign.crew.mode == "joining":
+		return "Wait for the crew connection before teleporting."
+	return ""
+
+
+func ask_to_teleport(destination: ChartDestination) -> void:
+	teleport_status.text = teleport_blocker()
+	if not teleport_status.text.is_empty():
+		return
+	teleport_destination = destination
+	if destination == ChartDestination.BOAT:
+		teleport_dialog.dialog_text = "Teleport back to the boat?"
+	else:
+		teleport_dialog.dialog_text = "Teleport to %s?\nThe boat will stay where it is." % TELEPORT_NAMES[destination]
+	teleport_dialog.popup_centered(Vector2i(380, 140))
+	teleport_dialog.get_cancel_button().grab_focus()
+
+
+func teleport_from_chart() -> void:
+	if not chart.visible or campaign.controls_blocked():
+		return
+	teleport_status.text = teleport_blocker()
+	if not teleport_status.text.is_empty():
+		return
+	release_line()
+	set_swimming(false)
+	if teleport_destination == ChartDestination.BOAT:
+		campaign.keep_player_on_deck(vessel, vessel.board_anchor())
+		yaw = vessel.heading
+		can_return_to_boat = false
+	else:
+		var arrival: Vector3
+		var view_target: Vector3
+		match teleport_destination:
+			ChartDestination.MARINA:
+				# Open space on the public wharf, clear of the rails and lamppost.
+				arrival = Vector3(18077.0, Wharf.DECK_HEIGHT, 12638.0)
+				view_target = river.point(1)
+			ChartDestination.SWISHA:
+				arrival = campaign.landings.sites[3].transfer
+				view_target = river.measured("dam")
+			ChartDestination.CHALK_RIVER:
+				arrival = campaign.landings.sites[4].transfer
+				view_target = river.measured("cnl")
+			ChartDestination.LAMURE:
+				arrival = river.point(3)
+				arrival.y = river.ground_height(arrival.x, arrival.z)
+				view_target = river.lamure.raft_anchor
+		player.global_position = arrival + Vector3.UP * .10
+		player.velocity = Vector3.ZERO
+		player.reset_physics_interpolation()
+		yaw = atan2(arrival.x - view_target.x, arrival.z - view_target.z)
+		can_return_to_boat = true
+	pitch = -.12
+	update_view()
+	chart.hide()
+	if DisplayServer.get_name() != "headless":
+		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+
+
+func chart_screen(point: Vector3) -> Vector2:
+	return chart_map.position + Vector2(point.x, point.z) / river.extent * chart_map.size
+
+
+func refresh_journal() -> void:
+	var entries := PackedStringArray()
+	for i in mini(9, journal.size()):
+		entries.append(journal[i])
+	journal_label.text = "\n\n".join(entries) if not entries.is_empty() else "No catches yet."
+
+
+func update_hud() -> void:
+	backpack.update_throttle(mower.throttle_index if mower.rider != null and play_input() else -1, mower.throttle_label())
+	backpack.hud_available = not chart.visible and not fish_guide.visible and not cheats.visible \
+		and not campaign.controls_blocked() and not cabin.busy()
+	var location := "Ottawa River"
+	var at: Vector3 = vessel.center if aboard() else player.global_position
+	if river.meta.has("lamure") and at.distance_squared_to(river.point(3)) < 175.0 * 175.0:
+		location = "Lamure Beach"
+	else:
+		for index in 3:
+			if at.distance_squared_to(river.point(index)) < 650.0 * 650.0:
+				location = river.meta.places[index].name
+				break
+	objective.text = location
+	instruction.text = ""
+	var on_line := fishing == Fishing.FIGHT
+	progress.visible = on_line
+	live_label.visible = on_line
+	if on_line:
+		progress.value = clampf(line_tension, 0, 1)
+		tension_fill.bg_color = Color("#77b19e").lerp(Color("#deba73"), smoothstep(.37, .78, line_tension))
+		tension_fill.bg_color = tension_fill.bg_color.lerp(Color("#ef8661"), smoothstep(.75, 1.03, line_tension))
+		live_label.text = "Tension %d%%     Drag %d%%  ·  Mouse wheel" % [
+			roundi(line_tension * 100), roundi(drag_setting * 100)]
+	marker.visible = false
+	fps.text = "%d FPS\n%s   [F4]" % [Engine.get_frames_per_second(), graphics.description()]
+	if marina_cars.active >= 0:
+		var car: MarinaCars.RoadCar = marina_cars.cars[marina_cars.active]
+		var reverse := "   ·   REVERSE" if car.speed < -.08 else ""
+		objective.text = "%s   ·   %d km/h%s" % [car.details.label, roundi(absf(car.speed) * 3.6), reverse]
+		instruction.text = "W  Accelerate    S  Brake / reverse    A/D  Steer    Space  Handbrake"
+		if Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
+			instruction.text = "Click to resume driving"
+		if clock < note_until:
+			instruction.text += "\n" + catch_note
+		else:
+			instruction.text += "\nE  Exit when stopped    C  Camera    H  Headlights    F4  Draw distance"
+		campaign.info.hide()
+		return
+	if chart.visible:
+		boat_dot.position = chart_screen(vessel.center) + Vector2(-7, -11)
+	if Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
+		instruction.text = "Click to play  ·  Hold F1 for controls"
+	elif cabin.hands_in_use() or cabin.focus >= 0:
+		instruction.text = ""
+	elif driving:
+		instruction.text = "W/S  Throttle   A/D  Steer   E  Leave helm   ·   %.1f km/h" % (vessel.speed * 3.6)
+	elif fishing == Fishing.CASTING:
+		instruction.text = "Casting…"
+	elif fishing == Fishing.WAITING:
+		instruction.text = catch_note if clock < note_until else "Watch for the float to go under. R reels it in early."
+	elif fishing == Fishing.BITE:
+		objective.text = "Fish on the bait"
+		instruction.text = "Tap R now to set the hook."
+	elif fishing == Fishing.FIGHT:
+		objective.text = "Trophy muskie" if trophy.hooked else "Fish on"
+		instruction.text = "Let go of R and let the fish run." if payout > .25 or line_tension > .78 else "Hold R to reel  ·  Right mouse lifts the rod"
+	elif fishing == Fishing.RETRIEVING:
+		instruction.text = "Reeling in…"
+	elif fishing == Fishing.NET_READY:
+		objective.text = "Within net range"
+		instruction.text = "Ask your crew for the net, or tap R to land it." if campaign.crew.people.size() > 1 else "Tap R to scoop it into the net."
+	elif fishing == Fishing.LANDING:
+		objective.text = "Landing the fish"
+		instruction.text = "Lifting the net…"
+	elif fishing == Fishing.DISPLAY:
+		objective.text = catch_note
+		instruction.text = "R  Release    •    H  Keep for the grill"
+	elif fishing == Fishing.RELEASING:
+		instruction.text = "Lowering it back into the river…"
+	elif clock < note_until:
+		instruction.text = catch_note
+	elif rod_in_hand() and aboard() and absf(vessel.speed) > 1.3:
+		instruction.text = "Wait for the boat to slow before casting"
+	elif near_wheel():
+		instruction.text = "E  Take the helm"
+	elif aboard() and not vessel.skiff and vessel.to_local(player.global_position).z > -.30:
+		instruction.text = "Aim at the fridge or a galley item and press E."
+	var action := campaign.action_hint()
+	if not action.is_empty() and fishing == Fishing.READY and clock >= note_until and not cabin.hands_in_use() \
+			and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and not campaign.dive.active:
+		instruction.text = action
+	if swimming and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+		if can_board_from_water():
+			instruction.text = "E  Climb aboard at the bow"
+		elif river.lamure.at_swim_ladder(player.global_position, eye):
+			instruction.text = "E  Climb onto the swim float"
+		else:
+			instruction.text = "WASD  Swim   ·   Head for shore or the boat’s bow"
+	if campaign.dive.active:
+		objective.text = "Survey submersible"
+		instruction.text = ""
+	if play_input() and not flying and mower.rider == null and marina_cars.focused >= 0 and clock >= note_until \
+			and not campaign.controls_blocked() and campaign.preview_id.is_empty():
+		var which := marina_cars.focused
+		var car_label: String = marina_cars.cars[which].details.label
+		instruction.text = "E  Drive " + car_label if marina_cars.drivers[which] == 0 else car_label + "  ·  In use"
+	if play_input():
+		if flying:
+			instruction.text = "WASD  Fly   ·   Space  Up   ·   Ctrl/Shift  Down   ·   F2  Cheats"
+		elif mower.rider != null and clock >= note_until:
+			instruction.text = "W/S  Drive   ·   A/D  Turn   ·   Q/R  Throttle   ·   X  Blades %s   ·   C  View   ·   E  Dismount" % ("on" if mower.blades else "off")
+		elif can_talk_to_shannon():
+			var office_leaf := public_works.office_handle(eye)
+			var bay := public_works.nearby_door(eye)
+			if office_leaf >= 0:
+				instruction.text = public_works.office_prompt(office_leaf, eye)
+			elif shannon_job.in_range() and clock >= note_until:
+				instruction.text = shannon_job.prompt()
+			elif bay != null:
+				instruction.text = bay.prompt()
+			elif can_mount_mower():
+				instruction.text = "E  Mount lawn mower"
+	backpack.waypoint.visible = target_index >= 0
+	if target_index >= 0:
+		var target: Vector3 = river.point(target_index)
+		var distance := at.distance_to(target)
+		var waypoint_text := "%s  ·  %.1f km" % [river.meta.places[target_index].name, distance / 1000.0]
+		backpack.waypoint.text = waypoint_text
+		if not eye.is_position_behind(target + Vector3.UP * 1.5):
+			var projected := eye.unproject_position(target + Vector3.UP * 1.5)
+			marker.text = waypoint_text
+			marker.position = Vector2(clampf(projected.x - 68, 20, 1080), clampf(projected.y - 25, 128, 585))
+			marker.show()
+
+
+func update_flight_mode(enabled: bool) -> void:
+	flying = enabled
+	interact_pressed = false
+	rod_pressed = false
+	player.velocity = Vector3.ZERO
+	set_swimming(false)
+	player.motion_mode = CharacterBody3D.MOTION_MODE_FLOATING if flying else CharacterBody3D.MOTION_MODE_GROUNDED
+	if not flying:
+		return
+	release_line()
+	sonar_overlay.hide()
+	if driving:
+		campaign.relinquish_helm()
+	if mower.rider != null:
+		mower.leave_for_flight()
+	if not campaign.preview_id.is_empty():
+		campaign.cancel_preview(false)
+	if campaign.dive.active:
+		campaign.requested_dive = true
+
+
+func aboard() -> bool:
+	return not flying and super.aboard()
+
+
+func fly(delta: float, has_input: bool) -> void:
+	step_vessel(delta, 0.0)
+	if not has_input:
+		player.velocity = Vector3.ZERO
+		return
+	var descent := Input.is_physical_key_pressed(KEY_CTRL) or Input.is_physical_key_pressed(KEY_SHIFT)
+	var direction := Vector3(axis(KEY_D, KEY_A), float(Input.is_physical_key_pressed(KEY_SPACE)) - float(descent), -axis(KEY_W, KEY_S))
+	var boost := 3.0 if cheats.speed.button_pressed else 1.0
+	var target := direction.limit_length().rotated(Vector3.UP, yaw) * 15.0 * boost
+	player.velocity = player.velocity.move_toward(target, delta * 66.0 * boost)
+	if not player.velocity.is_zero_approx():
+		player.move_and_slide()
+
+
+func can_mount_mower() -> bool:
+	return not flying and not swimming and marina_cars.active < 0 and mower.rider == null and not aboard() and not driving \
+		and not cabin.busy() and not campaign.dive.active and campaign.preview_id.is_empty() \
+		and not campaign.crewplay.hands_busy() and (mower.near(player, eye) or spare_mower.near(player, eye))
+
+
+func can_talk_to_shannon() -> bool:
+	return mower.rider == null and not flying and not swimming and marina_cars.active < 0 and not aboard() and not driving \
+		and not cabin.busy() and not campaign.dive.active and campaign.preview_id.is_empty()

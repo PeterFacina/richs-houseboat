@@ -1,0 +1,1666 @@
+extends Node3D
+
+const Data = preload("res://river_campaign_data.gd")
+const Ledger = preload("res://river_ledger.gd")
+const Landings = preload("res://river_landings.gd")
+const Deck = preload("res://river_deck.gd")
+const Sub = preload("res://river_submersible.gd")
+const Board = preload("res://river_board.gd")
+const Crew = preload("res://river_crew.gd")
+const Boat = preload("res://houseboat.gd")
+const Kit = preload("res://scenery.gd")
+const CrewPlay = preload("res://crew_play.gd")
+const Rich = preload("res://rich_npc.gd")
+
+var game: Node3D
+var ledger := Ledger.new()
+var landings := Landings.new()
+var deck := Deck.new()
+var dive := Sub.new()
+var crew := Crew.new()
+var crewplay := CrewPlay.new()
+var rich := Rich.new()
+var board: Board
+var houseboat: Boat
+var skiff: Boat
+var info: Label
+var message := ""
+var dock := -1
+var captain := 0
+var revision := 0
+var saved_state: Dictionary = {}
+var saved_evening := false
+var remote_ship: Dictionary = {}
+var remote_throttle := 0.0
+var remote_rudder := 0.0
+var remote_age := 99.0
+var requested_dock := false
+var requested_dive := false
+var guest_captain := 0
+var last_guest_revision := -1
+var guide_site := -1
+var job_targets: Dictionary = {}
+var lift_amount := 0.0
+var lifting_peer := 0
+var diver := 0
+var save_elapsed := 0.0
+var ghost: MeshInstance3D
+var ghost_paint: StandardMaterial3D
+var preview_id := ""
+var preview_site := -1
+var preview_angle := 0.0
+var preview_pose := Transform3D.IDENTITY
+var preview_good := false
+var place_requested := false
+var route_map: Node2D
+var route_map_version := ""
+var rich_underway := false
+var rich_high_bilge := false
+var rich_chat_requests := {}
+
+
+func setup(fishing_game: Node3D) -> void:
+	game = fishing_game
+	name = "RiverCampaign"
+	houseboat = game.vessel as Boat
+	ledger.load_file()
+	houseboat.set_modern_design(ledger.state.modern_houseboat)
+	crew.name = "Crew"
+	crew.local_profile = ledger.profile_id()
+	add_child(crew)
+	crew.boat = game.vessel
+	crew.requested.connect(remote_request)
+	crew.state_received.connect(sync_guest)
+	crew.ship_received.connect(receive_ship)
+	crew.command_received.connect(receive_helm)
+	crew.result_received.connect(receive_result)
+	crew.member_left.connect(member_left)
+	crew.changed.connect(crew_changed)
+	add_child(landings)
+	landings.setup(game.river, ledger)
+	houseboat.water_check = houseboat_route
+	add_child(deck)
+	deck.fit(houseboat)
+	crewplay.name = "DeckActions"
+	add_child(crewplay)
+	crewplay.setup(game, self)
+	rich.setup(houseboat, game.hud)
+	crew.rich_heard.connect(rich.play)
+	rich.spoken.connect(share_rich_line)
+	add_child(dive)
+	dive.setup(game.river, game.eye)
+	var page := CanvasLayer.new()
+	page.layer = 4
+	add_child(page)
+	board = Board.new()
+	page.add_child(board)
+	board.chosen.connect(button_selected)
+	board.dismissed.connect(close_board)
+	info = game.label("", 15, Color("#f6e6c5"))
+	game.hud.add_child(info)
+	info.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
+	info.offset_left = -482
+	info.offset_right = -26
+	info.offset_top = 53
+	info.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	info.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	ghost_paint = Kit.paint(Color(.46, .88, .69, .35))
+	ghost_paint.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	ghost_paint.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	ghost = Kit.mesh_at(self, BoxMesh.new(), Vector3.ZERO, ghost_paint)
+	ghost.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	ghost.hide()
+	route_map = Node2D.new()
+	route_map.name = "SupplyRoutes"
+	game.chart.add_child(route_map)
+	for index in Data.WORK.size():
+		var job: Dictionary = Data.WORK[index]
+		if job.has("offset"):
+			var origin: Vector3 = landings.sites[job.home].berth + Vector3(job.offset.x, 0, job.offset.y)
+			job_targets[index] = closest_water(origin, 4.8 if job.kind == "dive" else 2.15)
+	dock = clampi(int(ledger.state.last_dock), -1, Data.SITES.size() - 1)
+	if dock >= 0:
+		select_craft(str(ledger.state.craft), dock)
+		set_moored(dock)
+		move_person(dock, false)
+	update_target()
+	update_route_map()
+
+
+func closest_water(center: Vector3, minimum_depth: float) -> Vector3:
+	for ring in 14:
+		for direction in (1 if ring == 0 else 12):
+			var angle := float(direction) * TAU / 12.0
+			var sample := center + Vector3(sin(angle), 0, cos(angle)) * (ring * 12.0)
+			if game.river.can_sail(sample) and game.river.depth_at(sample) >= minimum_depth:
+				return sample
+	return center
+
+
+func actor(peer: int) -> Dictionary:
+	if peer == crew.my_id():
+		return {"at": game.player.global_position, "onboard": game.aboard(), "yaw": game.yaw, "pitch": game.pitch}
+	if captain == peer:
+		return {"at": game.vessel.to_global(game.vessel.helm_anchor()), "onboard": true}
+	return crew.last_pose(peer)
+
+
+func local_site() -> int:
+	return actor_site(actor(crew.my_id()))
+
+
+func at_plot(person: Dictionary, site: int) -> bool:
+	return site >= 0 and not person.onboard and landings.site_range(person.at, 14.0, false) == site
+
+
+func actor_site(person: Dictionary) -> int:
+	if person.is_empty():
+		return -1
+	if person.onboard:
+		return dock
+	var shore_site := landings.site_range(person.at, 19.5, false)
+	if shore_site >= 0:
+		return shore_site
+	return dock if dock >= 0 and \
+		landings.footprint(Vector2(8, 38), Transform3D(Basis(Vector3.UP, landings.sites[dock].heading),
+			landings.sites[dock].transfer.lerp(landings.sites[dock].stand, .5))).has_point(Vector2(person.at.x, person.at.z)) else -1
+
+
+func can_fish_from_shore() -> bool:
+	var at: Vector3 = game.player.global_position
+	return not dive.active and at.y < 6.0 \
+		and (near_landing_water() or (at.y > .3 and game.river.waterfront.wharf.blocks_water(at)))
+
+
+func near_landing_water() -> bool:
+	var at: Vector3 = game.player.global_position
+	return landings.site_range(at, 86.0, false) >= 0 or landings.site_range(at, 55.0, true) >= 0
+
+
+func controls_blocked() -> bool:
+	return board.visible or dive.active
+
+
+func open_board(page := "River") -> void:
+	game.release_line()
+	game.chart.hide()
+	game.fish_guide.hide()
+	game.sonar_overlay.hide()
+	cancel_preview(false)
+	board.active_page = page
+	board.show()
+	Input.mouse_mode = Input.MOUSE_MODE_CONFINED
+	refresh_board()
+
+
+func close_board() -> void:
+	board.hide()
+	if DisplayServer.get_name() != "headless":
+		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+
+
+func handle_modal(event: InputEventKey, key: Key) -> bool:
+	if board.visible:
+		if key == KEY_ESCAPE or (not get_viewport().gui_get_focus_owner() is LineEdit and key == KEY_B):
+			close_board()
+			return true
+		return false
+	if dive.active:
+		if key == KEY_V or key == KEY_ESCAPE:
+			requested_dive = true
+		elif key == KEY_E:
+			if not dive.take():
+				game.notify_angling("Bring the sub within 1.5 m of the recorder.", 3.2)
+		return true
+	if key == KEY_B and not game.cabin.busy():
+		var place := local_site()
+		open_board("Build" if place >= 0 and not game.aboard() and not game.chart.visible else "River")
+		return true
+	return false
+
+
+func handle_world(event: InputEvent) -> bool:
+	if board.visible:
+		return true
+	if dive.active:
+		if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+			dive.steer(event.relative)
+		return true
+	if preview_id != "" and event is InputEventMouseButton and event.pressed:
+		if event.button_index == MOUSE_BUTTON_LEFT:
+			place_requested = true
+		elif event.button_index == MOUSE_BUTTON_RIGHT:
+			cancel_preview()
+		return true
+	if event is InputEventKey and event.pressed and not event.echo:
+		match event.physical_keycode:
+			KEY_L:
+				requested_dock = true
+				return true
+			KEY_V:
+				requested_dive = true
+				return true
+			KEY_Q:
+				if preview_id != "":
+					preview_angle += PI * .5
+					return true
+	return false
+
+
+func run_shortcuts(has_input: bool) -> void:
+	if requested_dock:
+		requested_dock = false
+		if has_input and not game.cabin.busy():
+			request("dock", null)
+	if requested_dive:
+		requested_dive = false
+		if dive.active:
+			var completed := dive.retrieved
+			dive.stow()
+			request("finish_dive", completed)
+		elif has_input and not game.cabin.busy():
+			try_dive()
+	if place_requested:
+		place_requested = false
+		if preview_good and has_input:
+			request("build", [preview_site, preview_id, preview_pose.origin, preview_angle])
+			cancel_preview(false)
+
+
+func local_interact() -> bool:
+	if at_rich():
+		request("rich_talk", null)
+		return true
+	if crewplay.interact():
+		return true
+	if not game.aboard():
+		if game.river.lamure.at_swim_ladder(game.player.global_position, game.eye):
+			game.river.lamure.climb_float(game.player)
+			return true
+		var door := landings.aimed_door(game.eye)
+		if door != null:
+			request("door", door.get_meta("door_id"))
+			return true
+		var site := local_site()
+		if site >= 0:
+			var shop := ledger.building(site, "workshop")
+			if not shop.is_empty():
+				var orientation := landings.read_pose(shop)
+				if aiming(orientation * Vector3(0, 1.2, -1.36), 2.8, .83):
+					open_board("Workshop")
+					return true
+			if aiming(landings.sites[site].sign, 3.1, .78):
+				open_board("Jobs")
+				return true
+		return false
+	if not game.driving:
+		var engine_at := deck.pump.to_global(Vector3(.13, .23, 0))
+		if aiming(engine_at, 1.45, .92) and deck.pump.visible:
+			request("pump", null)
+			return true
+		var task := ledger.active_job()
+		var ship: Boat = game.vessel
+		if not task.is_empty() and ledger.state.stage == "travel" and task.has("offset") \
+				and ship.center.distance_to(target_for_job()) < work_radius(task.kind):
+			if task.kind == "dive":
+				try_dive()
+			else:
+				request("work", null)
+			return true
+	return false
+
+
+func aiming(point: Vector3, radius: float, cone: float) -> bool:
+	var eye: Camera3D = game.eye
+	var ray := point - eye.global_position
+	return ray.length_squared() <= radius * radius and ray.normalized().dot(-eye.global_basis.z) > cone
+
+
+func at_rich() -> bool:
+	return game.vessel == houseboat and game.aboard() and not game.driving and rich.focused(game.eye, game.player)
+
+
+func share_rich_line(line_id: String, toward: Vector3) -> void:
+	if crew.on_server() and crew.people.size() > 1:
+		crew.rich_line.rpc(line_id, toward)
+
+
+func start_rich_chat(peer: int) -> bool:
+	var person := actor(peer)
+	if game.vessel != houseboat or peer == captain or not person.get("onboard", false) or not rich.close_enough(person.at):
+		return false
+	rich.talk(houseboat.to_local(person.at) + Vector3.UP * 1.57)
+	return true
+
+
+func tick_rich(delta: float) -> void:
+	var author := not crew.is_guest()
+	if author:
+		for peer: int in rich_chat_requests.keys():
+			if game.clock >= rich_chat_requests[peer] or not crew.people.has(peer) or start_rich_chat(peer):
+				rich_chat_requests.erase(peer)
+	var main_boat: bool = game.vessel == houseboat
+	if author and main_boat:
+		var moving := absf(houseboat.speed) > 2.15
+		var knee_deep: bool = ledger.state.bilge > (.48 if rich_high_bilge else .66)
+		var toward := houseboat.helm_anchor() + Vector3.UP * 1.57
+		if knee_deep and not rich_high_bilge:
+			rich.react("bilge", toward)
+		elif moving and not rich_underway:
+			rich.react("underway", toward)
+		rich_underway = moving
+		rich_high_bilge = knee_deep
+	var see_subtitles: bool = not board.visible and not game.chart.visible and not game.fish_guide.visible and not dive.active
+	var on_deck: Array[Vector3] = []
+	if author and main_boat:
+		if game.aboard():
+			on_deck.append(houseboat.to_local(game.player.global_position))
+		for peer: int in crew.people:
+			if peer != crew.my_id():
+				var person := actor(peer)
+				if person.get("onboard", false):
+					on_deck.append(houseboat.to_local(person.at))
+	rich.tick(delta, game.clock, game.eye, see_subtitles, author, on_deck)
+
+
+func begin_preview(id: String) -> void:
+	preview_id = id
+	preview_site = local_site()
+	preview_angle = float(landings.sites[preview_site].heading) + PI
+	preview_good = false
+	close_board()
+
+
+func cancel_preview(announce := true) -> void:
+	if preview_id.is_empty():
+		return
+	preview_id = ""
+	ghost.hide()
+	if announce:
+		game.notify_angling("Building cancelled.", 2.0)
+
+
+func tick_preview() -> void:
+	if preview_id.is_empty():
+		return
+	if preview_site != local_site() or game.aboard():
+		cancel_preview(false)
+		return
+	var eye: Camera3D = game.eye
+	var point: Vector3 = landings.sites[preview_site].plot
+	var ray := PhysicsRayQueryParameters3D.create(eye.global_position,
+		eye.global_position - eye.global_basis.z * 30.0, 1, [game.player.get_rid()])
+	var hit: Dictionary = game.get_world_3d().direct_space_state.intersect_ray(ray)
+	if not hit.is_empty():
+		point = hit.position
+	preview_pose = landings.build_pose(preview_site, preview_id, point, preview_angle)
+	preview_good = landings.allowed_pose(preview_site, preview_id, preview_pose)
+	var size: Vector2 = Data.BUILDINGS[preview_id].size
+	var height := .16 if preview_id in ["dock", "porch", "turbine"] else 2.45
+	(ghost.mesh as BoxMesh).size = Vector3(size.x, height, size.y)
+	ghost.global_transform = preview_pose.translated_local(Vector3.UP * (height * .5 + .017))
+	ghost_paint.albedo_color = Color(.40, .77, .58, .37) if preview_good else Color(.91, .38, .28, .38)
+	ghost.show()
+
+
+func set_moored(index: int) -> void:
+	var vessel: Boat = game.vessel
+	var data: Dictionary = landings.sites[index]
+	var space: float = -.22 if vessel.skiff else 0.0
+	vessel.center = data.berth + data.right * space
+	vessel.heading = float(data.heading)
+	vessel.speed = 0
+	vessel.throttle = 0
+	vessel.wave_pose = Vector3.ZERO
+	vessel.foil_lift = 0.0
+	vessel.departed = false
+	vessel.transform = Transform3D(Basis(Vector3.UP, vessel.heading), vessel.center)
+	if dock != index and vessel == houseboat and not crew.is_guest():
+		rich.react("dock", houseboat.helm_anchor() + Vector3.UP * 1.57)
+	dock = index
+
+
+func move_person(site: int, onto_boat: bool) -> void:
+	var there: Dictionary = landings.sites[site]
+	var mark: Vector3 = there.transfer
+	game.release_line()
+	game.player.global_position = game.vessel.to_global(game.vessel.board_anchor()) if onto_boat else mark
+	game.player.reset_physics_interpolation()
+	game.player.velocity = Vector3.ZERO
+	game.yaw = float(there.heading) + (0.0 if onto_boat else PI)
+	game.pitch = -.12
+	game.update_view()
+
+
+func keep_player_on_deck(boat: Boat, relative: Vector3) -> void:
+	game.player.global_position = boat.to_global(relative)
+	game.player.reset_physics_interpolation()
+	game.player.velocity = Vector3.ZERO
+
+
+func select_craft(requested: String, index: int) -> void:
+	if requested == "skiff":
+		if not is_instance_valid(skiff):
+			skiff = Boat.new()
+			skiff.skiff = true
+			skiff.center = landings.sites[index].berth
+			skiff.water_check = shallow_route
+			skiff.water_flow = game.river.downstream
+			skiff.wave_sampler = game.river.wave_height
+			skiff.river_engine = true
+			add_child(skiff)
+		if ledger.has_upgrade("foil"):
+			skiff.add_foil()
+		houseboat.hide()
+		houseboat.collision_layer = 0
+		houseboat.motor.sound.stop()
+		skiff.show()
+		skiff.collision_layer = 1
+		game.vessel = skiff
+	else:
+		if is_instance_valid(skiff):
+			skiff.hide()
+			skiff.collision_layer = 0
+			skiff.motor.sound.stop()
+		houseboat.show()
+		houseboat.collision_layer = 1
+		game.vessel = houseboat
+	crew.boat = game.vessel
+	if deck.vessel != game.vessel:
+		deck.fit(game.vessel)
+	crewplay.fit(game.vessel)
+
+
+func shallow_route(at: Vector3) -> bool:
+	return game.river.can_sail(at, .49) and landings.pier_clear(at)
+
+
+func houseboat_route(at: Vector3) -> bool:
+	return game.river.can_sail(at) and landings.pier_clear(at)
+
+
+func stop_captain() -> void:
+	captain = 0
+	guest_captain = 0
+	crew.set_meta("captain", 0)
+	game.driving = false
+	game.vessel.throttle = 0.0
+	remote_throttle = 0.0
+	remote_rudder = 0.0
+	remote_age = 99.0
+
+
+func helm() -> void:
+	request("helm", null)
+
+
+func relinquish_helm() -> void:
+	if crew.is_guest():
+		if captain == crew.my_id():
+			helm()
+		game.driving = false
+	else:
+		stop_captain()
+		changed(false)
+
+
+func after_fall() -> Vector3:
+	# Return swimmers near shore to the landing where they can wait for the crew.
+	var shore := landings.site_range(game.player.global_position, 64.0, false)
+	return landings.sites[shore].stand + Vector3.UP * .12 if shore >= 0 else \
+		game.vessel.to_global(game.vessel.board_anchor())
+
+
+func capacity() -> float:
+	return 1.8 if ledger.has_upgrade("battery") else .46
+
+
+func step_boat(delta: float, rudder: float) -> void:
+	var vessel: Boat = game.vessel
+	if crew.is_guest():
+		tick_client_ship(delta)
+		return
+	if dock >= 0:
+		vessel.throttle = 0.0
+		vessel.departed = false
+		vessel.speed = 0.0
+	if captain > 1:
+		remote_age += delta
+		vessel.throttle = remote_throttle if remote_age < .7 and dock == -1 else 0.0
+		rudder = remote_rudder if remote_age < .7 and dock == -1 else 0.0
+	consume_power(delta)
+	var limiting: float = ledger.state.charge if vessel.skiff else ledger.state.fuel
+	vessel.throttle_cap = (.18 if limiting < .015 else 1.0) * lerpf(1.0, .52, smoothstep(.48, 1.0, ledger.state.bilge))
+	vessel.top_speed = (11.9 if vessel.foil else 8.4) if vessel.skiff else (4.5 if ledger.state.tow else 6.5)
+	var before := vessel.center
+	vessel.sail(delta, game.clock, captain != 0 or game.driving, rudder)
+	var active := ledger.active_job()
+	if not active.is_empty() and active.kind == "freight" and absf(vessel.throttle) > .21:
+		ledger.state.freight_run += before.distance_to(vessel.center)
+	if dock >= 0 and vessel.skiff:
+		vessel.position.y += .09
+
+
+func consume_power(delta: float) -> void:
+	var vessel: Boat = game.vessel
+	var state := ledger.state
+	var load := absf(vessel.throttle) if dock < 0 else 0.0
+	if dock >= 0:
+		var current: Vector3 = game.river.downstream(vessel.center, game.clock)
+		var main_feed := ledger.power_at(dock, current.length())
+		state.charge = minf(capacity(), state.charge + delta * (.004 + main_feed * .021))
+		if ledger.has_at(dock, "boathouse"):
+			state.fuel = minf(34.0, state.fuel + delta * 1.8)
+	elif vessel.skiff:
+		state.charge = maxf(0.0, state.charge - delta * load * (.014 + vessel.foil_lift * .010))
+	else:
+		state.fuel = maxf(0.0, state.fuel - delta * load * .040)
+		state.charge = minf(capacity(), state.charge + delta * load * .0035)
+	if load > .2:
+		var motion := absf(vessel.wave_pose.y) + absf(vessel.wave_pose.z)
+		state.bilge = minf(1.0, state.bilge + delta * load * (.002 + motion * .022))
+	if state.pump_on and ledger.has_upgrade("pump") and state.charge > .025 and state.bilge > 0:
+		state.bilge = maxf(0.0, state.bilge - delta * .087)
+		state.charge = maxf(0.0, state.charge - delta * .008)
+	if diver > 0:
+		state.charge = maxf(0.0, state.charge - delta * .002)
+	if crewplay.lamp_on:
+		state.charge = maxf(0.0, state.charge - delta * .0019)
+
+
+func update_target() -> void:
+	var task := ledger.active_job()
+	if not task.is_empty() and task.has("offset") and ledger.state.stage == "travel":
+		deck.set_target(task.kind, target_for_job(), task.name)
+	else:
+		deck.set_target("", Vector3.ZERO, "")
+
+
+func target_for_job() -> Vector3:
+	return job_targets.get(int(ledger.state.job), Vector3.ZERO)
+
+
+func work_radius(kind: String) -> float:
+	if kind == "survey":
+		return 17.5 if ledger.has_upgrade("sonar") else 11.0
+	return 15.5 if kind == "dive" else 9.2
+
+
+func tick(delta: float, has_input: bool) -> void:
+	var vessel: Boat = game.vessel
+	tick_preview()
+	tick_lift(delta)
+	if dive.active and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+		var up: float = game.axis(KEY_SPACE, KEY_CTRL)
+		dive.advance(delta, Vector3(game.axis(KEY_D, KEY_A), up, -game.axis(KEY_W, KEY_S)))
+	var target := target_for_job()
+	var wave: float = game.river.wave_height(target, game.clock)
+	deck.animate(delta, wave, ledger, target, lift_amount, game.clock)
+	deck.mooring(landings.sites[dock] if dock >= 0 else {})
+	landings.animate(delta, game.clock)
+	if crew.tick(delta, game.player, game.aboard(), game.yaw, game.capture_crew_pose, game.clock, game.eye.global_position):
+		if crew.on_server():
+			send_ship()
+		elif game.driving:
+			crew.steer.rpc_id(1, vessel.throttle, float(game.axis(KEY_D, KEY_A)) if has_input else 0.0)
+	crewplay.tick(delta)
+	tick_rich(delta)
+	if not crew.is_guest() and dock >= 0:
+		save_elapsed += delta
+		if save_elapsed >= 30.0:
+			save_elapsed = 0.0
+			ledger.save_file()
+	update_info()
+
+
+func request(action: String, value: Variant) -> void:
+	if crew.mode == "guest":
+		crew.order.rpc_id(1, action, value)
+	elif not crew.is_guest():
+		perform(crew.my_id(), action, value)
+
+
+func remote_request(peer: int, action: String, value: Variant) -> void:
+	if action == "connected":
+		crew.share_state.rpc_id(peer, ledger.state, dock, captain, revision)
+		crew.share_ship.rpc_id(peer, ship_packet())
+		crewplay.welcome(peer)
+		crew.result.rpc_id(peer, "Welcome aboard. B opens the shared notebook.", dock, actor_site(actor(1)) < 0)
+		return
+	perform(peer, action, value)
+
+
+func tell(peer: int, text: String, at_site := -2, to_boat := false) -> void:
+	if peer != crew.my_id():
+		crew.result.rpc_id(peer, text, at_site, to_boat)
+	else:
+		receive_result(text, at_site, to_boat)
+
+
+func receive_result(text: String, at_site: int, to_boat: bool) -> void:
+	if at_site == -3:
+		begin_dive()
+	elif at_site >= 0:
+		move_person(at_site, to_boat)
+	elif at_site == -1 and to_boat:
+		keep_player_on_deck(game.vessel, game.vessel.board_anchor())
+	if not text.is_empty():
+		message = text
+		if board.visible:
+			board.set_message(text)
+		else:
+			game.notify_angling(text, 4.4)
+
+
+func changed(persist := true) -> void:
+	houseboat.set_modern_design(ledger.state.get("modern_houseboat", false))
+	if persist and not crew.is_guest():
+		ledger.save_file()
+		if not ledger.error.is_empty():
+			message = ledger.error
+	landings.sync_structures()
+	update_target()
+	update_route_map()
+	if crew.on_server() and crew.people.size() > 1:
+		crew.share_state.rpc(ledger.state, dock, captain, revision)
+	refresh_board()
+
+
+func reward_mowing(amount: int) -> void:
+	ledger.state.cash += amount
+	changed()
+
+
+func perform(peer: int, action: String, value: Variant) -> void:
+	if action == "houseboat_design":
+		if peer == crew.my_id() and not crew.is_guest() and game.vessel == houseboat and value is bool:
+			ledger.state.modern_houseboat = value
+			changed()
+			tell(peer, "Panorama houseboat ready." if value else "Classic houseboat ready.")
+		return
+	if action == "rich_talk":
+		if not start_rich_chat(peer) and peer != crew.my_id() and not rich_chat_requests.has(peer):
+			# The reliable request can reach the host before the next deck position packet.
+			rich_chat_requests[peer] = game.clock + 2.0
+		return
+	var person := actor(peer)
+	if person.is_empty():
+		tell(peer, "Move a step so the host can see where you are.")
+		return
+	if action.begins_with("crew_"):
+		crewplay.act(peer, action, value, person)
+		return
+	var place := actor_site(person)
+	match action:
+		"rich_lost":
+			if person.onboard and game.vessel == houseboat:
+				rich.react("lost", houseboat.to_local(person.at) + Vector3.UP * 1.57)
+		"dock":
+			use_dock(peer, person, place)
+		"helm":
+			use_helm(peer, person)
+		"travel":
+			if value is int and value >= 0 and value < Data.SITES.size():
+				travel(peer, value, place)
+		"claim":
+			if at_plot(person, place):
+				claim(peer, place)
+		"build":
+			if at_plot(person, place):
+				build(peer, place, value)
+		"door":
+			if value is String and not person.onboard:
+				for hinge: AnimatableBody3D in landings.doors:
+					if is_instance_valid(hinge) and hinge.get_meta("door_id") == value and \
+							hinge.global_position.distance_to(person.at) < 3.2:
+						ledger.state.doors[value] = not ledger.state.doors.get(value, false)
+						changed(false)
+						break
+		"fabricate":
+			if value is String and Data.UPGRADES.has(value):
+				fabricate(peer, place, value)
+		"launch":
+			if value is String:
+				launch(peer, place, value)
+		"supply":
+			if place >= 0 and value is String:
+				resupply(peer, place, value)
+		"route":
+			if value is int and value >= 0 and value < Data.SITES.size():
+				commission_route(peer, place, value)
+		"lift":
+			if place >= 0 and ledger.has_at(place, "drydock") and ledger.has_at(place, "turbine"):
+				var up: bool = not ledger.state.lifts.get(str(place), false)
+				ledger.state.lifts[str(place)] = up
+				changed()
+				tell(peer, "Raising the inspection cradle." if up else "Lowering the inspection cradle.")
+		"pump":
+			if person.onboard and ledger.has_upgrade("pump"):
+				ledger.state.pump_on = not ledger.state.pump_on
+				changed()
+				tell(peer, "Automatic bilge pump on." if ledger.state.pump_on else "Automatic bilge pump off.")
+				if ledger.state.pump_on and game.vessel == houseboat:
+					rich.react("pump", houseboat.to_local(person.at) + Vector3.UP * 1.57)
+		"manual":
+			if person.onboard or place >= 0:
+				ledger.state.bilge = 0.0
+				changed()
+				tell(peer, "You pumped the bilge dry by hand.")
+		"accept":
+			if value is int and value >= 0 and value < Data.WORK.size():
+				accept_job(peer, place, value)
+		"deliver":
+			deliver(peer, place)
+		"abandon":
+			if not ledger.active_job().is_empty() and place >= 0 and lifting_peer == 0 and diver == 0:
+				clear_job()
+				changed()
+				tell(peer, "Job put back on the board.")
+		"work":
+			work_at_buoy(peer, person)
+		"catch":
+			if (person.onboard or place >= 0) and value is Array and value.size() == 2 and value[0] is String and value[1] is int:
+				count_catch(peer, String(value[0]).substr(0, 42), clampi(value[1], 2, 200), person.at)
+				if person.onboard and game.vessel == houseboat:
+					rich.react("catch", houseboat.to_local(person.at) + Vector3.UP * 1.57)
+		"start_dive":
+			if can_dive(person):
+				diver = peer
+				changed(false)
+				if peer == crew.my_id():
+					begin_dive()
+				else:
+					crew.result.rpc_id(peer, "", -3, false)
+			else:
+				tell(peer, "Stop within 15 m of the recorder buoy with the survey sub fitted.")
+		"finish_dive":
+			if diver == peer:
+				diver = 0
+				if value == true and not ledger.active_job().is_empty() and ledger.active_job().kind == "dive":
+					ledger.state.stage = "return"
+					changed()
+					tell(peer, "Recorder aboard. Bring it back to Chalk River.")
+				else:
+					changed(false)
+
+
+func use_dock(peer: int, person: Dictionary, place: int) -> void:
+	var boat: Boat = game.vessel
+	if diver > 0 or lifting_peer > 0:
+		tell(peer, "Stow the equipment before docking.")
+		return
+	if dock >= 0:
+		if person.onboard:
+			tell(peer, "Ashore at %s. Follow the pier and press B at the cabin plot." % Data.dock_name(dock), dock)
+		elif place == dock:
+			tell(peer, "Aboard at %s. E at the wheel gets underway." % Data.dock_name(dock), dock, true)
+		else:
+			tell(peer, "Your boat is tied up at %s." % Data.dock_name(dock))
+		return
+	if not person.onboard or (captain != 0 and captain != peer) or absf(boat.speed) > 1.6:
+		tell(peer, "Slow below 6 km/h and press L to tie up.")
+		return
+	var berth := landings.site_range(boat.center, 22.0, true)
+	if berth < 0:
+		tell(peer, "Get within 22 m of a landing before tying up. See B → River.")
+		return
+	var position: Vector3 = game.player.global_position
+	var aboard_here: bool = game.aboard()
+	var local: Vector3 = boat.to_local(position)
+	stop_captain()
+	set_moored(berth)
+	if aboard_here and peer != crew.my_id():
+		keep_player_on_deck(boat, local)
+	revision += 1
+	save_berth(berth)
+	tell(peer, "Tied up at %s. L boards again." % Data.dock_name(berth), berth)
+
+
+func use_helm(peer: int, person: Dictionary) -> void:
+	if captain != 0 and captain != peer:
+		tell(peer, "%s is at the wheel." % crew.person(captain).get("name", "Another crew member"))
+		return
+	if captain == peer:
+		stop_captain()
+		changed(false)
+		return
+	if not person.onboard or diver > 0 or lifting_peer > 0:
+		return
+	if not crewplay.held_by(peer).is_empty() or crewplay.lamp_operator == peer:
+		tell(peer, "Set down the gear or release the light before taking the wheel.")
+		return
+	var boat: Boat = game.vessel
+	if Vector3(person.at).distance_to(boat.to_global(boat.helm_anchor())) > 1.33:
+		return
+	dock = -1
+	boat.departed = true
+	captain = peer
+	crew.set_meta("captain", captain)
+	if peer == crew.my_id():
+		game.interact()
+	changed(false)
+
+
+func save_berth(index: int) -> void:
+	ledger.state.last_dock = index
+	if not ledger.state.visited.has(index) and not ledger.state.visited.has(float(index)):
+		ledger.state.visited.append(index)
+	changed()
+
+
+func ferry_open(index: int) -> bool:
+	return index < 3 or ledger.state.surveys.has("0") or \
+		ledger.state.visited.has(index) or ledger.state.visited.has(float(index))
+
+
+func ferry_distance() -> bool:
+	return dock >= 0 or (game.aboard() and captain == 0 and absf(game.vessel.speed) < .7 and \
+		game.vessel.center.distance_to(game.river.point(1)) < 240.0)
+
+
+func travel(peer: int, destination: int, place: int, evening_trip := false) -> bool:
+	var person := actor(peer)
+	var original_spawn: bool = dock < 0 and person.onboard and captain == 0 \
+		and absf(game.vessel.speed) < .7 and game.vessel.center.distance_to(game.river.point(1)) < 240.0
+	if (place != dock or dock < 0) and not original_spawn:
+		tell(peer, "Travel from a landing while the boat is tied up.")
+		return false
+	if not ferry_open(destination) or (original_spawn and destination != 0 and not evening_trip):
+		tell(peer, "Tie up at the marina first. Survey the channel to open the regional ferry.")
+		return false
+	if diver > 0 or lifting_peer > 0:
+		tell(peer, "Finish or put away the equipment first.")
+		return false
+	for id: int in crew.people:
+		var other := actor(id)
+		if not other.is_empty() and not other.onboard and actor_site(other) != dock:
+			tell(peer, "Wait until the entire crew is back at this landing.")
+			return false
+	var fee := 12 if destination >= 3 and destination != dock and not ledger.connected(dock, destination) else 0
+	if ledger.state.cash < fee:
+		tell(peer, "This crossing costs $%d." % fee)
+		return false
+	var local_comes: bool = game.aboard() or local_site() == dock
+	ledger.state.cash -= fee
+	stop_captain()
+	set_moored(destination)
+	revision += 1
+	if local_comes and peer != crew.my_id():
+		move_person(destination, false)
+	save_berth(destination)
+	tell(peer, "Arrived at %s. L boards the boat." % Data.dock_name(destination), destination)
+	return true
+
+
+func claim(peer: int, place: int) -> void:
+	if not ledger.site(place).is_empty():
+		tell(peer, "This plot already belongs to a member of the crew.")
+		return
+	var who := crew.person(peer)
+	var count := 0
+	for other: Dictionary in ledger.state.sites.values():
+		if other.get("owner") == who.profile:
+			count += 1
+	var price := 45 if count > 0 else 0
+	if ledger.state.cash < price:
+		tell(peer, "An additional plot costs $45.")
+		return
+	ledger.state.cash -= price
+	ledger.state.sites[str(place)] = {"owner": who.profile, "name": who.name, "buildings": {}, "deliveries": 0}
+	changed()
+	tell(peer, "Plot claimed at %s. Choose a cabin or workshop." % Data.dock_name(place))
+
+
+func may_build(place: int, id: String) -> String:
+	if ledger.site(place).is_empty():
+		return "Claim the plot first."
+	if ledger.has_at(place, id):
+		return "Already built."
+	var plan: Dictionary = Data.BUILDINGS[id]
+	if not ledger.affordable(plan):
+		return "You need more supplies."
+	if not Data.requirement(str(plan.get("needs", "")), ledger.state.equipment):
+		return "Requires %s." % Data.UPGRADES[plan.needs].name
+	if id == "porch" and not ledger.has_at(place, "cabin"):
+		return "Build the cabin first."
+	return ""
+
+
+func build(peer: int, place: int, args: Variant) -> void:
+	if not (args is Array and args.size() == 4 and args[0] == place and args[1] is String and Data.BUILDINGS.has(args[1]) \
+			and args[2] is Vector3 and args[2].is_finite() and (args[3] is float or args[3] is int) and is_finite(args[3])):
+		return
+	var id: String = args[1]
+	var disallowed := may_build(place, id)
+	if not disallowed.is_empty():
+		tell(peer, disallowed)
+		return
+	var pose := landings.build_pose(place, id, args[2], args[3])
+	if not landings.allowed_pose(place, id, pose):
+		tell(peer, "Choose a level spot with room around it.")
+		return
+	ledger.spend(Data.BUILDINGS[id])
+	ledger.site(place).buildings[id] = landings.record(pose)
+	changed()
+	tell(peer, "%s built at %s." % [Data.BUILDINGS[id].name, Data.dock_name(place)])
+
+
+func may_make(place: int, id: String) -> String:
+	if ledger.has_upgrade(id):
+		return "Installed."
+	if place < 0 or not ledger.has_at(place, "workshop"):
+		return "Use a workshop at a claimed landing."
+	var item: Dictionary = Data.UPGRADES[id]
+	if not Data.requirement(str(item.get("needs", "")), ledger.state.equipment):
+		return "Requires %s." % Data.UPGRADES[item.needs].name
+	if ledger.state.surveys.size() < item.get("surveys", 0):
+		return "Complete a depth survey first."
+	if item.get("drydock", false) and (not ledger.has_at(place, "drydock") or not ledger.has_at(place, "turbine")):
+		return "Requires a dry dock and current turbine here."
+	if not ledger.affordable(item):
+		return "Earn more supplies from jobs."
+	return ""
+
+
+func fabricate(peer: int, place: int, id: String) -> void:
+	var reason := may_make(place, id)
+	if not reason.is_empty():
+		tell(peer, reason)
+		return
+	ledger.spend(Data.UPGRADES[id])
+	ledger.state.equipment[id] = true
+	if id == "battery":
+		ledger.state.charge = capacity()
+	if id == "foil" and is_instance_valid(skiff):
+		skiff.add_foil()
+	changed()
+	tell(peer, "%s ready." % Data.UPGRADES[id].name)
+
+
+func launch(peer: int, place: int, value: String) -> void:
+	if place < 0 or place != dock or diver > 0 or lifting_peer > 0:
+		tell(peer, "Tie up at a landing before switching boats or fittings.")
+		return
+	var person := actor(peer)
+	if value == "barge":
+		if not ledger.has_upgrade("barge") or game.vessel.skiff:
+			tell(peer, "The crane barge hitches to the houseboat.")
+			return
+		ledger.state.tow = not ledger.state.tow
+		changed()
+		tell(peer, "Crane barge hitched." if ledger.state.tow else "Crane barge tied up.")
+		return
+	if value not in ["houseboat", "skiff"] or (value == "skiff" and not ledger.has_upgrade("skiff")):
+		return
+	var was_aboard: bool = game.aboard()
+	ledger.state.craft = value
+	ledger.state.tow = false
+	stop_captain()
+	select_craft(value, place)
+	set_moored(place)
+	revision += 1
+	if was_aboard and peer != crew.my_id():
+		move_person(place, true)
+	save_berth(place)
+	tell(peer, "Electric skiff launched." if game.vessel.skiff else "Rich's houseboat ready.", place, person.onboard)
+
+
+func resupply(peer: int, place: int, supply: String) -> void:
+	var cost := 8 if ledger.has_at(place, "boathouse") else 14
+	var available: String = Data.SITES[place].supply
+	match supply:
+		"fuel":
+			if ledger.has_at(place, "boathouse"):
+				cost = 0
+		"wood", "parts":
+			if supply == available:
+				cost = 10
+		_:
+			return
+	if cost > 0 and ledger.dock_network(place):
+		cost -= 3
+	if ledger.state.cash < cost:
+		tell(peer, "You need $%d." % cost)
+		return
+	ledger.state.cash -= cost
+	match supply:
+		"fuel":
+			ledger.state.fuel = 34.0
+			ledger.state.charge = capacity()
+		"wood":
+			ledger.state.wood += 10
+		"parts":
+			ledger.state.parts += 5
+	changed()
+	tell(peer, "Resupplied at %s." % Data.dock_name(place))
+
+
+func can_connect(a: int, b: int) -> bool:
+	return a >= 0 and a != b and not ledger.connected(a, b) and ferry_open(b) \
+		and ledger.has_at(a, "cabin") and ledger.has_at(b, "cabin")
+
+
+func commission_route(peer: int, a: int, b: int) -> void:
+	if not can_connect(a, b) or ledger.state.cash < 25:
+		tell(peer, "Build a cabin at both landings and set aside $25 for the route.")
+		return
+	ledger.state.cash -= 25
+	ledger.state.routes[ledger.route_key(a, b)] = {"a": a, "b": b, "shipments": 0}
+	changed()
+	tell(peer, "Supply line open between %s and %s." % [Data.dock_name(a), Data.dock_name(b)])
+
+
+func update_route_map() -> void:
+	var key := "%s/%s" % [str(ledger.state.routes.keys()), str(ledger.state.sites.keys())]
+	if key == route_map_version:
+		return
+	route_map_version = key
+	for child in route_map.get_children():
+		route_map.remove_child(child)
+		child.queue_free()
+	for connection: Dictionary in ledger.state.routes.values():
+		var path := Line2D.new()
+		path.width = 2.5
+		path.antialiased = true
+		path.default_color = Color("#edb875bd")
+		path.add_point(game.chart_screen(landings.sites[int(connection.a)].berth))
+		path.add_point(game.chart_screen(landings.sites[int(connection.b)].berth))
+		route_map.add_child(path)
+	for i in landings.sites.size():
+		var shape := Polygon2D.new()
+		shape.position = game.chart_screen(landings.sites[i].berth)
+		shape.polygon = PackedVector2Array([Vector2(0, -5), Vector2(4, 0), Vector2(0, 5), Vector2(-4, 0)])
+		shape.color = Color("#f8d8a6") if not ledger.site(i).is_empty() else Color("#a3c9bf")
+		route_map.add_child(shape)
+
+
+func accept_job(peer: int, place: int, index: int) -> void:
+	var plan: Dictionary = Data.WORK[index]
+	if not ledger.active_job().is_empty() or place != int(plan.home):
+		tell(peer, "Meet the job at its listed landing. The crew can run one job at a time.")
+		return
+	if not Data.requirement(str(plan.get("needs", "")), ledger.state.equipment):
+		tell(peer, "Requires %s." % Data.UPGRADES[plan.needs].name)
+		return
+	ledger.state.job = index
+	ledger.state.job_fish = []
+	ledger.state.freight_run = 0.0
+	ledger.state.stage = "return" if plan.kind == "freight" else "travel"
+	changed()
+	tell(peer, "Job accepted. %s" % plan.detail)
+
+
+func work_at_buoy(peer: int, person: Dictionary) -> void:
+	var job := ledger.active_job()
+	if job.is_empty() or ledger.state.stage != "travel" or not job.has("offset") or not person.onboard:
+		return
+	if not at_work_target(job.kind):
+		tell(peer, "Stop the boat beside the marker.")
+		return
+	match job.kind:
+		"survey":
+			var center: Vector3 = game.vessel.center
+			var depth: float = game.river.depth_at(center)
+			var current: Vector3 = game.river.downstream(center, game.clock)
+			ledger.state.surveys[str(job.home)] = {"depth": snappedf(depth, .01 if ledger.has_upgrade("sonar") else .1),
+				"current": snappedf(current.length(), .01)}
+			ledger.state.stage = "return"
+			changed()
+			tell(peer, "Sounding logged. %.1f m deep, %.2f m/s current. Return to %s." % [depth, current.length(), Data.dock_name(job.home)])
+		"rescue":
+			if game.vessel.skiff:
+				tell(peer, "Bring Rich's houseboat for the tow.")
+				return
+			ledger.state.stage = "return"
+			changed()
+			tell(peer, "Towline secured. Take the angler back to the marina.")
+		"salvage":
+			if job.get("needs") == "barge" and not ledger.state.tow:
+				tell(peer, "Hitch the crane barge before coming back here.")
+			elif ledger.state.charge < .10:
+				tell(peer, "Charge the battery before lifting.")
+			elif lifting_peer == 0:
+				lifting_peer = peer
+				tell(peer, "Cable connected. Stay alongside while it lifts.")
+
+
+func at_work_target(kind: String) -> bool:
+	return absf(game.vessel.speed) < .98 and game.vessel.center.distance_to(target_for_job()) <= work_radius(kind)
+
+
+func tick_lift(delta: float) -> void:
+	if lifting_peer == 0 or crew.is_guest():
+		return
+	if not at_work_target("salvage") or ledger.state.charge <= .015:
+		tell(lifting_peer, "Lift stopped. Return beside the marker with a charged battery.")
+		lift_amount = 0.0
+		lifting_peer = 0
+		return
+	lift_amount += delta * (.23 if ledger.state.tow else .17)
+	ledger.state.charge = maxf(0.0, ledger.state.charge - delta * .014)
+	if lift_amount >= 1.0:
+		ledger.state.stage = "return"
+		var worker := lifting_peer
+		lifting_peer = 0
+		lift_amount = 0.0
+		changed()
+		tell(worker, "Crate secured aboard. Return to %s." % Data.dock_name(ledger.active_job().home))
+
+
+func count_catch(peer: int, species: String, length: int, at: Vector3) -> void:
+	var previous: Dictionary = ledger.state.records.get(species, {})
+	var worthy := int(previous.get("length", 0)) < length
+	if worthy:
+		ledger.state.records[species] = {"length": length, "name": crew.person(peer).name}
+	var job := ledger.active_job()
+	if not job.is_empty() and job.kind == "fish" and ledger.state.stage == "travel" \
+			and (job.home == 0 or Vector3(landings.sites[job.home].berth).distance_to(at) < 430.0):
+		if job.home == 0 or not ledger.state.job_fish.has(species):
+			ledger.state.job_fish.append(species)
+			if ledger.state.job_fish.size() >= 2:
+				ledger.state.stage = "return"
+				tell(peer, "Both fish logged. Check in at %s for the reward." % Data.dock_name(job.home))
+			changed()
+			return
+	if worthy:
+		changed()
+
+
+func deliver(peer: int, place: int) -> void:
+	var job := ledger.active_job()
+	if job.is_empty() or ledger.state.stage != "return" or place != job.get("dest", job.home):
+		tell(peer, "Reach the listed landing after finishing the job.")
+		return
+	var member := crew.person(peer)
+	var reward: Array = job.reward.duplicate()
+	if job.kind == "freight":
+		var origin: Vector3 = landings.sites[job.home].berth
+		if ledger.state.freight_run >= origin.distance_to(landings.sites[place].berth) * .78:
+			reward[0] += 25
+		var line: Dictionary = ledger.state.routes.get(ledger.route_key(job.home, place), {})
+		if not line.is_empty():
+			reward[0] += 20
+			reward[2] += 2
+			line.shipments += 1
+	ledger.award(member.profile, member.name, reward[0], reward[1], reward[2], place)
+	clear_job()
+	changed()
+	tell(peer, "Job finished. +$%d, +%d timber, +%d parts." % [reward[0], reward[1], reward[2]])
+
+
+func clear_job() -> void:
+	ledger.state.job = -1
+	ledger.state.stage = ""
+	ledger.state.job_fish = []
+	ledger.state.freight_run = 0.0
+
+
+func can_dive(person: Dictionary) -> bool:
+	var plan := ledger.active_job()
+	return diver == 0 and person.onboard and captain == 0 and ledger.has_upgrade("rov") \
+		and ledger.state.charge >= .06 and not plan.is_empty() and plan.kind == "dive" \
+		and ledger.state.stage == "travel" and at_work_target("dive") \
+		and game.river.depth_at(game.vessel.center) >= 1.65
+
+
+func try_dive() -> void:
+	request("start_dive", null)
+
+
+func begin_dive() -> void:
+	game.release_line()
+	game.sonar_overlay.hide()
+	dive.deploy(game.vessel.center, target_for_job())
+
+
+func crew_changed() -> void:
+	if crew.mode == "solo" and not saved_state.is_empty():
+		last_guest_revision = -1
+		ledger.state = saved_state
+		saved_state = {}
+		crewplay.dusk = saved_evening
+		stop_captain()
+		remote_ship.clear()
+		dock = int(ledger.state.last_dock)
+		if dock >= 0:
+			select_craft(ledger.state.craft, dock)
+			set_moored(dock)
+			move_person(dock, false)
+		else:
+			select_craft("houseboat", 0)
+			var reset: Vector3 = game.river.point(1)
+			houseboat.center = reset
+			houseboat.transform = Transform3D(Basis.IDENTITY, reset)
+			houseboat.heading = 0
+			houseboat.departed = false
+			keep_player_on_deck(houseboat, houseboat.board_anchor())
+		changed(false)
+	if crew.mode == "solo":
+		captain = 0
+		game.driving = false
+		remote_ship.clear()
+		crewplay.reset_gear()
+		crewplay.camp.clear()
+		if dive.active:
+			dive.stow()
+		diver = 0
+	refresh_board()
+
+
+func member_left(peer: int) -> void:
+	crewplay.leave(peer)
+	if captain == peer:
+		stop_captain()
+	if diver == peer:
+		diver = 0
+	changed(false)
+
+
+func receive_helm(throttle: float, rudder: float) -> void:
+	remote_throttle = throttle
+	remote_rudder = rudder
+	remote_age = 0.0
+
+
+func ship_packet() -> Dictionary:
+	var boat: Boat = game.vessel
+	return {"center": boat.center, "pose": boat.global_transform, "speed": boat.speed, "heading": boat.heading,
+		"throttle": boat.throttle, "rudder": boat.motor.steering, "foil": boat.foil_lift, "clock": game.clock,
+		"revision": revision, "lift": lift_amount, "bilge": ledger.state.bilge,
+		"charge": ledger.state.charge, "fuel": ledger.state.fuel, "deck": crewplay.moving_parts(),
+		"rich": rich.patrol_packet()}
+
+
+func send_ship() -> void:
+	crew.share_ship.rpc(ship_packet())
+
+
+func receive_ship(packet: Dictionary) -> void:
+	if crew.mode == "guest" and int(packet.revision) >= last_guest_revision:
+		remote_ship = packet
+		crewplay.update_moving_parts(packet.get("deck", {}))
+		rich.remote_patrol = packet.get("rich", [])
+
+
+func sync_guest(data: Dictionary, new_dock: int, new_captain: int, change: int) -> void:
+	if crew.mode != "guest":
+		return
+	var old_dock := dock
+	var first := last_guest_revision < 0
+	var moved := change > last_guest_revision
+	var was_aboard: bool = game.aboard()
+	var was_local := not first and old_dock >= 0 and local_site() == old_dock
+	var switching: bool = (data.craft == "skiff") != game.vessel.skiff
+	ledger.state = data
+	select_craft(data.craft, maxi(new_dock, 0))
+	dock = new_dock
+	captain = new_captain
+	last_guest_revision = change
+	if dock >= 0 and moved:
+		set_moored(dock)
+		if was_aboard or was_local or first:
+			move_person(dock, was_aboard and not first)
+	elif first:
+		if not remote_ship.is_empty():
+			tick_client_ship(1.0)
+		keep_player_on_deck(game.vessel, game.vessel.board_anchor())
+	if switching and was_aboard and dock >= 0:
+		move_person(dock, true)
+	if crew.my_id() == captain and guest_captain != captain:
+		game.interact()
+	if crew.my_id() != captain:
+		game.driving = false
+	guest_captain = captain
+	changed(false)
+
+
+func tick_client_ship(delta: float) -> void:
+	if remote_ship.is_empty() or int(remote_ship.revision) < last_guest_revision:
+		return
+	var boat: Boat = game.vessel
+	var target: Transform3D = remote_ship.pose
+	var local: Vector3 = boat.to_local(game.player.global_position)
+	var was_riding: bool = game.aboard()
+	var factor := 1.0 - exp(-delta * 13.0)
+	if boat.global_position.distance_squared_to(target.origin) > 16.0:
+		boat.global_transform = target
+		boat.center = remote_ship.center
+		if was_riding:
+			keep_player_on_deck(boat, local)
+	else:
+		boat.global_transform = boat.global_transform.interpolate_with(target, factor)
+		boat.center = boat.center.lerp(remote_ship.center, factor)
+	boat.heading = lerp_angle(boat.heading, float(remote_ship.heading), factor)
+	boat.speed = lerpf(boat.speed, float(remote_ship.speed), factor)
+	boat.foil_lift = float(remote_ship.foil)
+	lift_amount = float(remote_ship.lift)
+	ledger.state.bilge = remote_ship.bilge
+	ledger.state.charge = remote_ship.charge
+	ledger.state.fuel = remote_ship.fuel
+	game.clock = lerpf(game.clock, float(remote_ship.clock), factor)
+	boat.motor.run(delta, float(remote_ship.throttle), float(remote_ship.rudder), dock < 0, boat.speed)
+	if boat.helm_wheel != null:
+		boat.helm_wheel.rotation.z = -boat.motor.steering * 2.40
+
+
+func button_selected(action: String, value: Variant) -> void:
+	match action:
+		"page":
+			refresh_board()
+		"preview":
+			if local_site() >= 0:
+				begin_preview(value)
+		"pin":
+			guide_site = int(value)
+			close_board()
+		"chart":
+			board.hide()
+			game.chart.show()
+			Input.mouse_mode = Input.MOUSE_MODE_CONFINED
+		"host":
+			crew.host(value)
+		"join":
+			saved_state = ledger.state.duplicate(true)
+			saved_evening = crewplay.dusk
+			crew.join(value[0], value[1])
+			if crew.mode == "solo":
+				saved_state = {}
+		"leave":
+			crew.stop()
+		"dock", "travel", "launch", "crew_evening_trip", "houseboat_design":
+			close_board()
+			request(action, value)
+		_:
+			request(action, value)
+
+
+func add(rows: Array[Dictionary], name: String, detail: String, button := "", action := "", value: Variant = null,
+		disabled := false, primary := false) -> void:
+	rows.append({"name": name, "detail": detail, "button": button, "action": action,
+		"value": value, "disabled": disabled, "primary": primary})
+
+
+func cost_string(item: Dictionary) -> String:
+	var items := PackedStringArray()
+	if item.get("wood", 0) > 0:
+		items.append("%d timber" % item.wood)
+	if item.get("parts", 0) > 0:
+		items.append("%d parts" % item.parts)
+	if item.get("cash", 0) > 0:
+		items.append("$%d" % item.cash)
+	return "  •  ".join(items)
+
+
+func refresh_board() -> void:
+	if not is_instance_valid(board) or not board.visible:
+		return
+	var site := local_site()
+	var boat: Boat = game.vessel
+	var data := {"heading": Data.dock_name(site) if site >= 0 else "Aboard Rich's boat" if game.aboard() else "On the riverbank",
+		"inventory": "%d timber   •   %d parts   •   $%d   |   %s" % [
+			ledger.state.wood, ledger.state.parts, ledger.state.cash,
+			"Charge %d%%" % roundi(100 * ledger.state.charge / capacity()) if boat.skiff else "%.0f L fuel" % ledger.state.fuel],
+		"message": message}
+	var rows: Array[Dictionary] = []
+	match board.active_page:
+		"River":
+			river_page(rows, data, site)
+		"Jobs":
+			jobs_page(rows, data, site)
+		"Build":
+			build_page(rows, data, site)
+		"Workshop":
+			workshop_page(rows, data, site)
+		"Crew":
+			crew_page(rows, data)
+	data.rows = rows
+	board.show_data(data)
+
+
+func river_page(rows: Array[Dictionary], data: Dictionary, site: int) -> void:
+	data.title = "Landings"
+	data.detail = "Press L near a landing to tie up and go ashore. You can also take the ferry between landings."
+	var design := "Panorama" if houseboat.modern_design else "Classic"
+	if crew.is_guest():
+		add(rows, "Houseboat design · " + design, "The host chooses the crew's houseboat design.")
+	else:
+		var switch_to := "Classic" if houseboat.modern_design else "Panorama"
+		var detail := "Return to the houseboat to change its design." if game.vessel.skiff else ""
+		add(rows, "Houseboat design · " + design, detail, "Switch to " + switch_to,
+			"houseboat_design", not houseboat.modern_design, game.vessel.skiff, true)
+	if (dock >= 0 and site == dock) or (dock < 0 and ferry_distance()):
+		add(rows, "Evening at Pine Reach", "Fish off the pier, practice with the net and cook your catch at the shore camp.",
+			"Go at dusk", "crew_evening_trip", null, false, true)
+	if dock < 0 and ferry_distance():
+		add(rows, "Go ashore at the marina", "The cabin plot is at the shore end of the pier.",
+			"Go to landing", "travel", 0, false, true)
+	elif dock >= 0 and site == dock:
+		add(rows, "Tied up at " + Data.dock_name(dock), "Walk the pier or use L to move between boat and landing.",
+			"Step ashore" if game.aboard() else "Board the boat", "dock", null, false, true)
+	for index in Data.SITES.size():
+		var location: Dictionary = Data.SITES[index]
+		var meters: float = game.vessel.center.distance_to(landings.sites[index].berth)
+		var plot := ledger.site(index)
+		var distance := "%.1f km" % (meters / 1000.0) if meters >= 1000.0 else "%d m" % roundi(meters)
+		var detail: String = "%s  •  %s" % [distance, location.service]
+		if not plot.is_empty():
+			detail += "  •  %s's plot" % plot.name
+		if site >= 0 and ledger.connected(site, index):
+			detail += "  •  Supply line"
+		var at_dock := dock >= 0 and site == dock and index != dock
+		if at_dock and ferry_open(index):
+			var toll := index >= 3 and not ledger.connected(dock, index)
+			add(rows, location.name, detail, "Take ferry · $12" if toll else "Take ferry", "travel", index, toll and ledger.state.cash < 12)
+		else:
+			if not ferry_open(index):
+				detail += "  •  Survey the channel to open the regional ferry."
+			add(rows, location.name, detail, "Mark landing", "pin", index)
+		if can_connect(site, index):
+			add(rows, "Connect " + location.name, "Linked landings get lower supply prices, free crossings and better freight pay.",
+				"Connect · $25", "route", index, ledger.state.cash < 25)
+	if site >= 0:
+		var localized := str(Data.SITES[site].supply)
+		var discount := 3 if ledger.dock_network(site) else 0
+		var refuel := "Refill free" if ledger.has_at(site, "boathouse") else "Refill · $%d" % (14 - discount)
+		add(rows, "Fuel and shore power", "Refill the tank and charge the batteries.", refuel, "supply", "fuel")
+		add(rows, "Landing store", "Buy %s for $%d." % ["ten timber" if localized == "wood" else "five parts", 10 - discount],
+			"Buy timber" if localized == "wood" else "Buy parts", "supply", localized)
+	add(rows, "River map and catches", "See the full river and your fishing journal.", "Open map", "chart")
+
+
+func jobs_page(rows: Array[Dictionary], data: Dictionary, site: int) -> void:
+	data.title = "Jobs along the river"
+	data.detail = "Pick a job at its landing. Take as long as you want, then check in for supplies and cash."
+	var active := ledger.active_job()
+	if not active.is_empty():
+		var complete: bool = ledger.state.stage == "return"
+		var destination: int = active.get("dest", active.home)
+		var subtitle: String = "Check in at %s." % Data.dock_name(destination) if complete else active.detail
+		if not complete and active.kind == "fish":
+			subtitle += "  %d of 2 logged." % ledger.state.job_fish.size()
+		elif active.kind == "freight":
+			subtitle += "  Earn an extra $25 if you run the trip under your own power."
+		add(rows, active.name, subtitle, "Check in" if complete else "", "deliver", null, site != destination, true)
+		if active.has("offset") and not complete:
+			add(rows, "On the water", "Your buoy or skiff is marked in the world while this job is active.")
+		add(rows, "Put the job back on the board", "You can pick it up again at its original landing.",
+			"Drop job", "abandon", null, site < 0)
+		return
+	for index in Data.WORK.size():
+		var job: Dictionary = Data.WORK[index]
+		var prize: Array = job.reward
+		var location: String = Data.dock_name(job.home)
+		var requirement := str(job.get("needs", ""))
+		var detail: String = "%s  •  %s\nPays $%d, %d timber, %d parts" % [location, job.detail, prize[0], prize[1], prize[2]]
+		var ready := Data.requirement(requirement, ledger.state.equipment)
+		if not ready:
+			detail += "  •  Needs %s" % Data.UPGRADES[requirement].name
+		add(rows, job.name, detail, "Take job", "accept", index, int(job.home) != site or not ready, int(job.home) == site and ready)
+
+
+func build_page(rows: Array[Dictionary], data: Dictionary, site: int) -> void:
+	data.title = "Build a place on shore"
+	if site < 0 or game.aboard():
+		data.detail = "Step off the boat and walk up to a cabin plot before building."
+		add(rows, "Find a landing", "Every landing has a marked parcel for a cabin and a workshop.",
+			"Show landings", "page", "River")
+		return
+	if not at_plot(actor(crew.my_id()), site):
+		data.detail = "Follow the pier ashore to the Cabin plot sign, then press B."
+		return
+	var plot := ledger.site(site)
+	if plot.is_empty():
+		data.detail = "Your first plot is free. Crew members can help build on claimed plots."
+		add(rows, "Claim this plot", "Start with a cedar cabin or a workshop.", "Claim plot", "claim", null, false, true)
+		return
+	data.detail = "Look at the ground to move the outline. Q rotates, left click builds, and right click cancels."
+	for id: String in Data.BUILDINGS:
+		var plan: Dictionary = Data.BUILDINGS[id]
+		var reason := may_build(site, id)
+		add(rows, plan.name, "%s  •  %s%s" % [plan.detail, cost_string(plan), "  •  " + reason if not reason.is_empty() else ""],
+			"Built" if ledger.has_at(site, id) else "Place", "preview", id, not reason.is_empty(), id == "cabin")
+
+
+func workshop_page(rows: Array[Dictionary], data: Dictionary, site: int) -> void:
+	data.title = "Boat and workshop"
+	var at_shop := site >= 0 and ledger.has_at(site, "workshop")
+	data.detail = "Start with a bilge pump and a battery. Use jobs to fund equipment for the sort of trips you want."
+	if at_shop:
+		var flow: Vector3 = game.river.downstream(landings.sites[site].berth, game.clock)
+		var feed := ledger.power_at(site, flow.length())
+		if feed > 0:
+			data.detail = "The current turbine is supplying %.2f kW to this landing." % feed
+		elif ledger.has_at(site, "drydock"):
+			data.detail = "The dry dock needs a turbine before it can run its lift or build advanced equipment."
+	if site >= 0 and ledger.has_at(site, "drydock"):
+		var raised: bool = ledger.state.lifts.get(str(site), false)
+		add(rows, "Dry dock lift", "Raise the cradle for inspection.",
+			"Lower cradle" if raised else "Raise cradle", "lift", null, not ledger.has_at(site, "turbine"))
+	if site >= 0 and dock == site:
+		if ledger.has_upgrade("skiff"):
+			var switch_to := "houseboat" if game.vessel.skiff else "skiff"
+			add(rows, "Houseboat and skiff", "The skiff uses battery power and can run in shallower water.",
+				"Board houseboat" if switch_to == "houseboat" else "Launch skiff", "launch", switch_to)
+		if ledger.has_upgrade("barge") and not game.vessel.skiff:
+			add(rows, "Crane barge", "Tows behind the houseboat and lifts machinery.",
+				"Unhitch" if ledger.state.tow else "Hitch barge", "launch", "barge")
+	if game.aboard() or site >= 0:
+		add(rows, "Bilge and batteries", "Bilge %.0f L  •  charge %d%%" % [
+			float(ledger.state.bilge) * 90.0, roundi(100 * ledger.state.charge / capacity())],
+			"Pump by hand", "manual", null, ledger.state.bilge < .005)
+	for id: String in Data.UPGRADES:
+		var design: Dictionary = Data.UPGRADES[id]
+		var blocked := may_make(site, id)
+		add(rows, design.name, "%s  •  %s%s" % [design.detail, cost_string(design), "  •  " + blocked if not blocked.is_empty() else ""],
+			"Installed" if ledger.has_upgrade(id) else "Fabricate", "fabricate", id, not blocked.is_empty())
+
+
+func crew_page(rows: Array[Dictionary], data: Dictionary) -> void:
+	data.title = "Share the river"
+	data.detail = "Host or join on the same network. The host's world keeps the crew's cabins, supplies and boat upgrades."
+	data.join_fields = crew.mode == "solo"
+	data.local_name = crew.local_name
+	data.address = crew.last_address
+	add(rows, "Ice chest and shore camp", "%d fish in the chest  •  %d shared meals at Pine Reach" %
+		[ledger.state.ice_chest.size(), ledger.state.meals])
+	if not crew.status.is_empty():
+		add(rows, crew.status, "", "Leave crew" if crew.mode != "solo" else "", "leave")
+	if crew.mode != "solo":
+		for peer: int in crew.people:
+			add(rows, crew.people[peer].name, "At the wheel" if peer == captain else "On the crew")
+	if not ledger.state.scores.is_empty():
+		var totals: Array = ledger.state.scores.values()
+		totals.sort_custom(func(a: Dictionary, b: Dictionary): return int(a.jobs) > int(b.jobs))
+		for score: Dictionary in totals:
+			add(rows, str(score.name), "%d jobs delivered" % score.jobs)
+	if not ledger.state.records.is_empty():
+		var catches: Array = ledger.state.records.keys()
+		catches.sort_custom(func(a: String, b: String): return int(ledger.state.records[a].length) > int(ledger.state.records[b].length))
+		for i in mini(6, catches.size()):
+			var record: Dictionary = ledger.state.records[catches[i]]
+			add(rows, "%s  •  %d cm" % [catches[i], record.length], "River record held by %s" % record.name)
+
+
+func action_hint() -> String:
+	if preview_id != "":
+		return "Left click to build  •  Q rotate  •  Right click cancel" if preview_good else \
+			"Look at a level spot within the plot  •  Q rotate"
+	if dive.active:
+		return dive.status_text()
+	if at_rich():
+		return "E  Talk to Rich" if rich.speaking_id.is_empty() else "Rich is talking"
+	var gear_prompt := crewplay.prompt()
+	if not gear_prompt.is_empty():
+		return gear_prompt
+	if not game.aboard():
+		if game.river.lamure.at_swim_ladder(game.player.global_position, game.eye):
+			return "E  Climb onto the swim float"
+		if landings.aimed_door(game.eye) != null:
+			return "E  Open or close the door"
+		var place := local_site()
+		if at_plot(actor(crew.my_id()), place):
+			return "B  Build here   •   L  Board from the landing"
+		if place >= 0:
+			return "Follow the pier to the Cabin plot sign   •   L  Board"
+	elif dock >= 0:
+		return "L  Go ashore   •   E at the wheel to depart"
+	var boat: Boat = game.vessel
+	if landings.site_range(boat.center, 22.0, true) >= 0:
+		if absf(boat.speed) <= 1.6:
+			return "L  Tie up and step ashore"
+		return "Slow down and press L to tie up"
+	var job := ledger.active_job()
+	if not job.is_empty() and ledger.state.stage == "travel" and job.has("offset") and boat.center.distance_to(target_for_job()) < work_radius(job.kind):
+		return "Stop and leave the wheel. E uses the marker."
+	return ""
+
+
+func world_hud_available() -> bool:
+	return not board.visible and not game.chart.visible and not game.fish_guide.visible and not game.backpack.inventory.visible
+
+
+func update_info() -> void:
+	var job := ledger.active_job()
+	var guiding := guide_site >= 0 and guide_site != dock
+	info.visible = world_hud_available() and (dive.active or not job.is_empty() or guiding)
+	if not info.visible:
+		return
+	if dive.active:
+		info.text = dive.status_text()
+		return
+	if job.is_empty():
+		info.text = ""
+	elif ledger.state.stage == "return":
+		info.text = "B  Check in at %s   •   %s" % [Data.dock_name(job.get("dest", job.home)), job.name]
+	elif job.kind == "fish":
+		info.text = "B  %s   •   %d of 2 fish logged" % [job.name, ledger.state.job_fish.size()]
+	else:
+		info.text = "B  %s   •   %d m to marker" % [job.name, roundi(game.vessel.center.distance_to(target_for_job()))]
+	if guiding:
+		var destination := "%s  ·  %.2f km" % [Data.dock_name(guide_site), game.player.global_position.distance_to(landings.sites[guide_site].berth) / 1000.0]
+		info.text = destination if job.is_empty() else "%s   /   %s" % [info.text, destination]
+
+
+func mark_world() -> void:
+	if not world_hud_available() or dive.active:
+		return
+	var target := Vector3.INF
+	var hint := ""
+	var job := ledger.active_job()
+	if guide_site >= 0 and guide_site != dock:
+		target = landings.sites[guide_site].berth + Vector3.UP * 2.5
+		hint = Data.dock_name(guide_site)
+	elif not job.is_empty() and job.has("offset") and ledger.state.stage == "travel":
+		target = target_for_job() + Vector3.UP * 2.15
+		hint = job.name
+	elif dock < 0 and game.vessel.center.distance_to(landings.sites[0].berth) < 230.0:
+		target = landings.sites[0].berth + Vector3.UP * 2.35
+		hint = "Marina Landing"
+	if not target.is_finite() or game.eye.is_position_behind(target):
+		return
+	var rect: Vector2 = get_viewport().get_visible_rect().size
+	var line: Vector2 = game.eye.unproject_position(target)
+	var distance: float = game.player.global_position.distance_to(target)
+	game.marker.text = "%s  ·  %.0f m" % [hint, distance]
+	game.marker.position = Vector2(clampf(line.x - 60, 24, rect.x - 246), clampf(line.y - 23, 130, rect.y - 118))
+	game.marker.show()
