@@ -57,3 +57,7 @@ Use **Alt+Enter** or **F11** for fullscreen. **Esc** or **F10** releases the cur
 ## Zero Turn controls
 
 While seated, use W/S to drive, A/D to steer, Q/R to lower or raise the throttle, X for the blades, C to change the camera view, and E to dismount. The throttle indicator shows Low, Normal, High, or Transport.
+
+## Public Works and mowing
+
+Follow Cedar Road to the Public Works yard. Open the bay or office doors with E when prompted. Speak to Shannon in the office to get the current mowing route, take either Zero Turn, and use the route markers to find the grass to cut. Return to Shannon to collect payment.

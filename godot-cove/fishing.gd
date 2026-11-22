@@ -17,6 +17,7 @@ const Backpack = preload("res://river_backpack.gd")
 const Cheats = preload("res://river_cheats.gd")
 const LawnMower = preload("res://lawn_mower.gd")
 const ShannonJob = preload("res://shannon_job.gd")
+const PublicWorks = preload("res://public_works.gd")
 const PauseMenu = preload("res://river_pause.gd")
 const Safety = preload("res://river_safety.gd")
 const RiverChart = preload("res://river_chart.gd")
@@ -111,7 +112,9 @@ var target_index := -1
 var rod_pressed := false
 var interact_pressed := false
 var mower := LawnMower.new()
+var spare_mower := LawnMower.new()
 var shannon_job := ShannonJob.new()
+var public_works := PublicWorks.new()
 var flying := false
 var pause_menu := PauseMenu.new()
 var safety := Safety.new()
@@ -195,10 +198,15 @@ func _ready() -> void:
 	cheats = Cheats.new()
 	cheat_center.add_child(cheats)
 	cheats.dismissed.connect(close_cheats)
+	add_child(public_works)
+	public_works.build(river)
 	add_child(mower)
-	mower.setup(river)
+	mower.setup(river, public_works.at_ground(PublicWorks.PARKING[0]), PublicWorks.HEADING + PI)
+	add_child(spare_mower)
+	spare_mower.setup(river, public_works.at_ground(PublicWorks.PARKING[1]), PublicWorks.HEADING + PI, mower)
 	add_child(shannon_job)
-	shannon_job.setup(self)
+	shannon_job.setup(self, mower, public_works.to_global(Vector3(PublicWorks.SHANNON.x, public_works.office_floor, PublicWorks.SHANNON.y)),
+		PublicWorks.HEADING, public_works.monitor_focus)
 	safety.setup(self)
 	hud.add_child(pause_menu)
 	pause_menu.setup(self)
@@ -471,15 +479,27 @@ func _physics_process(delta: float) -> void:
 	var use_cabin: bool = has_input and not flying and mower.rider == null and marina_cars.active < 0 and aboard() and not vessel.skiff and not driving and absf(vessel.speed) <= 1.20
 	use_cabin = use_cabin and not campaign.crewplay.hands_busy()
 	var did_use := cabin.update(delta, clock, use_cabin, interact_pressed, Input.is_physical_key_pressed(KEY_E))
+	var can_use_yard := interact_pressed and has_input and can_talk_to_shannon()
+	var office_leaf := public_works.office_handle(eye) if can_use_yard else -1
+	var bay := public_works.nearby_door(eye) if can_use_yard else null
+	public_works.advance(delta, player, mower, spare_mower)
 	if interact_pressed and has_input and not did_use and not cabin.busy():
 		if marina_cars.active >= 0:
 			marina_cars.interact()
 		elif mower.rider != null:
 			if not mower.dismount():
 				notify_angling("Move to clear, level ground to get off the mower.", 2.4)
+		elif office_leaf >= 0:
+			public_works.toggle_office(office_leaf, eye)
 		elif can_talk_to_shannon() and shannon_job.in_range():
 			shannon_job.interact()
+		elif bay != null:
+			bay.toggle()
 		elif can_mount_mower():
+			if not mower.near(player, eye):
+				var previous := mower
+				mower = spare_mower
+				spare_mower = previous
 			release_line()
 			sonar_overlay.hide()
 			mower.mount(player)
@@ -1497,10 +1517,17 @@ func update_hud() -> void:
 			instruction.text = "WASD  Fly   ·   Space  Up   ·   Ctrl/Shift  Down   ·   F2  Cheats"
 		elif mower.rider != null and clock >= note_until:
 			instruction.text = "W/S  Drive   ·   A/D  Turn   ·   Q/R  Throttle   ·   X  Blades %s   ·   C  View   ·   E  Dismount" % ("on" if mower.blades else "off")
-		elif can_talk_to_shannon() and shannon_job.in_range() and clock >= note_until:
-			instruction.text = shannon_job.prompt()
-		elif can_mount_mower():
-			instruction.text = "E  Mount lawn mower"
+		elif can_talk_to_shannon():
+			var office_leaf := public_works.office_handle(eye)
+			var bay := public_works.nearby_door(eye)
+			if office_leaf >= 0:
+				instruction.text = public_works.office_prompt(office_leaf, eye)
+			elif shannon_job.in_range() and clock >= note_until:
+				instruction.text = shannon_job.prompt()
+			elif bay != null:
+				instruction.text = bay.prompt()
+			elif can_mount_mower():
+				instruction.text = "E  Mount lawn mower"
 	backpack.waypoint.visible = target_index >= 0
 	if target_index >= 0:
 		var target: Vector3 = river.point(target_index)
@@ -1556,7 +1583,7 @@ func fly(delta: float, has_input: bool) -> void:
 func can_mount_mower() -> bool:
 	return not flying and not swimming and marina_cars.active < 0 and mower.rider == null and not aboard() and not driving \
 		and not cabin.busy() and not campaign.dive.active and campaign.preview_id.is_empty() \
-		and not campaign.crewplay.hands_busy() and mower.near(player, eye)
+		and not campaign.crewplay.hands_busy() and (mower.near(player, eye) or spare_mower.near(player, eye))
 
 
 func can_talk_to_shannon() -> bool:

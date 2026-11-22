@@ -1,7 +1,8 @@
 extends Node
 
 const MASCULINE_NAMES := ["liam", "richard", "david", "mark", "george", "james", "ryan", "guy", "daniel", "male", "william"]
-const FALLBACK_PREFERENCE := ["mark", "david"]
+const SPEAKER := "Shannon Larping"
+const FALLBACK_PREFERENCE := ["david", "mark", "guy"]
 const OPENING_PITCH := [.76, .70, .79]
 const OPENING_RATE := [.86, .83, .90]
 const OPENING_GAIN := [0, 9, 3]
@@ -53,15 +54,15 @@ static func select_voice(options: Array) -> String:
 		if locale != "en" and not locale.begins_with("en_"):
 			continue
 		var name_words := str(option.name).to_lower().replace(",", " ").split(" ", false)
-		var score := 100 if locale == "en_ca" else 0
+		var score := 18 if locale == "en_ca" else 0
 		for name_word: String in name_words:
 			if name_word in MASCULINE_NAMES:
-				score += 30
+				score += 100
 				break
 		if locale == "en_us":
 			for index in FALLBACK_PREFERENCE.size():
 				if FALLBACK_PREFERENCE[index] in name_words:
-					score += FALLBACK_PREFERENCE.size() - index
+					score += (FALLBACK_PREFERENCE.size() - index) * 4
 					break
 		if score > best_score:
 			best_score = score
@@ -75,7 +76,7 @@ func say(dialogue: Array[String], distance: float, opening: Array[String] = []) 
 	lines.append_array(dialogue)
 	opening_parts = opening.size()
 	if opening_parts > 0:
-		caption.text = "Shannon\n" + " ".join(opening)
+		caption.text = SPEAKER + "\n" + " ".join(opening)
 	active = true
 	next_line(distance)
 
@@ -86,7 +87,7 @@ func next_line(distance: float) -> void:
 	if is_opening:
 		opening_parts -= 1
 	else:
-		caption.text = "Shannon\n" + text
+		caption.text = SPEAKER + "\n" + text
 	panel.show()
 	wait = maxf(2.0, text.length() * .074)
 	if not voice.is_empty():
@@ -96,8 +97,8 @@ func next_line(distance: float) -> void:
 		var opening_index := OPENING_PITCH.size() - opening_parts - 1
 		var gain: int = OPENING_GAIN[opening_index] if is_opening else 0
 		var volume := roundi((85 + gain) * clampf(1.0 - distance / 24.0, .38, 1.0))
-		var pitch: float = OPENING_PITCH[opening_index] if is_opening else .74
-		var rate: float = OPENING_RATE[opening_index] if is_opening else .86
+		var pitch: float = OPENING_PITCH[opening_index] if is_opening else .66
+		var rate: float = OPENING_RATE[opening_index] if is_opening else .80
 		DisplayServer.tts_speak(text, voice, volume, pitch, rate, utterance)
 
 

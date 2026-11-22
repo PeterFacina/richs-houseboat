@@ -667,8 +667,8 @@ func changed(persist := true) -> void:
 	refresh_board()
 
 
-func reward_mowing() -> void:
-	ledger.state.cash += 5
+func reward_mowing(amount := 5) -> void:
+	ledger.state.cash += amount
 	changed()
 
 
