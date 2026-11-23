@@ -1476,7 +1476,7 @@ func button_selected(action: String, value: Variant) -> void:
 			game.open_chart(action == "catch_journal")
 		"fish_guide":
 			board.hide()
-			game.open_fish_guide()
+			game.open_fish_guide(board.active_page)
 		"leave":
 			var error: String = game.leave_trip()
 			if not error.is_empty():

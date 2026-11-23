@@ -17,7 +17,9 @@ var banner := Label.new()
 var promotion_tween: Tween
 var category := "Fishing"
 var selected := ""
-var previous_mode := Input.MOUSE_MODE_VISIBLE
+var dragging := false
+var graph_layout_pending := false
+var graph_revision := 0
 var last_xp := -1
 var last_level := 1
 var initialized := false
@@ -65,12 +67,8 @@ func setup(owner_game: Node) -> void:
 	surface.content_margin_top = 16
 	surface.content_margin_bottom = 16
 	panel.add_theme_stylebox_override("panel", surface)
-	add_child(panel)
-	panel.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	panel.offset_left = 24
-	panel.offset_right = -24
-	panel.offset_top = 20
-	panel.offset_bottom = -20
+	game.campaign.board.skill_page.add_child(panel)
+	game.campaign.board.skill_page.visibility_changed.connect(sync_book_page)
 	panel.hide()
 	var layout := VBoxContainer.new()
 	panel.add_child(layout)
@@ -83,10 +81,7 @@ func setup(owner_game: Node) -> void:
 		tab.text = branch
 		tabs.add_child(tab)
 		tab.pressed.connect(show_branch.bind(branch))
-	var close := Button.new()
-	close.text = "Close"
-	tabs.add_child(close)
-	close.pressed.connect(toggle)
+	graph.mouse_default_cursor_shape = Control.CURSOR_DRAG
 	var columns := HSplitContainer.new()
 	layout.add_child(columns)
 	columns.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -94,7 +89,7 @@ func setup(owner_game: Node) -> void:
 	graph.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var sidebar := VBoxContainer.new()
 	columns.add_child(sidebar)
-	sidebar.custom_minimum_size.x = 280
+	sidebar.custom_minimum_size.x = 200
 	sidebar.add_child(Atlas.text("Skill details", 23, Atlas.BLUE, true))
 	sidebar.add_theme_constant_override("separation", 15)
 	purchase.theme_type_variation = &"MainAction"
@@ -115,16 +110,46 @@ func setup(owner_game: Node) -> void:
 		game.campaign.request("purchase_skill", [selected, rank]))
 
 func toggle() -> void:
-	panel.visible = not panel.visible
-	if panel.visible:
-		previous_mode = Input.mouse_mode
-		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
-		show_branch(category)
-		tabs.get_child(0).grab_focus()
+	if panel.is_visible_in_tree():
+		game.campaign.close_board()
 	else:
-		Input.mouse_mode = previous_mode
+		game.campaign.open_board("Skill Tree")
 
-func show_branch(branch: String) -> void:
+func sync_book_page() -> void:
+	panel.visible = game.campaign.board.skill_page.is_visible_in_tree()
+	dragging = false
+	if panel.visible:
+		show_branch(category)
+
+func _input(event: InputEvent) -> void:
+	if not panel.is_visible_in_tree():
+		return
+	if event is InputEventMouseMotion and dragging:
+		if event.button_mask & MOUSE_BUTTON_MASK_LEFT:
+			graph.scroll_offset -= event.relative
+			get_viewport().set_input_as_handled()
+		else:
+			dragging = false
+	elif event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
+		if not event.pressed:
+			if dragging:
+				dragging = false
+				get_viewport().set_input_as_handled()
+			return
+		var hovered := get_viewport().gui_get_hovered_control()
+		while hovered != null and hovered != graph:
+			if hovered is GraphNode or hovered is BaseButton or hovered is ScrollBar:
+				return
+			hovered = hovered.get_parent_control()
+		if hovered == graph:
+			dragging = true
+			get_viewport().set_input_as_handled()
+
+func show_branch(branch: String, preserve_view := false) -> void:
+	var offset := graph.scroll_offset if preserve_view and not graph_layout_pending else Vector2.ZERO
+	graph_layout_pending = true
+	graph_revision += 1
+	var revision := graph_revision
 	category = branch
 	for tab in tabs.get_children():
 		if tab is Button and tab.toggle_mode:
@@ -148,6 +173,7 @@ func show_branch(branch: String) -> void:
 		var row := int(skill.row)
 		var node := GraphNode.new()
 		node.name = id
+		node.draggable = false
 		node.title = skill.name
 		var card := StyleBoxFlat.new()
 		card.bg_color = Atlas.PAPER
@@ -174,7 +200,11 @@ func show_branch(branch: String) -> void:
 		for dep: String in catalog[id].requires:
 			graph.connect_node(dep, 0, id, 0)
 	select_skill(selected if depths.has(selected) else first)
-	graph.set_deferred("scroll_offset", Vector2.ZERO)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	if revision == graph_revision:
+		graph.scroll_offset = offset
+		graph_layout_pending = false
 
 func profile() -> Dictionary:
 	return game.campaign.progression_for(game.campaign.crew.my_id())
@@ -255,4 +285,4 @@ func _process(_delta: float) -> void:
 	last_level = stats.level
 	last_points = stats.points
 	if panel.visible:
-		show_branch(category)
+		show_branch(category, true)

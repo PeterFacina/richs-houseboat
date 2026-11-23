@@ -6,6 +6,7 @@ const Species = preload("res://fish_species.gd")
 const Fish = preload("res://river_fish.gd")
 const MenuTheme = preload("res://river_menu_theme.gd")
 
+var image := TextureRect.new()
 var viewport: SubViewport
 var specimen: Fish
 var heading: Label
@@ -87,7 +88,6 @@ func _ready() -> void:
 	content.add_child(heading)
 	latin = MenuTheme.text("", 17, MenuTheme.MUTED)
 	content.add_child(latin)
-	var image := TextureRect.new()
 	image.custom_minimum_size = Vector2(250, 182)
 	image.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	image.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
@@ -165,7 +165,7 @@ func fill_list(query: String) -> void:
 	var term := query.strip_edges().to_lower()
 	for index in ordered:
 		var row := Species.profile(index)
-		if term.is_empty() or term in row.name.to_lower() or term in row.scientific.to_lower():
+		if term.is_empty() or (caught.has(row.name) and (term in row.name.to_lower() or term in row.scientific.to_lower())):
 			add_card(index, row.name)
 	if buttons.is_empty():
 		entries.add_child(MenuTheme.text("No matching species", 16, MenuTheme.MUTED))
@@ -177,7 +177,8 @@ func fill_list(query: String) -> void:
 
 func add_card(index: int, species_name: String) -> void:
 	var button := MenuTheme.button("", &"Button", "", 58)
-	button.accessibility_name = species_name + ", " + discovery_text(species_name)
+	var caption := species_name if caught.has(species_name) else "Unidentified fish"
+	button.accessibility_name = caption + ", " + discovery_text(species_name)
 	button.toggle_mode = true
 	button.pressed.connect(show_fish.bind(index))
 	entries.add_child(button)
@@ -202,7 +203,7 @@ func add_card(index: int, species_name: String) -> void:
 	labels.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	labels.add_theme_constant_override("separation", 1)
 	row.add_child(labels)
-	labels.add_child(MenuTheme.text(species_name, 17, MenuTheme.NAVY, true))
+	labels.add_child(MenuTheme.text(caption, 17, MenuTheme.NAVY, true))
 	var tint := MenuTheme.BLUE if caught.has(species_name) else MenuTheme.MUTED
 	labels.add_child(MenuTheme.text(discovery_text(species_name), 14, tint))
 
@@ -220,6 +221,16 @@ func update_cards() -> void:
 func show_fish(index: int) -> void:
 	selected = index
 	var row := Species.profile(index)
+	image.visible = caught.has(row.name)
+	latin.visible = image.visible
+	update_preview()
+	if not image.visible:
+		heading.text = "Unidentified fish"
+		latin.text = ""
+		discovery.text = "Undiscovered"
+		details.text = "Land this species to add its illustration and field notes to your book."
+		update_cards()
+		return
 	heading.text = row.name
 	latin.text = row.scientific
 	discovery.text = discovery_text(row.name)
@@ -231,12 +242,13 @@ func show_fish(index: int) -> void:
 		var rig: int = Species.RIGS.find(row.rig)
 		status = "Upper Allumette  ·  " + (Species.RIG_LABELS[rig] if rig >= 0 else "Observe only")
 	details.text = "%s\n%d–%d cm in this game" % [status, int(row.length_cm[0]), int(row.length_cm[1])]
+	details.text += "\nHabitat depth: %s–%s m" % [row.bottom_m[0], row.bottom_m[1]]
 	specimen.select_species(index, 100)
 	update_cards()
 
 
 func update_preview() -> void:
-	var open := is_visible_in_tree()
+	var open := is_visible_in_tree() and image.visible
 	viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS if open else SubViewport.UPDATE_DISABLED
 	set_process(open)
 

@@ -32,6 +32,20 @@ func exercise() -> void:
 	screen.purchase.pressed.emit()
 	passed = passed and int(p.get("ranks", {}).get("hard_worker", 0)) == 1
 	screen.toggle()
+	campaign.open_board("River")
+	campaign.board.page_buttons["Skill Tree"].pressed.emit()
+	passed = passed and screen.panel.is_visible_in_tree() and campaign.board.skill_page.is_ancestor_of(screen.panel)
+	campaign.board.select_page("Crew")
+	passed = passed and not screen.panel.is_visible_in_tree()
+	campaign.button_selected("fish_guide", null)
+	var guide = game.fish_guide
+	guide.show_fish(0)
+	passed = passed and guide.heading.text == "Unidentified fish" and not guide.image.visible
+	guide.fill_list("Perca")
+	passed = passed and guide.buttons.is_empty()
+	game.close_guide()
+	passed = passed and campaign.board.visible and campaign.board.active_page == "Crew"
+	campaign.close_board()
 	var previous := int(p.xp)
 	campaign.travel_progress(1, "boat", 0, 20)
 	campaign.travel_progress(1, "boat", 5000, 20)
@@ -59,5 +73,17 @@ func exercise() -> void:
 	passed = passed and p.xp - before_turn_in == roundi(250 * 1.05)
 	job.interact()
 	passed = passed and p.xp == before_turn_in + roundi(250 * 1.05)
-	print("Game UI, purchase, migration, persistence, travel checks and mowing: ", passed)
+	game.catch_type = 0
+	game.catch_length = 21
+	game.record_catch()
+	for i in range(26):
+		game.catch_type = 1
+		game.record_catch()
+	game.journal.clear()
+	game.discovered_species.clear()
+	game.read_journal()
+	game.open_fish_guide()
+	guide.show_fish(0)
+	passed = passed and game.journal.size() == 25 and guide.heading.text == game.Species.profile(0).name and guide.image.visible
+	print("Notebook, fish discovery persistence, purchases, travel and mowing: ", passed)
 	quit(0 if passed else 1)
