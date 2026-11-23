@@ -47,6 +47,24 @@ const TELEPORT_NAMES := {
 	ChartDestination.SKI: "Mount Martin / ski trail",
 }
 
+@export_group("On-Foot Movement")
+@export_range(3.76, 12.0, .05) var sprint_speed := 7.1
+@export_range(.25, 3.75, .05) var crouch_speed := 1.65
+@export_range(.6, 1.6, .01) var crouch_height := 1.13
+@export_range(.05, .8, .01) var sprint_acceleration_time := .23
+@export_range(.05, .8, .01) var sprint_deceleration_time := .18
+@export_range(.05, .8, .01) var crouch_transition_time := .20
+
+const MAX_STEP_HEIGHT := .24
+
+var step_eye_offset := 0.0
+var crouched := false
+var crouch_camera_blend := 0.0
+var sprint_blend := 0.0
+var grounded_motion := false
+var ground_motion := Vector3.ZERO
+var stand_query := PhysicsShapeQueryParameters3D.new()
+
 var river: Ottawa
 var regions: Regions
 var helicopter: Helicopter
@@ -175,6 +193,9 @@ func _ready() -> void:
 	yaw = 1.07
 	pitch = -0.27
 	build_player()
+	stand_query.shape = player_collision.shape.duplicate()
+	stand_query.collision_mask = player.collision_mask
+	stand_query.exclude = [player.get_rid()]
 	eye.near = .070
 	graphics.load_setting()
 	boarded = true
@@ -600,6 +621,10 @@ func _physics_process(delta: float) -> void:
 	has_input = play_input()
 	walk_multiplier = cabin.walk_scale() * campaign.crewplay.movement_scale()
 	helicopter.tick(delta, has_input and not cabin.busy())
+	grounded_motion = false
+	if flying or in_aircraft() or campaign.amenities.seated() or marina_cars.active >= 0 \
+			or mower.rider != null or driving or campaign.dive.active:
+		reset_foot_stance()
 	if flying:
 		fly(delta, has_input)
 	elif in_aircraft():
@@ -622,8 +647,8 @@ func _physics_process(delta: float) -> void:
 		mower.update_rider_camera(eye)
 	elif marina_cars.active < 0:
 		eye.rotation.x = pitch + cabin.camera_pitch
-		if not in_aircraft():
-			eye.position.y = vessel.helm_eye_height() if driving else 1.58
+		if driving and not in_aircraft():
+			eye.position.y = vessel.helm_eye_height()
 	campaign.amenities.pin_local()
 	marina_cars.step(delta, axis(KEY_W, KEY_S), axis(KEY_D, KEY_A), Input.is_physical_key_pressed(KEY_SPACE),
 		has_input and not cabin.busy())
@@ -667,7 +692,9 @@ func _process(delta: float) -> void:
 	var fists_raised := fists_available()
 	var empty_handed := backpack.equipped == Backpack.NONE and not menu_blocks_play() and hands_available()
 	var visual_clock := clock + Engine.get_physics_interpolation_fraction() / float(Engine.physics_ticks_per_second)
-	rig.update_hands(delta, visual_clock, empty_handed or fists_raised, fists_raised)
+	var pace := ground_motion.length() if grounded_motion else 0.0
+	rig.update_hands(delta, visual_clock, empty_handed or fists_raised, fists_raised,
+		pace, sprint_blend, smoothstep(0, 1, crouch_camera_blend))
 
 
 func menu_blocks_play() -> bool:
@@ -757,12 +784,17 @@ func move_on_foot(delta: float, walk: Vector3, jump: bool) -> void:
 	elif at.y < -.46 and depth >= SWIM_ENTRY_DEPTH:
 		set_swimming(true)
 	if not swimming:
+		if campaign.dive.active:
+			super.move_on_foot(delta, walk, jump and not jump_was_held)
+			jump_was_held = jump
+			return
 		if depth > 0.0:
 			walk *= lerpf(1.0, .46, smoothstep(.04, .96, -at.y))
 		var jump_pressed := jump and not jump_was_held
 		jump_was_held = jump
-		super.move_on_foot(delta, walk, jump_pressed)
+		walk_on_ground(delta, walk, jump_pressed)
 		return
+	reset_foot_stance()
 	var current := river.downstream(at, clock) * .35
 	var speed := 2.05 * walk_multiplier
 	var surface := river.wave_height(at, clock)
@@ -771,6 +803,120 @@ func move_on_foot(delta: float, walk: Vector3, jump: bool) -> void:
 	velocity.y = clampf((height - at.y) * 7.0, -2.8, 3.5)
 	player.velocity = player.velocity.lerp(velocity, 1.0 - exp(-delta * 9.0))
 	player.move_and_slide()
+
+
+func walk_on_ground(delta: float, walk: Vector3, jump_pressed: bool) -> void:
+	var has_input := play_input() and not cabin.busy()
+	if has_input:
+		var wants_crouch := Input.is_action_pressed("crouch")
+		if pause_menu.preferences.toggle_crouch:
+			wants_crouch = crouched
+			if player.is_on_floor() and Input.is_action_just_pressed("crouch"):
+				wants_crouch = not crouched
+		if wants_crouch and not crouched and player.is_on_floor():
+			set_crouched(true)
+		elif not wants_crouch and crouched and can_stand():
+			set_crouched(false)
+	var jump := jump_pressed and not crouched
+	var wants_sprint := has_input and not crouched and player.is_on_floor() and not jump \
+		and not walk.is_zero_approx() and Input.is_action_pressed("sprint")
+	var was_sprinting := sprint_blend > 0.0
+	if crouched or not player.is_on_floor() or jump:
+		sprint_blend = 0.0
+	else:
+		var duration := sprint_acceleration_time if wants_sprint else sprint_deceleration_time
+		sprint_blend = move_toward(sprint_blend, float(wants_sprint), delta / duration)
+	var speed := crouch_speed if crouched else lerpf(WALK_SPEED, sprint_speed, sprint_blend)
+	var input_motion := walk * speed / WALK_SPEED
+	if not crouched and was_sprinting and walk.is_zero_approx() and has_input and player.is_on_floor():
+		var previous := Vector3(player.velocity.x, 0, player.velocity.z)
+		var scale := WALK_SPEED * maxf(walk_multiplier, .01)
+		input_motion = previous.move_toward(Vector3.ZERO, sprint_speed * delta / sprint_deceleration_time) / scale
+	var before := player.global_position
+	var may_step := player.is_on_floor() and not jump
+	super.move_on_foot(delta, input_motion, jump)
+	var stepped := false
+	if may_step:
+		var desired := input_motion * WALK_SPEED * walk_multiplier * delta
+		var travelled := (player.global_position - before).slide(Vector3.UP)
+		if travelled.dot(desired.normalized()) < desired.length() * .55:
+			stepped = try_walk_step(desired)
+	grounded_motion = player.is_on_floor()
+	if grounded_motion:
+		var velocity := (player.global_position - before) / delta if stepped else player.get_real_velocity()
+		ground_motion = (velocity - player.get_platform_velocity()).slide(Vector3.UP)
+	else:
+		sprint_blend = 0.0
+	update_stance_camera(delta)
+
+
+func try_walk_step(desired: Vector3) -> bool:
+	if desired.length_squared() < .00001:
+		return false
+	var start := player.global_transform
+	var lift := Vector3.UP * MAX_STEP_HEIGHT
+	var forward := desired.normalized() * maxf(desired.length() + .025, .12)
+	if not player.test_move(start, forward):
+		return false
+	if player.test_move(start, lift):
+		return false
+	var raised := start.translated(lift)
+	if player.test_move(raised, forward):
+		return false
+	raised.origin += forward
+	var landing := KinematicCollision3D.new()
+	if not player.test_move(raised, -lift * 1.1, landing):
+		return false
+	if landing.get_normal().dot(Vector3.UP) < cos(player.floor_max_angle):
+		return false
+	var feet := raised.origin + landing.get_travel()
+	var rise := feet.y - start.origin.y
+	if rise < .025 or rise > MAX_STEP_HEIGHT:
+		return false
+	player.global_position = feet
+	player.apply_floor_snap()
+	step_eye_offset = minf(step_eye_offset + rise, MAX_STEP_HEIGHT)
+	return true
+
+
+func can_stand() -> bool:
+	# Lift the query off the floor by the collision margin. A slightly conservative
+	# ceiling check also leaves room for the standing camera's near plane.
+	stand_query.transform = Transform3D(Basis.IDENTITY,
+		player.global_position + Vector3.UP * (STANDING_HEIGHT * .5 + player.safe_margin))
+	return get_world_3d().direct_space_state.intersect_shape(stand_query, 1).is_empty()
+
+
+func set_crouched(active: bool) -> void:
+	crouched = active
+	var capsule := player_collision.shape as CapsuleShape3D
+	capsule.height = crouch_height if active else STANDING_HEIGHT
+	player_collision.position.y = capsule.height * .5
+
+
+func update_stance_camera(delta: float) -> void:
+	crouch_camera_blend = move_toward(crouch_camera_blend, float(crouched), delta / crouch_transition_time)
+	var eye_height := lerpf(STANDING_EYE, crouch_height - .10, smoothstep(0, 1, crouch_camera_blend))
+	if crouched and crouch_camera_blend < 1.0:
+		var origin := player.global_position + Vector3.UP * (crouch_height - .10)
+		var clearance := PhysicsRayQueryParameters3D.create(origin,
+			player.global_position + Vector3.UP * (eye_height + eye.near), player.collision_mask, stand_query.exclude)
+		var hit := get_world_3d().direct_space_state.intersect_ray(clearance)
+		if not hit.is_empty():
+			eye_height = minf(eye_height, hit.position.y - player.global_position.y - eye.near)
+	step_eye_offset = move_toward(step_eye_offset, 0.0, delta * 1.85)
+	eye.position.y = eye_height - step_eye_offset
+
+
+func reset_foot_stance() -> void:
+	sprint_blend = 0.0
+	if crouched:
+		set_crouched(false)
+	if crouch_camera_blend > 0.0 or step_eye_offset > 0.0:
+		crouch_camera_blend = 0.0
+		step_eye_offset = 0.0
+		if marina_cars.active < 0 and not in_aircraft() and not campaign.amenities.seated():
+			eye.position.y = STANDING_EYE
 
 
 func set_swimming(active: bool) -> void:
@@ -1365,7 +1511,10 @@ func render_fishing(delta: float, lift: bool) -> void:
 
 func capture_crew_pose() -> Dictionary:
 	var data := campaign.crewplay.style()
-	data.move = player.velocity
+	data.move = ground_motion if grounded_motion else player.velocity
+	data.sprint = sprint_blend if grounded_motion else 0.0
+	data.crouch = smoothstep(0, 1, crouch_camera_blend)
+	data.eye_drop = clampf(STANDING_EYE - eye.position.y, 0, 1) if crouch_camera_blend > 0 else 0.0
 	data.pitch = pitch
 	data.seat = campaign.amenities.seat_kind(campaign.crew.my_id())
 	if in_aircraft(): data.seat = "heli"

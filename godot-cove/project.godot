@@ -15,6 +15,17 @@ window/size/resizable=true
 window/stretch/mode="canvas_items"
 window/stretch/aspect="expand"
 
+[input]
+
+sprint={
+"deadzone": 0.5,
+"events": [Object(InputEventKey,"physical_keycode":4194325,"location":1)]
+}
+crouch={
+"deadzone": 0.5,
+"events": [Object(InputEventKey,"physical_keycode":4194326,"location":1)]
+}
+
 [rendering]
 renderer/rendering_method="gl_compatibility"
 renderer/rendering_method.mobile="gl_compatibility"

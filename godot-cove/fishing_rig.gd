@@ -6,6 +6,11 @@ const RichModel = preload("res://rich_model.gd")
 const SEGMENTS := 16
 const GUIDES := [0.16, 0.31, 0.47, 0.62, 0.76, 0.89, 1.0]
 const PUNCH_DURATION := .36
+const SPRINT_FOOT_REACH := .35
+const SPRINT_FOOT_CONTACT := .27
+const SPRINT_STRIDE_LENGTH := 2.0 * SPRINT_FOOT_REACH / SPRINT_FOOT_CONTACT
+const UPPER_ARM_LENGTH := .326
+const FOREARM_LENGTH := .286
 
 var remote_only := false
 var blank_mesh: MeshInstance3D
@@ -27,6 +32,11 @@ var reel_angle := 0.0
 var fists: Node3D
 var fist_hands: Array[Node3D] = []
 var forearms: Array[MeshInstance3D] = []
+var upper_arms: Array[MeshInstance3D] = []
+var sleeve_elbows: Array[MeshInstance3D] = []
+var hand_forward: Array[Vector3] = []
+var hand_stride := 0.0
+var sprint_arm_blend := 0.0
 var motion_amount := .65
 var hands_blend := 0.0
 var punch_hand := 1
@@ -44,11 +54,27 @@ func build_fists(camera: Camera3D) -> void:
 	fists = Node3D.new()
 	fists.name = "Fists"
 	camera.add_child(fists)
+	var cloth := Kit.paint(Color("#465653"), .89)
 	for side in [-1.0, 1.0]:
 		var hand := HandModel.build(fists, side, false, "relaxed", false)
 		fist_hands.append(hand)
+		var palm: Vector3 = hand.contact_point()
+		hand_forward.append((palm - wrist_anchor(hand)).normalized())
 		hand.position = Vector3(side * .315, -.34, -.54)
-		forearms.append(make_sleeve(fists))
+		forearms.append(no_shadow(RichModel.loft(fists, [
+			Vector4(-.5, .032, .025, .030), Vector4(-.37, .033, .027, .032),
+			Vector4(-.1, .036, .031, .037), Vector4(.5, .043, .038, .044)
+		], cloth, 20, .0015)))
+		upper_arms.append(no_shadow(RichModel.loft(fists, [
+			Vector4(-.5, .042, .039, .043), Vector4(-.25, .052, .046, .051),
+			Vector4(.16, .058, .051, .056), Vector4(.5, .064, .054, .061)
+		], cloth, 20, .002)))
+		var elbow_shape := SphereMesh.new()
+		elbow_shape.radius = .043
+		elbow_shape.height = .086
+		elbow_shape.radial_segments = 16
+		elbow_shape.rings = 8
+		sleeve_elbows.append(no_shadow(Kit.mesh_at(fists, elbow_shape, Vector3.ZERO, cloth)))
 	fists.hide()
 
 
@@ -58,32 +84,65 @@ func punch() -> void:
 		punch_elapsed = 0.0
 
 
-func update_hands(delta: float, clock: float, show_hands: bool, fists_raised: bool) -> void:
+func update_hands(delta: float, clock: float, show_hands: bool, fists_raised: bool,
+		pace: float, sprint: float, crouch: float) -> void:
 	hands_blend = move_toward(hands_blend, 1.0 if show_hands else 0.0, delta * 4.5)
 	fists.visible = hands_blend > .005
+	var sprint_motion := sprint * smoothstep(.15, 2.7, pace)
+	sprint_arm_blend = move_toward(sprint_arm_blend, sprint_motion, delta * 8.0)
+	var stride_length := lerpf(lerpf(.81, SPRINT_STRIDE_LENGTH, sprint_arm_blend), .73, crouch)
+	hand_stride = fposmod(hand_stride + pace * delta * TAU / stride_length, TAU)
 	if not fists_raised:
 		punch_elapsed = PUNCH_DURATION
 	if not fists.visible:
 		return
 	punch_elapsed = minf(punch_elapsed + delta, PUNCH_DURATION)
 	var reach := smoothstep(0.0, .095, punch_elapsed) * (1.0 - smoothstep(.105, PUNCH_DURATION, punch_elapsed))
+	var sprint_pose := smoothstep(0.0, 1.0, sprint_arm_blend)
+	var tuck := (1.0 - smoothstep(0, 1, hands_blend)) * .4
 	for index in fist_hands.size():
-		var side := -1.0 if index == 0 else 1.0
-		var sway := sin(clock * 2.3 + index) * .005 * motion_amount
+		var side := float(index * 2 - 1)
+		var phase := sin(hand_stride + PI * index)
 		var hand := fist_hands[index]
-		HandModel.set_pose(hand, "fist" if fists_raised else "relaxed")
 		var extension := reach if index == punch_hand else 0.0
-		var idle := Vector3(side * .315, -.34 + sway, -.54)
-		var wrist_turn := Vector3(-.10, side * .22, -side * .12)
+		var weight := sprint_pose * (1.0 - extension)
+		HandModel.set_pose(hand, "fist" if fists_raised or weight > .28 else "relaxed")
+		var sway := sin(clock * 2.3 + index) * .005 * motion_amount
+		var crouch_swing := phase * crouch * .025 * smoothstep(.08, 1.2, pace) * motion_amount
+		var idle := Vector3(side * .315, -.34 + sway + crouch_swing * .62, -.54 - crouch_swing)
+		var wrist_turn := Vector3(-.10 - crouch_swing * 2.0, side * .22, -side * .12)
 		if fists_raised:
 			idle = Vector3(side * .235, -.285 + sway, -.49)
 			wrist_turn = Vector3(lerpf(-.24, -.02, extension), side * .15, -side * .16)
-		var target := idle.lerp(Vector3(side * .085, -.105, -.88), extension)
-		target.y -= (1.0 - smoothstep(0, 1, hands_blend)) * .4
-		hand.position = hand.position.lerp(target, 1.0 - exp(-delta * 18))
-		hand.quaternion = hand.quaternion.slerp(Basis.from_euler(wrist_turn).get_rotation_quaternion(), 1.0 - exp(-delta * 15))
+		var wrist := idle.lerp(Vector3(side * .085, -.105, -.88), extension)
 		var elbow := Vector3(side * .43, -.57, -.18).lerp(Vector3(side * .30, -.53, -.44), extension)
-		fit_cylinder(forearms[index], hand.position, elbow)
+		var shoulder := Vector3(side * .26, -.215, .045)
+		var rotation := Basis.from_euler(wrist_turn).get_rotation_quaternion()
+		if weight > 0.0:
+			# Swing the upper arm about the shoulder, then flex the elbow on the
+			# forward stroke. The wrist follows the end of the forearm.
+			var shoulder_pitch := .49 + phase * .62 * motion_amount
+			var upper := Vector3(-side * .10, -cos(shoulder_pitch), -sin(shoulder_pitch)).normalized()
+			var run_elbow := shoulder + upper * UPPER_ARM_LENGTH
+			var pump := phase * minf(motion_amount / .65, 1.0)
+			var forearm_pitch := shoulder_pitch + lerpf(1.16, 1.50, pump * .5 + .5)
+			var lower := Vector3(-side * (.11 + pump * .04), -cos(forearm_pitch), -sin(forearm_pitch)).normalized()
+			elbow = elbow.lerp(run_elbow, weight)
+			wrist = wrist.lerp(run_elbow + lower * FOREARM_LENGTH, weight)
+			var roll := Quaternion(hand_forward[index], side * .70)
+			var arm_rotation := Quaternion(hand_forward[index], lower)
+			rotation = rotation.slerp(arm_rotation * roll, weight)
+		wrist.y -= tuck
+		var aim := lerpf(1.0 - exp(-delta * 18.0), 1.0, weight)
+		var anchor := wrist_anchor(hand)
+		var old_wrist := hand.transform * anchor
+		hand.quaternion = hand.quaternion.slerp(rotation, aim)
+		var drawn_wrist := old_wrist.lerp(wrist, aim)
+		hand.position = drawn_wrist - hand.basis * anchor
+		var cuff := drawn_wrist + (drawn_wrist - elbow).normalized() * .009
+		fit_cylinder(forearms[index], cuff, elbow)
+		fit_cylinder(upper_arms[index], elbow, shoulder)
+		sleeve_elbows[index].position = elbow
 
 
 func build_rod() -> void:

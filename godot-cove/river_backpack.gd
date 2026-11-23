@@ -237,6 +237,7 @@ func build_controls() -> void:
 	heading.add_child(hint)
 	for entry in [
 		["WASD / Space", "Walk, swim / jump"],
+		["Left Shift / Left Ctrl", "Sprint (hold) / crouch"],
 		["1–7 / I", "Equip or stow / backpack"],
 		["E / L", "Interact / dock or board"],
 		["R/F · A/D", "Helm throttle · steer"],
