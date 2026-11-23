@@ -15,6 +15,7 @@ const START_VOLUME := -13.0
 const THROTTLE_STEP := .05
 const THROTTLE_REPEAT_DELAY := .22
 const CURRENT_SAMPLE_INTERVAL := 2.8
+const MAX_WIND_DRIFT := 1.8
 enum Ignition { OFF, START, RUN }
 const BERTH := Vector3(0.0, 0.0, 12.0)
 const HELM := Vector3(0.0, 0.80, -1.44)
@@ -37,8 +38,8 @@ var motor: Outboard
 var water_flow: Callable
 var current_rng := RandomNumberGenerator.new()
 var current_sample_left := 0.0
-var current_target := 0.0
-var current_strength := 0.0
+var wind_target := Vector2.ZERO
+var wind_drift := Vector2.ZERO
 var current_engagement := 0.0
 var wave_sampler: Callable
 var wave_pose := Vector3.ZERO
@@ -415,15 +416,17 @@ func passive_water_velocity(delta: float, clock: float, under_power: bool) -> Ve
 	current_sample_left -= delta
 	if current_sample_left <= 0.0:
 		current_sample_left += CURRENT_SAMPLE_INTERVAL
-		current_target = clampf(current_rng.randfn(.5, .18), 0.0, 1.0)
+		var strength := clampf(current_rng.randfn(.55, .18), 0.0, 1.0)
+		var direction := current_rng.randf_range(-.85, .85)
+		wind_target = Vector2.from_angle(direction) * strength * MAX_WIND_DRIFT
 	var blend := 1.0 - exp(-delta * 1.6)
-	current_strength = lerpf(current_strength, current_target, blend)
+	wind_drift = wind_drift.lerp(wind_target, blend)
 	if under_power or not water_flow.is_valid():
 		current_engagement = 0.0
 		return Vector3.ZERO
 	current_engagement = lerpf(current_engagement, 1.0, blend)
 	var flow: Vector3 = water_flow.call(center, clock)
-	return Vector3(flow.x, 0.0, flow.z) * current_strength * current_engagement
+	return Vector3(flow.x + wind_drift.x, 0.0, flow.z + wind_drift.y) * current_engagement
 
 
 func in_channel(candidate: Vector3) -> bool:
