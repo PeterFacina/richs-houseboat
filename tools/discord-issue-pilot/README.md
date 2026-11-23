@@ -62,3 +62,15 @@ Peter runs the bot from this PR with `QUEUE_STUDIO_BRIEF=1` and `STUDIO_URL` uns
 4. Post a summary on this draft PR with the issue and brief links, tested commit, GPU, model, elapsed time, processor value and export result. On failure, leave the issue pending and post the error and last completed step on the PR.
 
 Within a minute or so of the issue comment, the bot should show the brief link and **Claim & Open in Codex**. Peter claims the issue and verifies the prompt includes the comment link before continuing the normal draft PR and merge test. Keep this tooling PR in draft during the trial.
+
+### Automatic GPU worker
+
+On Ethan’s GPU PC, use a separate worktree of this PR, Node.js 24, and Ollama on `127.0.0.1:11434` with `qwen3:14b`. In `tools/discord-issue-pilot/`, set `GITHUB_TOKEN` in the ignored local file `.worker.env`. Use a fine-grained token scoped to `PeterFacina/richs-houseboat` with Issues **Read and write**. The token owner must be able to comment as an owner, member, or collaborator. The worker needs no Discord token.
+
+```powershell
+node --env-file=.worker.env gpu-worker.mjs
+```
+
+Run one worker. It checks GitHub every 30 seconds between batches, uses a temporary local Studio indexed from the worker checkout, and handles one report at a time. It skips issues that already have a marked brief. A failed export stays pending. A report edited during generation is read again on the next pass. The worker can be stopped with Ctrl+C. Rebuild or restart from the intended source checkout when changing the indexed game version.
+
+For the live test, Peter submits one new notes-only report from Discord with the bot in queued mode. Ethan leaves the worker running and checks that GitHub gets exactly one marked brief without anyone starting a Codex chat or posting the brief manually. Peter verifies the Discord card switches to **Ready to claim** and that the Codex prompt links to the new brief. Post evidence and any failures on this PR.

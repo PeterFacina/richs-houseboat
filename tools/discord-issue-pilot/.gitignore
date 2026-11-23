@@ -1,3 +1,4 @@
 node_modules/
 .env
+.worker.env
 pilot.sqlite*
