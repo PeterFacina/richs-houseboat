@@ -2,7 +2,7 @@ import { createServer } from 'node:http';
 import { DatabaseSync } from 'node:sqlite';
 import { ApplicationCommandType, ButtonBuilder, ButtonStyle, Client, Events, GatewayIntentBits,
   MessageFlags, ActionRowBuilder } from 'discord.js';
-import { codexLink, repository, pullStatus, findGpuBrief } from './workflow.mjs';
+import { codexLink, repository, pullStatus, findGpuBrief, gpuPendingMarker, reportHeader, reportKinds } from './workflow.mjs';
 import { studioClient } from './studio.mjs';
 
 const { DISCORD_TOKEN, DISCORD_GUILD_ID, DISCORD_CHANNEL_ID, GITHUB_TOKEN,
@@ -26,8 +26,10 @@ db.exec([
   'source TEXT PRIMARY KEY, issue INTEGER UNIQUE, reply TEXT, claimant TEXT, created TEXT NOT NULL)',
 ].join(' '));
 db.exec('CREATE TABLE IF NOT EXISTS gpu_briefs (source TEXT PRIMARY KEY, url TEXT)');
-const find = db.prepare('SELECT reports.*, gpu_briefs.url, gpu_briefs.source IS NOT NULL AS queued'
-  + ' FROM reports LEFT JOIN gpu_briefs USING (source) WHERE reports.source = ?');
+db.exec('CREATE TABLE IF NOT EXISTS gameplay_reports (source TEXT PRIMARY KEY)');
+const find = db.prepare('SELECT reports.*, gpu_briefs.url, gpu_briefs.source IS NOT NULL AS queued,'
+  + ' gameplay_reports.source IS NOT NULL AS gameplay'
+  + ' FROM reports LEFT JOIN gpu_briefs USING (source) LEFT JOIN gameplay_reports USING (source) WHERE reports.source = ?');
 const pending = db.prepare('SELECT reports.*, gpu_briefs.url FROM reports JOIN gpu_briefs USING (source)'
   + ' WHERE reply IS NOT NULL AND claimant IS NULL');
 const tracked = db.prepare('SELECT * FROM reports WHERE reply IS NOT NULL AND claimant IS NOT NULL');
@@ -54,7 +56,8 @@ function card(report, status) {
     .setLabel(report.claimant ? 'Open in Codex' : 'Claim & Open in Codex')
     .setStyle(ButtonStyle.Primary);
   return {
-    content: '**Rich’s Houseboat workflow pilot** · [Issue #' + report.issue + ']('
+    content: (report.gameplay ? '**Rich’s Houseboat gameplay report**' : '**Rich’s Houseboat workflow pilot**')
+      + ' · [Issue #' + report.issue + ']('
       + issueUrl(report.issue) + ')\n' + (waiting ? '**Waiting for GPU brief**' : (status ?? claimStatus))
       + (report.url ? '\n[Game Prompt Studio brief](' + report.url + ')' : '')
       + '\nCodex will read the issue, follow the team workflow, and open a linked draft PR.',
@@ -62,7 +65,7 @@ function card(report, status) {
   };
 }
 
-async function submit(message) {
+async function submit(message, kind) {
   const source = message.id;
   // Generate before reserving an issue so a failed export or busy model can be retried.
   const brief = generateBrief && !find.get(source) ? await generateBrief(message.content) : null;
@@ -74,13 +77,12 @@ async function submit(message) {
     let issue;
     if (reservation.changes) {
       issue = await github('/issues', 'POST', {
-        title: 'Workflow pilot: ' + message.content.trim().split('\n')[0].slice(0, 150),
-        body: '## Goal\n\nRun a notes-only workflow pilot.\n\n'
-          + '## Original report\n\n' + message.content + '\n\n'
+        title: reportKinds[kind].titlePrefix + message.content.trim().split('\n')[0].slice(0, 150),
+        body: reportHeader(kind) + message.content + '\n\n'
           + 'Discord report: ' + message.url + '\n\n'
-          + '## Done when\n\nThe requested notes change is in a linked draft PR, ready for human review.\n\n'
+          + '## Done when\n\n' + reportKinds[kind].done + '\n\n'
           + (brief ? '## Game Prompt Studio brief\n\n' + brief + '\n\n' : '')
-          + (queueBrief ? '<!-- houseboat-gpu-pending:v1 -->\n' : '')
+          + (queueBrief ? gpuPendingMarker + '\n' : '')
           + marker,
       });
     } else {
@@ -96,7 +98,10 @@ async function submit(message) {
     db.exec('BEGIN IMMEDIATE');
     try {
       db.prepare('UPDATE reports SET issue = ? WHERE source = ?').run(issue.number, source);
-      if (issue.body?.trimEnd().endsWith('<!-- houseboat-gpu-pending:v1 -->\n' + marker)) {
+      if (issue.body?.startsWith(reportHeader('gameplay'))) {
+        db.prepare('INSERT OR IGNORE INTO gameplay_reports (source) VALUES (?)').run(source);
+      }
+      if (issue.body?.trimEnd().endsWith(gpuPendingMarker + '\n' + marker)) {
         db.prepare('INSERT OR IGNORE INTO gpu_briefs (source) VALUES (?)').run(source);
       }
       db.exec('COMMIT');
@@ -118,7 +123,9 @@ const submissions = new Map();
 client.on(Events.InteractionCreate, async interaction => {
   if (!interaction.isMessageContextMenuCommand() && !interaction.isButton()) return;
   if (interaction.isButton() && !interaction.customId.startsWith('claim:')) return;
-  if (interaction.isMessageContextMenuCommand() && interaction.commandName !== 'Create pilot issue') return;
+  const kind = interaction.isMessageContextMenuCommand()
+    ? Object.keys(reportKinds).find(key => reportKinds[key].command === interaction.commandName) : null;
+  if (interaction.isMessageContextMenuCommand() && !kind) return;
   if (interaction.guildId !== DISCORD_GUILD_ID || interaction.channelId !== DISCORD_CHANNEL_ID) {
     await interaction.reply({ content: 'Use this action in #issues.', flags: MessageFlags.Ephemeral });
     return;
@@ -134,13 +141,13 @@ client.on(Events.InteractionCreate, async interaction => {
     if (interaction.isMessageContextMenuCommand()) {
       const message = interaction.targetMessage;
       if (!message.content?.trim() || message.author.bot) {
-        await interaction.editReply('Choose a teammate’s text report for the notes-only pilot.');
+        await interaction.editReply('Choose a teammate’s text report.');
         return;
       }
       if (!submissions.has(message.id)) {
-        submissions.set(message.id, submit(message).finally(() => submissions.delete(message.id)));
+        submissions.set(message.id, submit(message, kind).finally(() => submissions.delete(message.id)));
       }
-      await interaction.editReply('Pilot issue: ' + await submissions.get(message.id));
+      await interaction.editReply('GitHub issue: ' + await submissions.get(message.id));
       return;
     }
     const source = interaction.customId.slice(6);
@@ -232,7 +239,8 @@ async function refresh() {
 
 const server = createServer((request, response) => {
   const match = /^\/open\/(\d+)$/.exec(request.url);
-  const report = match && db.prepare('SELECT issue, url FROM reports LEFT JOIN gpu_briefs USING (source)'
+  const report = match && db.prepare('SELECT issue, url, gameplay_reports.source IS NOT NULL AS gameplay'
+    + ' FROM reports LEFT JOIN gpu_briefs USING (source) LEFT JOIN gameplay_reports USING (source)'
     + ' WHERE issue = ? AND claimant IS NOT NULL')
     .get(Number(match[1]));
   response.setHeader('Cache-Control', 'no-store');
@@ -241,7 +249,7 @@ const server = createServer((request, response) => {
     response.writeHead(404).end('Report unavailable');
     return;
   }
-  const href = codexLink(issueUrl(report.issue), report.url).replaceAll('&', '&amp;');
+  const href = codexLink(issueUrl(report.issue), report.url, report.gameplay ? 'gameplay' : 'notes').replaceAll('&', '&amp;');
   response.end('<!doctype html><meta charset="utf-8"><title>Rich’s Houseboat</title>'
     + '<h1>Rich’s Houseboat</h1><p><a href="' + href + '">Open in Codex</a></p>');
 });
@@ -249,7 +257,9 @@ const server = createServer((request, response) => {
 client.once(Events.ClientReady, async ready => {
   try {
     const guild = await ready.guilds.fetch(DISCORD_GUILD_ID);
-    await guild.commands.create({ name: 'Create pilot issue', type: ApplicationCommandType.Message });
+    for (const { command } of Object.values(reportKinds)) {
+      await guild.commands.create({ name: command, type: ApplicationCommandType.Message });
+    }
     server.listen(Number(process.env.LAUNCH_PORT ?? 8766), '127.0.0.1');
     console.log('Discord issue pilot is ready.');
     await refresh();

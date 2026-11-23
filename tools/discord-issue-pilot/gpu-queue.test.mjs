@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { processGpuIssue, queuedReport } from './gpu-queue.mjs';
-import { gpuBriefMarker } from './workflow.mjs';
+import { gpuBriefMarker, reportHeader, reportKinds } from './workflow.mjs';
 
 const note = 'Add one sentence to the team notes.';
 const issue = { number: 32, state: 'open', body: [
@@ -17,6 +17,10 @@ test('the worker extracts only a valid queued Discord report', () => {
   assert.equal(queuedReport({ ...issue, pull_request: {} }), null);
   assert.equal(queuedReport({ ...issue, body: issue.body.replace('discord-pilot:333', 'discord-pilot:444') }), null);
   assert.equal(queuedReport({ ...issue, body: issue.body.replaceAll('\n', '\r\n') }), note);
+  const gameplay = issue.body.replace(reportHeader('notes'), reportHeader('gameplay'))
+    .replace(reportKinds.notes.done, reportKinds.gameplay.done);
+  assert.equal(queuedReport({ ...issue, body: gameplay }), note);
+  assert.equal(queuedReport({ ...issue, body: gameplay.replace(reportKinds.gameplay.done, reportKinds.notes.done) }), null);
 });
 
 test('the worker publishes one guarded brief and skips it on retry', async () => {

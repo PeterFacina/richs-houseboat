@@ -12,6 +12,10 @@ test('the GPU handoff opens Codex with a marked collaborator brief', () => {
   assert.equal(findGpuBrief([brief]), brief);
   const link = new URL(codexLink(issue, brief.html_url));
   assert.ok(link.searchParams.get('prompt').includes(brief.html_url));
+  const gameplay = new URL(codexLink(issue, brief.html_url, 'gameplay')).searchParams.get('prompt');
+  assert.match(gameplay, /Investigate the reported gameplay behavior/);
+  assert.doesNotMatch(gameplay, /notes-only/);
+  assert.ok(gameplay.includes(brief.html_url));
 });
 
 test('Codex opens a workspace matched by remote and receives the issue and PR instructions', () => {

@@ -1,15 +1,15 @@
-import { gpuBriefMarker, findGpuBrief } from './workflow.mjs';
+import { gpuBriefMarker, gpuPendingMarker, findGpuBrief, reportHeader, reportKinds } from './workflow.mjs';
 
-const header = '## Goal\n\nRun a notes-only workflow pilot.\n\n## Original report\n\n';
-const footer = /\n\nDiscord report: https:\/\/discord\.com\/channels\/\d+\/\d+\/(\d+)\n\n## Done when\n\nThe requested notes change is in a linked draft PR, ready for human review\.\n\n<!-- houseboat-gpu-pending:v1 -->\n<!-- discord-pilot:(\d+) -->$/;
+const footer = /\n\nDiscord report: https:\/\/discord\.com\/channels\/\d+\/\d+\/(\d+)\n\n## Done when\n\n([^\n]+)\n\n<!-- houseboat-gpu-pending:v1 -->\n<!-- discord-pilot:(\d+) -->$/;
 
 export function queuedReport(issue) {
   if (issue.state !== 'open' || issue.pull_request) return null;
   const body = issue.body?.replaceAll('\r\n', '\n').trimEnd() ?? '';
-  if (!body.startsWith(header)) return null;
+  const kind = Object.keys(reportKinds).find(key => body.startsWith(reportHeader(key)));
+  if (!kind || !body.includes(gpuPendingMarker)) return null;
   const match = footer.exec(body);
-  if (!match || match[1] !== match[2]) return null;
-  const note = body.slice(header.length, match.index).trim();
+  if (!match || match[1] !== match[3] || match[2] !== reportKinds[kind].done) return null;
+  const note = body.slice(reportHeader(kind).length, match.index).trim();
   return note && note.length <= 6500 ? note : null;
 }
 

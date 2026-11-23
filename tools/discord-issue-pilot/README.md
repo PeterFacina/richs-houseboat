@@ -73,4 +73,6 @@ node --env-file=.worker.env gpu-worker.mjs
 
 Run one worker. It checks GitHub every 30 seconds between batches, uses a temporary local Studio indexed from the worker checkout, and handles one report at a time. It skips issues that already have a marked brief. A failed export stays pending. A report edited during generation is read again on the next pass. The worker can be stopped with Ctrl+C. Rebuild or restart from the intended source checkout when changing the indexed game version.
 
+For a gameplay report, use **Apps → Create game issue** in Discord. Restart both the bot and the worker from a revision that supports this command before testing it. The report stays separate from the notes-only pilot and still requires a teammate to claim it and open Codex. Include the observed behavior, what you expected, how often it repeats, and who saw it. Keep untested viewpoints and causes open. Review and playtest the resulting draft before merging.
+
 For the live test, Peter submits one new notes-only report from Discord with the bot in queued mode. Ethan leaves the worker running and checks that GitHub gets exactly one marked brief without anyone starting a Codex chat or posting the brief manually. Peter verifies the Discord card switches to **Ready to claim** and that the Codex prompt links to the new brief. Post evidence and any failures on this PR.
