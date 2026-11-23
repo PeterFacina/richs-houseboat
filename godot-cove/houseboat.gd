@@ -57,6 +57,7 @@ var wheel_angle := 0.0
 var requested_throttle := 0.0
 var lever_throttle := 0.0
 var throttle_repeat := 0.0
+var lever_blocked := false
 var crank_time := 0.0
 var crank_confirmed := false
 var shutdown_left := 0.0
@@ -258,6 +259,7 @@ func clear_helm() -> void:
 	requested_throttle = 0.0
 	lever_throttle = 0.0
 	throttle_repeat = 0.0
+	lever_blocked = false
 	if ignition == Ignition.START:
 		set_ignition(Ignition.OFF)
 
@@ -314,7 +316,7 @@ func tick_ignition(delta: float) -> void:
 
 
 func nudge_throttle(direction: float) -> void:
-	if ignition == Ignition.RUN:
+	if ignition == Ignition.RUN and not lever_blocked:
 		change_throttle(direction, THROTTLE_STEP)
 		throttle_repeat = THROTTLE_REPEAT_DELAY
 
@@ -323,18 +325,22 @@ func hold_throttle(delta: float, adjustment: float, pedal: float) -> void:
 	if ignition != Ignition.RUN:
 		requested_throttle = 0.0
 		return
-	if adjustment != 0.0:
+	if pedal != 0.0:
+		if not lever_blocked:
+			requested_throttle = 0.0
+		lever_blocked = true
+		lever_throttle = 0.0
+		throttle_repeat = 0.0
+		requested_throttle = move_toward(requested_throttle, 1.0 if pedal > 0.0 else -.32, delta * .90)
+		return
+	if adjustment == 0.0:
+		lever_blocked = false
+		throttle_repeat = 0.0
+	elif not lever_blocked:
 		var delay := throttle_repeat
 		throttle_repeat = maxf(0.0, delay - delta)
 		change_throttle(adjustment, maxf(0.0, delta - delay) * throttle_rate)
-		requested_throttle = lever_throttle
-	else:
-		throttle_repeat = 0.0
-		if pedal != 0.0:
-			lever_throttle = 0.0
-			requested_throttle = move_toward(requested_throttle, 1.0 if pedal > 0.0 else -.32, delta * .90)
-		else:
-			requested_throttle = lever_throttle
+	requested_throttle = lever_throttle
 
 
 func change_throttle(direction: float, amount: float) -> void:
