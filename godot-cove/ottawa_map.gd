@@ -243,16 +243,21 @@ func build() -> void:
 	if lamure_patch != null:
 		build_lamure(ground)
 	var pines := LamurePines.new()
+	var champlain: Array = meta.streets[RoadNetwork.CHAMPLAIN]
+	var street_start := Vector2(champlain[0][0], champlain[0][1])
+	var street_axis := (Vector2(champlain[1][0], champlain[1][1]) - street_start).normalized()
 	waterfront.build_canopy(self, town_canopy, marina_patch.area, wet_clearance,
 		func(foot: Vector3, height: float) -> bool:
 			# This surveyed tree stands under the new corner portico.
-			if Vector2(foot.x, foot.z).distance_squared_to(PLAZA_PORTICO_TREE) < .25:
+			var point := Vector2(foot.x, foot.z)
+			if point.distance_squared_to(PLAZA_PORTICO_TREE) < .25:
 				return true
 			return PublicWorks.cleared_for_construction(foot) or park.owns_tree(foot) \
-				or residential_driveways.clears_tree(Vector2(foot.x, foot.z)) \
-				or PropertySites.clears_tree(Vector2(foot.x, foot.z)) \
-				or highway_has_tree_conflict(Vector2(foot.x, foot.z), highway_clearance) \
-				or Vector2(foot.x, foot.z).distance_squared_to(RiverbankPark.GAZEBO_SITE) < 36.0 \
+				or residential_driveways.clears_tree(point) \
+				or RoadNetwork.clears_champlain_tree(point, street_start, street_axis) \
+				or PropertySites.clears_tree(point) \
+				or highway_has_tree_conflict(point, highway_clearance) \
+				or point.distance_squared_to(RiverbankPark.GAZEBO_SITE) < 36.0 \
 				or (lamure_patch != null and pines.place_from_survey(foot, height)))
 	if meta.has("riverbank"):
 		park.build(self, town_canopy, waterfront, pines, ground_height, wet_clearance, riverbed)
@@ -733,13 +738,17 @@ func road_at_sign(point: Vector2, half_span: float) -> Dictionary:
 	var found := {}
 	for index in lines.size():
 		var line: Array = lines[index]
-		var clearance := (RoadNetwork.HIGHWAY_HALF_WIDTH if index in RoadNetwork.HIGHWAY else 3.4) + half_span
+		var width := RoadNetwork.HIGHWAY_HALF_WIDTH if index in RoadNetwork.HIGHWAY else RoadNetwork.STREET_HALF_WIDTH
+		var search_width := RoadNetwork.PARKING_HALF_WIDTH if index == RoadNetwork.CHAMPLAIN else width
 		for i in range(1, line.size()):
 			var a := Vector2(line[i - 1][0], line[i - 1][1])
 			var b := Vector2(line[i][0], line[i][1])
-			if a.is_equal_approx(b) or not Rect2(a, Vector2.ZERO).expand(b).grow(clearance).has_point(point):
+			if a.is_equal_approx(b) or not Rect2(a, Vector2.ZERO).expand(b).grow(search_width + half_span).has_point(point):
 				continue
 			var center := Geometry2D.get_closest_point_to_segment(point, a, b)
+			var clearance := width + half_span
+			if index == RoadNetwork.CHAMPLAIN and i == 1:
+				clearance = RoadNetwork.champlain_half_width(a.distance_to(center)) + half_span
 			var distance := point.distance_squared_to(center)
 			if distance < best and distance < clearance * clearance:
 				best = distance

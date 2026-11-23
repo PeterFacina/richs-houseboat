@@ -20,8 +20,10 @@ var accepted: Array[Dictionary] = []
 func setup(streets: Array, regional: Array, footprints: Array, elevation: Callable) -> void:
 	ground = elevation
 	for i in streets.size():
-		if i not in RoadNetwork.HIGHWAY:
-			index_street(streets[i], 3.4)
+		if i == RoadNetwork.CHAMPLAIN:
+			index_street(RoadNetwork.champlain_line(streets[i]), RoadNetwork.STREET_HALF_WIDTH, true)
+		elif i not in RoadNetwork.HIGHWAY:
+			index_street(streets[i], RoadNetwork.STREET_HALF_WIDTH)
 	index_street(RoadNetwork.highway_line(streets), RoadNetwork.HIGHWAY_HALF_WIDTH)
 	for street: Array in regional:
 		index_street(street, 3.2)
@@ -35,15 +37,28 @@ func setup(streets: Array, regional: Array, footprints: Array, elevation: Callab
 		index(buildings, bounds.grow(.4), {"bounds": bounds, "polygon": polygon})
 
 
-func index_street(street: Array, half_width: float) -> void:
+func index_street(street: Array, half_width: float, champlain := false) -> void:
+	var station := 0.0
 	for i in range(1, street.size()):
 		var a := Vector2(street[i - 1][0], street[i - 1][1])
 		var b := Vector2(street[i][0], street[i][1])
 		if a.distance_squared_to(b) < .03:
 			continue
 		var axis := (b - a).normalized()
-		var span := {"a": a, "b": b, "normal": Vector2(-axis.y, axis.x), "width": half_width}
-		index(roads, Rect2(a, Vector2.ZERO).expand(b).grow(half_width + 1.1), span)
+		var start_width := RoadNetwork.champlain_half_width(station) if champlain else half_width
+		station += a.distance_to(b)
+		var end_width := RoadNetwork.champlain_half_width(station) if champlain else half_width
+		var span := {"a": a, "b": b, "normal": Vector2(-axis.y, axis.x),
+			"start_width": start_width, "end_width": end_width, "sidewalk": champlain
+				and is_equal_approx(start_width, RoadNetwork.PARKING_HALF_WIDTH)
+				and is_equal_approx(end_width, RoadNetwork.PARKING_HALF_WIDTH)}
+		index(roads, Rect2(a, Vector2.ZERO).expand(b).grow(maxf(start_width, end_width) + 2.0), span)
+
+
+func road_width(span: Dictionary, at: Vector2) -> float:
+	var a: Vector2 = span.a
+	var b: Vector2 = span.b
+	return lerpf(span.start_width, span.end_width, a.distance_to(at) / a.distance_to(b))
 
 
 func index(grid: Dictionary, area: Rect2, item: Dictionary) -> void:
@@ -120,7 +135,9 @@ func find_approach(end: Vector2, outward: Vector2, door: Vector2, garage: bool) 
 				side *= signf((end - projected).dot(side))
 				if -direction.dot(side) < .56:
 					continue
-				var entry := projected + side * (float(span.width) - .24)
+				if span.sidewalk:
+					continue
+				var entry := projected + side * (road_width(span, projected) - .24)
 				if entry.distance_squared_to(RoadNetwork.SIGNALS.JUNCTION) < 19.0 * 19.0:
 					continue
 				if entry.distance_squared_to(end) < 5.5 * 5.5:
@@ -163,8 +180,8 @@ func clear_route(entry: Vector2, end: Vector2, across: Vector2, normal: Vector2,
 			for road: Dictionary in near(roads, point):
 				if road.a == target.a and road.b == target.b:
 					continue
-				var road_margin: float = road.width + .6
 				var road_center := Geometry2D.get_closest_point_to_segment(point, road.a, road.b)
+				var road_margin := road_width(road, road_center) + (RoadNetwork.CHAMPLAIN_SIDEWALK_WIDTH + .10 if road.sidewalk else .6)
 				if point.distance_squared_to(road_center) < road_margin * road_margin:
 					return false
 	return true

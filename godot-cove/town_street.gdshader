@@ -46,6 +46,20 @@ void fragment() {
 			yellow = paint_line(abs(UV.x) - .135, .064) * UV2.x;
 			white = paint_line(abs(UV.x) - 5.11, .072) * COLOR.g * UV2.x;
 		}
+		if (COLOR.a < .5) {
+			asphalt = mix(asphalt, vec3(.265, .241, .213), .22);
+			float offset = abs(UV.x);
+			// The left and right rows angle forward in their respective lanes.
+			float bay = (UV.y + sign(UV.x) * (offset - 3.5) * .59 - 27.0) / 3.25;
+			float divider = (fract(bay + .5) - .5) * 3.25;
+			float stripe = paint_line(divider, .061);
+			float inside_bay = step(3.55, offset) * step(offset, 8.54);
+			float block = step(25.0, UV.y) * step(UV.y, 102.0) * step(0.0, bay + .02) * step(bay, 22.02);
+			// Keep the civic sidewalk connection clear of parking stalls.
+			float bay_start = 27.0 + floor(bay + .5) * 3.25;
+			float entrance = step(50.0, bay_start) * step(bay_start, 57.0) * step(UV.x, 0.0);
+			white = max(white, stripe * inside_bay * block * (1.0 - entrance) * UV2.x);
+		}
 		float walk = max(paint_line(UV2.y - 6.35, .10), paint_line(UV2.y - 8.35, .10));
 		float stop = paint_line(UV2.y - 9.55, .14) * step(.14, UV.x);
 		white = max(white, max(walk, stop) * (1.0 - step(3.22, abs(UV.x))));

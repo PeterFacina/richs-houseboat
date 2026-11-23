@@ -11,6 +11,10 @@ const HIGHWAY := [13, 15, 44, 2, 8, 7, 3]
 const HIGHWAY_HALF_WIDTH := 5.65
 const SIGNALS = preload("res://deep_river_signals.gd")
 const CHAMPLAIN := 6
+const PARKING_LIMITS := Vector4(12.0, 21.0, 105.0, 115.0)
+const STREET_HALF_WIDTH := 3.4
+const PARKING_HALF_WIDTH := 8.7
+const CHAMPLAIN_SIDEWALK_WIDTH := 1.65
 const RIDGE := 49
 const BROCKHOUSE := 76
 const MARINA_APPROACH := 62
@@ -29,6 +33,8 @@ class Span:
 	var station: float
 	var total: float
 	var width: float
+	var start_width: float
+	var end_width: float
 	var shoulder: float
 	var marking: Marking
 	var fine: bool
@@ -79,7 +85,8 @@ func build(map: Node3D, data: Dictionary, elevation: Callable, parking_mask: Tex
 	add_street(HIGHWAY[0], highway_line(streets), HIGHWAY_HALF_WIDTH)
 	var through := [RIDGE, CHAMPLAIN, BROCKHOUSE, MARINA_APPROACH]
 	for index: int in through:
-		add_street(index, streets[index], 3.4)
+		var line: Array = champlain_line(streets[index]) if index == CHAMPLAIN else streets[index]
+		add_street(index, line, STREET_HALF_WIDTH)
 	for index in streets.size():
 		if not through.has(index) and index not in HIGHWAY:
 			add_street(index, streets[index], 3.4)
@@ -95,11 +102,17 @@ func build(map: Node3D, data: Dictionary, elevation: Callable, parking_mask: Tex
 	var signals := SIGNALS.new()
 	network.add_child(signals)
 	signals.build(streets, ground)
+	var sidewalk := Kit.paint(Color("#e0dacf"))
+	sidewalk.albedo_texture = stone
+	sidewalk.uv1_triplanar = true
+	sidewalk.uv1_scale = Vector3.ONE * .55
 	for cell: Vector2i in chunks:
 		var batch: Dictionary = chunks[cell]
 		var origin := Vector3(cell.x * CHUNK_SIZE, 0.0, cell.y * CHUNK_SIZE)
 		install(network, batch.asphalt, origin, paved, "Asphalt", true)
 		install(network, batch.shoulder, origin, gravel, "GravelShoulder", true)
+		if batch.has("sidewalk"):
+			install(network, batch.sidewalk, origin, sidewalk, "ChamplainSidewalk", true)
 	for span: Span in spans:
 		span.neighbors.clear()
 	chunks.clear()
@@ -111,6 +124,31 @@ static func highway_line(streets: Array) -> Array:
 	for index: int in HIGHWAY:
 		highway.append_array(streets[index])
 	return highway
+
+
+static func champlain_line(line: Array) -> Array:
+	var start := Vector2(line[0][0], line[0][1])
+	var end := Vector2(line[1][0], line[1][1])
+	var axis := (end - start).normalized()
+	var points: Array = [line[0]]
+	for distance: float in [PARKING_LIMITS.x, PARKING_LIMITS.y, PARKING_LIMITS.z, PARKING_LIMITS.w]:
+		var at := start + axis * distance
+		points.append([at.x, at.y])
+	points.append_array(line.slice(1))
+	return points
+
+
+static func clears_champlain_tree(point: Vector2, start: Vector2, axis: Vector2) -> bool:
+	var delta := point - start
+	var station := delta.dot(axis)
+	return station >= PARKING_LIMITS.x and station <= PARKING_LIMITS.w and \
+		absf(delta.dot(axis.orthogonal())) <= champlain_half_width(station) + CHAMPLAIN_SIDEWALK_WIDTH + .48
+
+
+static func champlain_half_width(station: float) -> float:
+	var taper_in := inverse_lerp(PARKING_LIMITS.x, PARKING_LIMITS.y, station)
+	var taper_out := inverse_lerp(PARKING_LIMITS.w, PARKING_LIMITS.z, station)
+	return lerpf(STREET_HALF_WIDTH, PARKING_HALF_WIDTH, clampf(minf(taper_in, taper_out), 0.0, 1.0))
 
 
 func add_street(street: int, line: Array, width: float) -> void:
@@ -142,21 +180,23 @@ func add_street(street: int, line: Array, width: float) -> void:
 		span.length = span.start.distance_to(span.end)
 		span.station = stations[i - 1]
 		span.total = stations[-1]
-		span.width = width
-		span.bounds = Rect2(span.start, Vector2.ZERO).expand(span.end).grow(width * 1.4 + 4.5)
+		span.start_width = champlain_half_width(span.station) if street == CHAMPLAIN else width
+		span.end_width = champlain_half_width(stations[i]) if street == CHAMPLAIN else width
+		span.width = maxf(span.start_width, span.end_width)
+		span.bounds = Rect2(span.start, Vector2.ZERO).expand(span.end).grow(span.width * 1.4 + 4.5)
 		span.fine = downtown.intersects(span.bounds) or close_areas.any(
 			func(area: Rect2) -> bool: return area.intersects(span.bounds))
 		span.shoulder = .92 if street in [RIDGE, BROCKHOUSE, MARINA_APPROACH] else .63
 		span.marking = Marking.SOLID if street == RIDGE else Marking.NONE
-		if street == BROCKHOUSE:
+		if street == BROCKHOUSE or street == CHAMPLAIN:
 			span.marking = Marking.BROKEN
 		if street in HIGHWAY:
 			span.shoulder = 1.55
 			span.marking = Marking.HIGHWAY
 			span.fine = span.bounds.grow(30.0).has_point(SIGNALS.JUNCTION)
 		span.outline = PackedVector2Array([
-			span.start - span.left * width, span.start + span.left * width,
-			span.end + span.right * width, span.end - span.right * width])
+			span.start - span.left * span.start_width, span.start + span.left * span.start_width,
+			span.end + span.right * span.end_width, span.end - span.right * span.end_width])
 		span.pavement_bounds = Rect2(span.outline[0], Vector2.ZERO)
 		for point: Vector2 in span.outline:
 			span.pavement_bounds = span.pavement_bounds.expand(point)
@@ -211,7 +251,32 @@ func build_span(span: Span) -> void:
 					nearby, origin, true)
 				emit_strip(batch.shoulder, span, first, last, minf(lip, outer), maxf(lip, outer),
 					nearby, origin, true)
+		if span.street == CHAMPLAIN and is_equal_approx(span.start_width, PARKING_HALF_WIDTH) \
+				and is_equal_approx(span.end_width, PARKING_HALF_WIDTH):
+			if not batch.has("sidewalk"):
+				batch.sidewalk = new_surface()
+			emit_champlain_sidewalk(batch.sidewalk, span, first, last, origin)
 		first = last
+
+
+func emit_champlain_sidewalk(surface: SurfaceTool, span: Span, first: float, last: float, origin: Vector2) -> void:
+	for side: float in [-1.0, 1.0]:
+		var profile := [Vector2(0, .049), Vector2(.16, .156), Vector2(CHAMPLAIN_SIDEWALK_WIDTH, .143)]
+		for i in range(1, profile.size()):
+			var left: Vector2 = profile[i - 1]
+			var right: Vector2 = profile[i]
+			if side < 0.0:
+				left = profile[i]
+				right = profile[i - 1]
+			for corner: Vector2i in [Vector2i(0, 0), Vector2i(0, 1), Vector2i(1, 0),
+					Vector2i(0, 1), Vector2i(1, 1), Vector2i(1, 0)]:
+				var edge := left if corner.y == 0 else right
+				var fraction := first if corner.x == 0 else last
+				var point := at(span, fraction, side * (PARKING_HALF_WIDTH + edge.x))
+				var station := span.station + fraction * span.length
+				var ramp := smoothstep(0.0, 1.4, minf(station - PARKING_LIMITS.y, PARKING_LIMITS.z - station))
+				var lift := lerpf(.049, edge.y, ramp)
+				surface.add_vertex(Vector3(point.x - origin.x, ground.call(point.x, point.y) + lift, point.y - origin.y))
 
 
 func shoulder_width(span: Span, point: Vector2) -> float:
@@ -249,7 +314,8 @@ func emit_strip(surface: SurfaceTool, span: Span, first: float, last: float, lef
 
 
 func at(span: Span, fraction: float, lateral: float) -> Vector2:
-	return span.start.lerp(span.end, fraction) + span.left.lerp(span.right, fraction) * lateral
+	var width := lerpf(span.start_width, span.end_width, fraction)
+	return span.start.lerp(span.end, fraction) + span.left.lerp(span.right, fraction) * lateral * (width / span.width)
 
 
 func emit_vertex(surface: SurfaceTool, span: Span, point: Vector2, nearby: Array[Span],
@@ -257,7 +323,8 @@ func emit_vertex(surface: SurfaceTool, span: Span, point: Vector2, nearby: Array
 	var axis := (span.end - span.start) / span.length
 	var station := span.station + clampf((point - span.start).dot(axis), 0.0, span.length)
 	var lateral := (point - span.start).dot(axis.orthogonal())
-	var edge := clampf(absf(lateral) / span.width, 0.0, 1.0)
+	var width := lerpf(span.start_width, span.end_width, (station - span.station) / span.length)
+	var edge := clampf(absf(lateral) / width, 0.0, 1.0)
 	var joins := 0.0
 	var paint := 1.0
 	for other: Span in nearby:
@@ -284,7 +351,8 @@ func emit_vertex(surface: SurfaceTool, span: Span, point: Vector2, nearby: Array
 		paint *= smoothstep(26.0, 40.0, point.distance_to(PLAZA_FRONTAGE))
 	var style := float(span.marking) / 3.0
 	var edges := 1.0 if span.street in HIGHWAY or (span.street == BROCKHOUSE and not downtown.has_point(point)) else 0.0
-	surface.set_color(Color(style, edges, (1.0 - joins) * end_blend * (1.0 - apron), 1.0))
+	surface.set_color(Color(style, edges, (1.0 - joins) * end_blend * (1.0 - apron),
+		0.0 if span.street == CHAMPLAIN else 1.0))
 	surface.set_uv(Vector2(lateral, station))
 	surface.set_uv2(Vector2(shoulder_mix if shoulder else paint * end_blend, transverse))
 	var height := ground.call(point.x, point.y) as float
