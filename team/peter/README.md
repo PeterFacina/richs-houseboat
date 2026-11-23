@@ -9,3 +9,4 @@
 
 - Record the baseline commit and engine version after a clean clone runs.
 - Link active branches, pull requests, and playtest releases here.
+- The workflow pilot confirmed that Discord can open a task in Codex.
