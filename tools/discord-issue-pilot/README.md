@@ -42,3 +42,23 @@ ollama ps
 The runner creates a temporary Studio on a free loopback port, indexes the game in the PR checkout, uses the same HTTP adapter as the Discord bot, and prints the export-checked brief. The test uses the Zero Turn report about the driver's hands jerking on a sharp left turn. Guest visibility is still untested. The existing Studio instance and its database can stay running. This test needs no Discord or GitHub token in the bot configuration.
 
 Post a comment on this PR with the tested commit, GPU, model, elapsed time, Ollama's PROCESSOR value, export result, and whether the brief cited `godot-cove/lawn_mower.gd` and kept guest visibility unverified. Include the brief in the comment. If the test fails, include the error and the last completed step. Keep credentials and machine-specific paths out of the comment.
+
+## GPU-backed Discord pilot
+
+Peter runs the bot from this PR with `QUEUE_STUDIO_BRIEF=1` and `STUDIO_URL` unset. Keep the existing working directory for the bot so it uses the same local settings and SQLite database. Start only one bot process. Submit one agreed notes-only report from Discord. The bot creates the GitHub issue and shows **Waiting for GPU brief**.
+
+### Ethan's GPU handoff
+
+1. Use a separate worktree at this PR's head. Find the open GitHub issue Peter identifies for this run. Verify that its body ends with the GPU pending marker followed by the Discord report marker, and that no guarded GPU brief has been posted. Use the exact text under **Original report** as the contents of a UTF-8 temporary file.
+2. With Ollama running on loopback and `qwen3:14b` installed, run from the checkout root:
+
+   ```powershell
+   node tools/discord-issue-pilot/gpu-smoke.mjs qwen3:14b $reportFile
+   ollama ps
+   ```
+
+   The runner uses an isolated Studio and checks the brief's export. With a report file, stdout contains the brief and stderr contains the model and timing summary. Leave the existing Studio and Ollama settings alone. No Discord token is needed on the GPU PC.
+3. If export passed, post **one comment on the pilot GitHub issue**. Put `<!-- houseboat-gpu-brief:v1 -->` on its first line, then a blank line and the full guarded brief. Check for an existing marked comment before posting so retries leave one result. The bot accepts this marker from a repo owner, member or collaborator.
+4. Post a summary on this draft PR with the issue and brief links, tested commit, GPU, model, elapsed time, processor value and export result. On failure, leave the issue pending and post the error and last completed step on the PR.
+
+Within a minute or so of the issue comment, the bot should show the brief link and **Claim & Open in Codex**. Peter claims the issue and verifies the prompt includes the comment link before continuing the normal draft PR and merge test. Keep this tooling PR in draft during the trial.

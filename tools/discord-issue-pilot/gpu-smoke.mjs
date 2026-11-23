@@ -1,5 +1,5 @@
 import { once } from 'node:events';
-import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -8,7 +8,10 @@ import { studioClient } from './studio.mjs';
 
 const project = fileURLToPath(new URL('../../', import.meta.url));
 const model = process.argv[2] ?? 'qwen3:14b';
-const note = 'When I make a sharp left turn on the Zero Turn, the driver’s steering hands jerk out of place. I haven’t checked whether a guest can see it.';
+const reportFile = process.argv[3];
+const note = reportFile ? readFileSync(reportFile, 'utf8').replace(/^\uFEFF/, '').trim()
+  : 'When I make a sharp left turn on the Zero Turn, the driver’s steering hands jerk out of place. I haven’t checked whether a guest can see it.';
+if (!note || note.length > 6500) throw new Error('The report must contain 1–6500 characters.');
 if (!existsSync(join(project, 'godot-cove', 'lawn_mower.gd'))) {
   throw new Error('Extract the smoke test into the shared game checkout containing godot-cove/lawn_mower.gd.');
 }
@@ -31,10 +34,11 @@ try {
   const start = performance.now();
   const brief = await generate(note);
   console.log(brief);
-  console.log('Model: ' + model);
-  console.log('Elapsed: ' + ((performance.now() - start) / 1000).toFixed(1) + ' seconds');
-  console.log('Studio export check: passed');
-  console.log('Mower source citation: ' + (/\[S\d+\] godot-cove\/lawn_mower\.gd:\d+/.test(brief) ? 'present' : 'missing'));
+  const log = reportFile ? console.error : console.log;
+  log('Model: ' + model);
+  log('Elapsed: ' + ((performance.now() - start) / 1000).toFixed(1) + ' seconds');
+  log('Studio export check: passed');
+  if (!reportFile) log('Mower source citation: ' + (/\[S\d+\] godot-cove\/lawn_mower\.gd:\d+/.test(brief) ? 'present' : 'missing'));
 } finally {
   if (server?.listening) {
     const closed = once(server, 'close');

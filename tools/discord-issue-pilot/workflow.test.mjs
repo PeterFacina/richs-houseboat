@@ -1,6 +1,18 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { codexLink, pullStatus, remote } from './workflow.mjs';
+import { codexLink, findGpuBrief, gpuBriefMarker, pullStatus, remote } from './workflow.mjs';
+
+test('the GPU handoff opens Codex with a marked collaborator brief', () => {
+  const issue = 'https://github.com/PeterFacina/richs-houseboat/issues/31';
+  const brief = { html_url: issue + '#issuecomment-42', body: gpuBriefMarker + '\n\nGuarded brief',
+    author_association: 'COLLABORATOR' };
+  assert.equal(findGpuBrief([{ ...brief, author_association: 'NONE' }]), undefined);
+  assert.equal(findGpuBrief([{ ...brief, body: 'Example\n' + brief.body }]), undefined);
+  assert.equal(findGpuBrief([{ ...brief, body: gpuBriefMarker + '\n' }]), undefined);
+  assert.equal(findGpuBrief([brief]), brief);
+  const link = new URL(codexLink(issue, brief.html_url));
+  assert.ok(link.searchParams.get('prompt').includes(brief.html_url));
+});
 
 test('Codex opens a workspace matched by remote and receives the issue and PR instructions', () => {
   const issue = 'https://github.com/PeterFacina/richs-houseboat/issues/17';

@@ -1,23 +1,32 @@
 export const repository = 'PeterFacina/richs-houseboat';
 export const remote = `https://github.com/${repository}.git`;
 
-export function pilotBrief(issue) {
+export const gpuBriefMarker = '<!-- houseboat-gpu-brief:v1 -->';
+
+export function findGpuBrief(comments) {
+  return comments.find(comment => ['OWNER', 'MEMBER', 'COLLABORATOR'].includes(comment.author_association)
+    && comment.body?.startsWith(gpuBriefMarker + '\n')
+    && comment.body.slice(gpuBriefMarker.length).trim());
+}
+
+export function pilotBrief(issue, gpuBriefUrl) {
   return [
     `Work on Rich's Houseboat issue ${issue}.`,
     'Read AGENTS.md and the issue. Check the owner and overlapping issues and PRs.',
     'Use the team task workflow and a separate branch from current main.',
     'Implement the notes-only pilot task described in the issue and verify the diff.',
     'If the issue includes a Game Prompt Studio brief, use it as supporting context and validate its citations against the checkout.',
+    ...(gpuBriefUrl ? ['Read the guarded GPU brief on the issue: ' + gpuBriefUrl] : []),
     'Open a draft PR into main. Put the following on its own line in the PR body:',
     `Fixes #${issue.split('/').at(-1)}`,
     'Report what was checked and leave the PR for human review.',
   ].join('\n');
 }
 
-export function codexLink(issue) {
+export function codexLink(issue, gpuBriefUrl) {
   return `codex://threads/new?${new URLSearchParams({
     originUrl: remote,
-    prompt: pilotBrief(issue),
+    prompt: pilotBrief(issue, gpuBriefUrl),
   })}`;
 }
 
