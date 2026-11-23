@@ -2,15 +2,14 @@ extends RefCounted
 
 const Kit = preload("res://scenery.gd")
 const Wharf = preload("res://marina_wharf.gd")
-const Cleat = preload("res://mooring_cleat.gd")
+const Docks = preload("res://marina_docks.gd")
+const GasBar = preload("res://marina_gas_bar.gd")
 const Fleet = preload("res://marina_fleet.gd")
 const Pines = preload("res://lamure_pines.gd")
 const Graphics = preload("res://river_graphics.gd")
 const WATERFRONT_CANOPY := "res://ottawa/waterfront_canopy.bin"
 const YachtClub = preload("res://marina_yacht_club.gd")
 const TennisCourts = preload("res://marina_tennis_courts.gd")
-const DOCK_HEIGHT := 0.46
-const WALKWAY_WIDTH := 2.55
 const MOWING_LAWN := [
 	Vector2(7.5, -10), Vector2(14, -12.5), Vector2(25, -14.5), Vector2(33, -14),
 	Vector2(29, -6), Vector2(24, .5), Vector2(17, 7.5), Vector2(7.5, 11.5),
@@ -33,7 +32,9 @@ var leaf_material: ShaderMaterial
 var trunk_mesh: CylinderMesh
 var bark_material: Material
 var wharf := Wharf.new()
+var docks := Docks.new()
 var fleet := Fleet.new()
+var gas_bar: GasBar
 const Routes = preload("res://mowing_routes.gd")
 
 var mowing_routes: Array[Dictionary]
@@ -52,14 +53,12 @@ func build(parent: Node3D, layout: Dictionary, ground_lookup: Callable, shore_lo
 	marina.name = "DeepRiverMarina"
 	parent.add_child(marina)
 	build_breakwall(marina, layout.breakwall)
-	for line: Array in layout.dock_access:
-		for index in range(1, line.size()):
-			var entry := point(line[index - 1], DOCK_HEIGHT)
-			entry.y = maxf(entry.y, ground.call(entry.x, entry.z) + 0.04)
-			build_walkway(marina, entry, point(line[index], DOCK_HEIGHT), WALKWAY_WIDTH)
-	for index in layout.dock_main.size():
-		build_dock(marina, layout.dock_main[index], index)
-	fleet.build(marina, layout.dock_main, ground)
+	var berths := docks.build(marina, layout, ground, timber)
+	fleet.build(marina, berths, ground, docks)
+	for berth in berths:
+		if berth.row == "VisitorDock" and berth.slot == 1:
+			build_gas_bar(berth, concrete)
+			break
 	var courts := TennisCourts.new()
 	courts.build(marina, layout.tennis, pier_path, ground, concrete, timber)
 	for child in courts.site.get_node("CourtCoating").get_children():
@@ -83,8 +82,22 @@ func build(parent: Node3D, layout: Dictionary, ground_lookup: Callable, shore_lo
 		build_trees(marina, layout.woodland, layout.buildings)
 	YachtClub.build_landscape(marina, ground, render_trees)
 	if layout.has("wharf"):
-		wharf.build(marina, layout.wharf, ground, concrete, build_walkway, DOCK_HEIGHT)
+		wharf.build(marina, layout.wharf, ground, concrete, docks)
+	docks.finish()
 	build_bank_cover(marina, layout, shore_lookup, clear_route)
+
+
+func build_gas_bar(berth: Dictionary, concrete: Texture2D) -> void:
+	var forward: Vector3 = berth.along
+	var outward: Vector3 = berth.outward
+	gas_bar = GasBar.new()
+	gas_bar.name = "VisitorDockGasBar"
+	docks.root.add_child(gas_bar)
+	gas_bar.position = berth.edge + outward * (Docks.SPINE_WIDTH * .5 + GasBar.PAD_DEPTH * .5 - .07)
+	gas_bar.basis = Basis.looking_at(outward)
+	gas_bar.build(concrete)
+	var half_length := forward * (GasBar.PAD_LENGTH * .5)
+	docks.add_obstacle(gas_bar.position - half_length, gas_bar.position + half_length, GasBar.PAD_DEPTH + .10)
 
 
 func point(coords: Array, height: float) -> Vector3:
@@ -98,45 +111,6 @@ func weathered_wood(color: Color, decking := true) -> ShaderMaterial:
 	material.set_shader_parameter("finish", Vector3(color.r, color.g, color.b))
 	material.set_shader_parameter("decking", decking)
 	return material
-
-
-func build_walkway(parent: Node3D, a: Vector3, b: Vector3, width: float) -> void:
-	var platform := StaticBody3D.new()
-	parent.add_child(platform)
-	platform.position = (a + b) * 0.5
-	platform.basis = Basis.looking_at(b - a)
-	var size := Vector3(width, 0.18, a.distance_to(b))
-	Kit.box_at(platform, Vector3.ZERO, size, timber)
-	for side in [-1.0, 1.0]:
-		Kit.box_at(platform, Vector3(side * (width * 0.5 - .048), -.113, 0),
-			Vector3(.10, .15, size.z), piling)
-	Kit.collider(platform, Vector3.ZERO, size)
-
-
-func build_dock(parent: Node3D, coords: Array, row: int) -> void:
-	var a := point(coords[0], DOCK_HEIGHT)
-	var b := point(coords[1], DOCK_HEIGHT)
-	build_walkway(parent, a, b, WALKWAY_WIDTH)
-	var along := (b - a).normalized()
-	var across := Vector3(-along.z, 0, along.x)
-	var slip_count: int = [7, 10, 9, 6][row]
-	var rubber := Kit.paint(Color("#333739"))
-	var cleats: Array[Transform3D] = []
-	var fenders: Array[Transform3D] = []
-	var edge_hardware := Basis.looking_at(b - a)
-	for index in slip_count:
-		var edge := a.lerp(b, float(index) / maxi(1, slip_count - 1))
-		for side: float in ([1.0] if row == 0 else [-1.0, 1.0]):
-			var tip := edge + across * side * (8.1 if row < 3 else 6.25)
-			build_walkway(parent, edge, tip, 1.35)
-			Kit.box_at(parent, tip - Vector3.UP * .64, Vector3(.23, 2.58, .23), piling)
-			cleats.append(Transform3D(edge_hardware.scaled_local(Vector3.ONE * .54),
-				tip - across * side * .42 + Vector3.UP * .09))
-			fenders.append(Transform3D(edge_hardware, tip - Vector3.UP * .035))
-	Cleat.place(parent, cleats)
-	var strip := BoxMesh.new()
-	strip.size = Vector3(.17, .20, 1.42)
-	Kit.new().scatter(parent, strip, fenders, rubber)
 
 
 func build_breakwall(parent: Node3D, path: Array) -> void:
@@ -529,7 +503,7 @@ func build_bank_cover(parent: Node3D, layout: Dictionary, shore: Callable, clear
 			p.y = ground.call(p.x, p.z)
 			if p.y < -.10 or p.y > 1.48:
 				continue
-			if wharf.blocks_water(p) or is_finite(wharf.launch.floor_at(p)):
+			if docks.blocks(p) or is_finite(wharf.launch.floor_at(p)):
 				continue
 			if clear_route.is_valid() and clear_route.call(Vector2(p.x, p.z)):
 				continue

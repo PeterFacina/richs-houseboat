@@ -1,66 +1,100 @@
 extends RefCounted
 
 const Kit = preload("res://scenery.gd")
-const BERTHS := [
-	[0, 1, 1.0, 7.6, true], [0, 3, 1.0, 7.2, true], [0, 5, 1.0, 6.2, false],
-	[1, 1, -1.0, 6.4, false], [1, 4, -1.0, 7.9, true], [1, 6, 1.0, 7.5, true],
-	[2, 2, -1.0, 7.2, true], [2, 6, 1.0, 6.2, false],
+const Docks = preload("res://marina_docks.gd")
+const MOORED := [
+	["HutSlips", 0, 1.0, "skiff", 4.7, 1.58, Color("#608178")],
+	["HutSlips", 2, 1.0, "runabout", 5.1, 1.91, Color("#af553f")],
+	["HutSlips", 4, 1.0, "skiff", 4.5, 1.63, Color("#566772")],
+	["BasinDock1", 1, -1.0, "pontoon", 6.7, 2.45, Color("#325d6a")],
+	["BasinDock1", 5, 1.0, "sailboat", 7.05, 2.28, Color("#3f626e")],
+	["BasinDock2", 2, -1.0, "runabout", 6.45, 2.32, Color("#355984")],
+	["BasinDock2", 6, 1.0, "pontoon", 6.5, 2.42, Color("#67554a")],
 ]
 const RIBS := [Vector2(-.49, .76), Vector2(-.38, .91), Vector2(-.06, 1.0),
 	Vector2(.18, .91), Vector2(.34, .60), Vector2(.43, .35), Vector2(.50, .035)]
 
 var vessels: Array[Dictionary] = []
-var bounds := Rect2()
 
 
-func build(parent: Node3D, docks: Array, ground: Callable) -> void:
+func build(parent: Node3D, berths: Array[Dictionary], ground: Callable, docks: Docks) -> void:
 	var cream := Kit.paint(Color("#e0dcd0"), .42)
 	var dark := Kit.paint(Color("#25353b"), .49)
 	var trim := Kit.paint(Color("#939c99"), .49, .42)
 	var glass := Kit.paint(Color("#3c565d"), .22, .23)
 	var rope := Kit.paint(Color("#aa9d82"), .95)
-	for i in BERTHS.size():
-		var bay: Array = BERTHS[i]
-		var dock: Array = docks[bay[0]]
-		var spacing: int = [7, 10, 9, 6][bay[0]] - 1
-		var a := Vector3(dock[0][0], 0, dock[0][1])
-		var b := Vector3(dock[1][0], 0, dock[1][1])
-		var axis := (b - a).normalized()
-		var in_slip := Vector3(-axis.z, 0, axis.x) * float(bay[2])
-		var length: float = bay[3]
-		var edge := a.lerp(b, (float(bay[1]) + .5) / spacing)
-		var anchor := edge + in_slip * (length * .5 + 1.68)
-		if float(ground.call(anchor.x, anchor.z)) > -.85:
-			continue
-		var sailing: bool = bay[4]
-		var beam := length * (.303 if sailing else .34)
-		var boat := Node3D.new()
-		boat.name = "MooredSailboat" if sailing else "MooredRunabout"
-		parent.add_child(boat)
-		var yaw := atan2(-in_slip.x, -in_slip.z)
-		boat.position = anchor
-		boat.rotation.y = yaw
-		var finish := Kit.paint([Color("#345a79"), Color("#934539"), Color("#4e6863"), Color("#343e4d")][i % 4], .38)
-		build_hull(boat, length, beam, cream, finish, dark)
-		if sailing:
-			build_sailboat(boat, length, beam, cream, glass, finish, trim)
-		else:
-			build_runabout(boat, length, beam, cream, glass, finish, dark, trim)
-		for side: float in [-1.0, 1.0]:
-			for z: float in [-length * .26, length * .16]:
-				var fender := CylinderMesh.new()
-				fender.height = .38
-				fender.top_radius = .09
-				fender.bottom_radius = .09
-				fender.radial_segments = 10
-				Kit.mesh_at(boat, fender, Vector3(side * (beam * .5 + .025), .39, z), dark)
-			var tie := edge + in_slip * .31 + axis * side * .49 + Vector3.UP * .56
-			var bow := boat.to_global(Vector3(side * beam * .19, .63, length * .40))
-			Kit.beam(parent, tie, bow, .020, rope)
-		vessels.append({"node": boat, "anchor": anchor, "yaw": yaw, "half": Vector2(beam * .64, length * .52)})
-		var p := Vector2(anchor.x, anchor.z)
-		bounds = Rect2(p, Vector2.ZERO) if vessels.size() == 1 else bounds.expand(p)
-	bounds = bounds.grow(5.0)
+	var fleet := Node3D.new()
+	fleet.name = "MooredBoats"
+	parent.add_child(fleet)
+	for berth: Dictionary in berths:
+		for plan: Array in MOORED:
+			if berth.row == plan[0] and berth.slot == plan[1] and berth.side == plan[2]:
+				var length: float = plan[4]
+				var beam: float = plan[5]
+				var edge: Vector3 = berth.edge
+				var outward: Vector3 = berth.outward
+				var anchor := Vector3(edge.x, 0, edge.z) + outward * (length * .5 + 1.51)
+				if float(ground.call(anchor.x, anchor.z)) <= -.69 and berth.width > beam + .55:
+					var boat := Node3D.new()
+					boat.name = "Moored" + str(plan[3]).capitalize()
+					fleet.add_child(boat, true)
+					boat.position = anchor
+					boat.basis = Basis.looking_at(outward)
+					var finish := Kit.paint(plan[6], .42)
+					if plan[3] == "pontoon":
+						build_pontoon(boat, length, beam, cream, dark, trim, finish)
+					else:
+						build_hull(boat, length, beam, trim if plan[3] == "skiff" else cream, finish, dark)
+						match plan[3]:
+							"skiff": build_skiff(boat, length, beam, trim, dark, finish)
+							"sailboat": build_sailboat(boat, length, beam, cream, glass, finish, trim)
+							_: build_runabout(boat, length, beam, cream, glass, finish, dark, trim)
+					for side: float in [-1.0, 1.0]:
+						var fender := CylinderMesh.new()
+						fender.height = .38
+						fender.top_radius = .085
+						fender.bottom_radius = .085
+						fender.radial_segments = 10
+						Kit.mesh_at(boat, fender, Vector3(side * (beam * .5 + .015), .39, -.31), dark)
+						var tie: Vector3 = edge + outward * .98 + berth.along * side * .65
+						var bow := boat.to_global(Vector3(side * beam * .19, .60, length * .44))
+						Kit.beam(fleet, tie, bow, .018, rope)
+					docks.add_obstacle(anchor - outward * length * .56, anchor + outward * length * .50, beam + .16)
+					vessels.append({"node": boat, "anchor": anchor})
+
+
+func build_skiff(boat: Node3D, length: float, beam: float, alloy: Material, dark: Material,
+		seat: Material) -> void:
+	for side: float in [-1.0, 1.0]:
+		Kit.beam(boat, Vector3(side * beam * .43, .62, -length * .35),
+			Vector3(side * beam * .43, .65, length * .27), .045, alloy)
+	for z: float in [-length * .25, .0, length * .22]:
+		Kit.box_at(boat, Vector3(0, .663, z), Vector3(beam * .78, .12, .28), seat)
+	Kit.box_at(boat, Vector3(0, .54, -length * .52), Vector3(.31, .42, .32), dark)
+	Kit.beam(boat, Vector3(0, .68, -length * .52), Vector3(.19, .71, -length * .41), .036, dark)
+
+
+func build_pontoon(boat: Node3D, length: float, beam: float, cream: Material,
+		dark: Material, alloy: Material, canvas: Material) -> void:
+	for side: float in [-1.0, 1.0]:
+		var x := side * beam * .344
+		var tube := CapsuleMesh.new()
+		tube.radius = beam * .132
+		tube.height = length
+		tube.radial_segments = 12
+		tube.rings = 4
+		Kit.mesh_at(boat, tube, Vector3(x, .01, 0), alloy).rotation.x = PI * .5
+	Kit.box_at(boat, Vector3(0, .36, 0), Vector3(beam, .13, length * .91), dark)
+	for side: float in [-1.0, 1.0]:
+		var x := side * beam * .468
+		Kit.box_at(boat, Vector3(x, .72, 0), Vector3(.06, .53, length * .80), canvas)
+		Kit.beam(boat, Vector3(x, 1.01, -length * .41), Vector3(x, 1.01, length * .41), .045, alloy)
+		for z: float in [-length * .31, length * .09]:
+			Kit.beam(boat, Vector3(x, .58, z), Vector3(x, 1.93, z + .19), .039, alloy)
+		Kit.box_at(boat, Vector3(x * .71, .66, length * .22), Vector3(.44, .35, length * .29), cream)
+	Kit.box_at(boat, Vector3(0, 1.94, -length * .09), Vector3(beam * .98, .073, length * .46), canvas)
+	Kit.box_at(boat, Vector3(.46, .79, -.62), Vector3(.44, .58, .47), cream)
+	Kit.box_at(boat, Vector3(0, .57, -length * .48), Vector3(.46, .54, .47), dark)
 
 
 func build_hull(boat: Node3D, length: float, width: float, upper: Material, stripe: Material, dark: Material) -> void:
@@ -146,14 +180,3 @@ func update(center: Vector3, clock: float, wave: Callable) -> void:
 		boat.position.y = wave.call(anchor, clock)
 		boat.rotation.x = sin(clock * 1.08 + anchor.z) * .008
 		boat.rotation.z = cos(clock * .82 + anchor.x) * .012
-
-
-func blocks(point: Vector3) -> bool:
-	if not bounds.has_point(Vector2(point.x, point.z)):
-		return false
-	for berth in vessels:
-		var delta: Vector3 = (point - Vector3(berth.anchor)).rotated(Vector3.UP, -float(berth.yaw))
-		var half: Vector2 = berth.half
-		if absf(delta.x) < half.x and absf(delta.z) < half.y:
-			return true
-	return false

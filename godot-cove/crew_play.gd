@@ -744,6 +744,7 @@ func update_models(delta: float) -> void:
 
 func update_wheel_grips(delta: float) -> void:
 	var wheel := boat.helm_wheel
+	var compact_helm := boat.skiff
 	var active: bool = game.driving and is_instance_valid(wheel) and not game.cabin.hands_in_use()
 	wheel_blend = move_toward(wheel_blend, 1.0 if active else 0.0, delta * 3.5)
 	for index in wheel_grips.size():
@@ -752,10 +753,10 @@ func update_wheel_grips(delta: float) -> void:
 		wheel_sleeves[index].visible = hand.visible
 		if hand.visible and is_instance_valid(wheel):
 			var side := float(index * 2 - 1)
-			var radius := .139 if boat.skiff else .229
-			# Hands stay at 9 and 3 o'clock instead of orbiting through the dashboard.
-			var rim_angle := clampf(wheel.rotation.z * .22, -.58, .58)
-			var grip := Vector3(side * radius * cos(rim_angle), side * radius * sin(rim_angle), .033)
+			var radius := boat.wheel_radius
+			# Regrip around the rim as the wheel turns so the wrists stay clear of the dash.
+			var rim_angle := wheel.rotation.z * .40 + side * .27 if compact_helm else clampf(wheel.rotation.z * .22, -.58, .58)
+			var grip := Vector3(side * radius * cos(rim_angle), side * radius * sin(rim_angle), .008 if compact_helm else .033)
 			var unspun := grip.rotated(Vector3.BACK, -wheel.rotation.z)
 			var wheel_basis := wheel.global_basis * Basis(Vector3.BACK, -wheel.rotation.z)
 			# A rod grip's shaft axis is local Z. On the wheel it follows the
@@ -765,9 +766,11 @@ func update_wheel_grips(delta: float) -> void:
 			var grip_center := Vector3(0, -.015, .035)
 			var target: Vector3 = game.eye.to_local(wheel.to_global(unspun) - world_grip * grip_center)
 			var rest := Vector3(side * .29, -.61, -.35)
-			hand.position = hand.position.lerp(rest.lerp(target, smoothstep(0, 1, wheel_blend)), 1.0 - exp(-delta * 14))
+			var follow := 1.0 if compact_helm else 1.0 - exp(-delta * 14)
+			hand.position = hand.position.lerp(rest.lerp(target, smoothstep(0, 1, wheel_blend)), follow)
 			var rotation_target: Basis = game.eye.global_basis.inverse() * world_grip
-			hand.quaternion = hand.quaternion.slerp(rotation_target.get_rotation_quaternion(), 1.0 - exp(-delta * 13))
+			var wrist_follow := 1.0 if compact_helm else 1.0 - exp(-delta * 13)
+			hand.quaternion = hand.quaternion.slerp(rotation_target.get_rotation_quaternion(), wrist_follow)
 			var wrist: Vector3 = hand.transform * game.rig.wrist_anchor(hand)
 			game.rig.fit_cylinder(wheel_sleeves[index], wrist, Vector3(side * .39, -.64, -.12))
 

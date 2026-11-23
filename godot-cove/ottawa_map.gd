@@ -3,6 +3,8 @@ extends Node3D
 const Kit = preload("res://scenery.gd")
 const Graphics = preload("res://river_graphics.gd")
 const Marina = preload("res://marina_art.gd")
+const MarinaDocks = preload("res://marina_docks.gd")
+const MarinaLaunch = preload("res://marina_launch.gd")
 const LamureBeach = preload("res://lamure_beach.gd")
 const LamurePines = preload("res://lamure_pines.gd")
 const RiverbankPark = preload("res://riverbank_park.gd")
@@ -83,6 +85,7 @@ var riverbed: ImageTexture
 var chart_texture: ImageTexture
 var day_sky: ImageTexture
 var marina_paving: ImageTexture
+var marina_water: Image
 var asphalt_scan: ImageTexture
 var concrete_scan: ImageTexture
 var wood_scan: ImageTexture
@@ -107,6 +110,10 @@ func build() -> void:
 	dam_clearance_squared = pow(float(meta.dam_exclusion), 2.0)
 	extent = Vector2(columns - 1, rows - 1) * step
 	marina_patch = TerrainPatch.new(meta.marina, BASE + "marina")
+	marina_water = Image.load_from_file(BASE + "marina_shoals.png")
+	if meta.marina.get("wharf", {}).has("launch_ramp"):
+		waterfront.wharf.launch.prepare(meta.marina.wharf.launch_ramp)
+		cut_launch_channel()
 	swisha_patch = TerrainPatch.new(meta.swisha, BASE + "swisha")
 	detail_patches = [marina_patch, swisha_patch]
 	if meta.has("lamure"):
@@ -311,12 +318,49 @@ func wave_height(point: Vector3, time: float) -> float:
 
 func can_sail(world: Vector3, minimum_depth := .88) -> bool:
 	return world.distance_squared_to(dam_center) >= dam_clearance_squared and depth_at(world) >= minimum_depth \
-		and not waterfront.wharf.blocks_water(world) and not waterfront.fleet.blocks(world) and not lamure.blocks_swim_area(world)
+		and not waterfront.docks.blocks(world) and not lamure.blocks_swim_area(world)
 
 
 func can_fish(point: Vector3) -> bool:
 	return point.distance_squared_to(dam_center) >= dam_clearance_squared and depth_at(point) >= .45 \
-		and not waterfront.wharf.blocks_water(point) and not waterfront.fleet.blocks(point) and not lamure.blocks_swim_area(point)
+		and not waterfront.docks.blocks(point) and not lamure.blocks_swim_area(point)
+
+
+func marina_hull_clear(hull: PackedVector2Array, minimum_depth: float) -> bool:
+	if waterfront.docks.overlaps(hull):
+		return false
+	var channel := waterfront.wharf.launch.bounds.grow(25.0)
+	if not channel.intersects(MarinaDocks.polygon_bounds(hull)):
+		return true
+	for corner: Vector2 in hull:
+		if depth_at(Vector3(corner.x, 0, corner.y)) < minimum_depth:
+			return false
+	return true
+
+
+func cut_launch_channel() -> void:
+	var launch: MarinaLaunch = waterfront.wharf.launch
+	var patch := marina_patch
+	var area := launch.bounds.grow(29.0).intersection(patch.area)
+	var first := Vector2i(((area.position - patch.area.position) / patch.spacing).floor())
+	var last := Vector2i(((area.end - patch.area.position) / patch.spacing).ceil())
+	for row in range(first.y, last.y + 1):
+		for col in range(first.x, last.x + 1):
+			var index := row * patch.grid.x + col
+			var at := patch.area.position + Vector2(col, row) * patch.spacing
+			var original := patch.heights[index]
+			var height: float = launch.channel_bed(at, original)
+			if is_equal_approx(height, original):
+				continue
+			patch.heights[index] = height
+			var bed := maxf(height, launch.floor_at(Vector3(at.x, 0, at.y)))
+			var depth := maxf(0.0, -bed)
+			var wet := roundi(clampf(depth * 2.1, 0.0, 8.0) / patch.shore_unit)
+			patch.shore_mask[index] = maxi(patch.shore_mask[index], wet)
+			var tint := marina_water.get_pixel(col, row)
+			tint.r = float(patch.shore_mask[index]) / 255.0
+			tint.b = depth / 63.75
+			marina_water.set_pixel(col, row, tint)
 
 
 func sample(col: int, row: int) -> float:
@@ -454,7 +498,7 @@ func plant_pine_reach(trees: Marina) -> void:
 
 func build_water() -> void:
 	var shore_texture := ImageTexture.create_from_image(regional_water)
-	var marina_texture := ImageTexture.create_from_image(Image.load_from_file(BASE + "marina_shoals.png"))
+	var marina_texture := ImageTexture.create_from_image(marina_water)
 	near_water = make_water(shore_texture, marina_texture, false)
 	far_water = make_water(shore_texture, marina_texture, true)
 	var ocean := PlaneMesh.new()
@@ -528,8 +572,12 @@ func update_water(center: Vector3, clock: float) -> void:
 	lamure.update_float(center, clock, wave_height)
 
 
-func set_wake(stern: Vector3, behind: Vector3, speed: float, thrust: float, prop_heading: Vector3) -> void:
-	near_water.set_shader_parameter("boat_wake", Vector4(stern.x, stern.z, speed, thrust))
+func set_wake(stern: Vector3, behind: Vector3, speed: float, thrust: float, prop_heading: Vector3,
+		spread: float, peak_speed: float) -> void:
+	var wash := thrust * smoothstep(.25, 1.2, speed)
+	near_water.set_shader_parameter("boat_wake", Vector4(stern.x, stern.z, speed, wash))
+	near_water.set_shader_parameter("wake_spread", spread)
+	near_water.set_shader_parameter("wake_peak_speed", peak_speed)
 	near_water.set_shader_parameter("wake_heading", Vector2(behind.x, behind.z))
 	near_water.set_shader_parameter("prop_heading", Vector2(prop_heading.x, prop_heading.z))
 

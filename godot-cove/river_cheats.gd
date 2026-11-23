@@ -1,6 +1,7 @@
 extends PanelContainer
 
 signal dismissed
+signal test_cash_requested
 
 var flight: CheckButton
 var speed: CheckButton
@@ -47,6 +48,10 @@ func _ready() -> void:
 		speed_label.text = "Movement speed: %.1f×" % value
 		speed.button_pressed = value > 1)
 	rows.add_child(speed_scale)
+	var test_cash := Button.new()
+	test_cash.text = "Add Test Cash"
+	test_cash.pressed.connect(func(): test_cash_requested.emit())
+	rows.add_child(test_cash)
 	var close := Button.new()
 	close.text = "Resume   F2"
 	close.pressed.connect(func(): dismissed.emit())

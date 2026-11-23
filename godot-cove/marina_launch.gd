@@ -1,6 +1,7 @@
 extends RefCounted
 
 const Kit = preload("res://scenery.gd")
+const UNDERWATER_EXTENSION := 14.0
 
 var head := Vector2.ZERO
 var axis := Vector2.ZERO
@@ -8,28 +9,36 @@ var across := Vector2.ZERO
 var length := 0.0
 var width := 0.0
 var crest := 0.0
+var original_toe := 0.0
 var elevations: Array
 var bounds := Rect2()
 
 
-func build(parent: Node3D, plan: Dictionary, ground: Callable, concrete: Texture2D) -> void:
+func prepare(plan: Dictionary) -> void:
 	head = Vector2(plan.head[0], plan.head[1])
 	var toe := Vector2(plan.toe[0], plan.toe[1])
 	var line := toe - head
-	length = line.length()
-	axis = line / length
+	original_toe = line.length()
+	length = original_toe + UNDERWATER_EXTENSION
+	axis = line / original_toe
 	across = Vector2(-axis.y, axis.x)
 	width = float(plan.width)
-	crest = length * float(plan.crest_fraction)
+	crest = original_toe * float(plan.crest_fraction)
 	elevations = plan.elevations
 	var edge := across * width * .5
-	bounds = Rect2(head - edge, Vector2.ZERO).expand(head + edge).expand(toe - edge).expand(toe + edge)
+	var end := head + axis * length
+	bounds = Rect2(head - edge, Vector2.ZERO).expand(head + edge).expand(end - edge).expand(end + edge)
 
+
+func build(parent: Node3D, ground: Callable, concrete: Texture2D) -> void:
+	if length <= 0.0:
+		return
 	var surface := SurfaceTool.new()
 	surface.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var left := -width * .5
 	var right := width * .5
 	var approach := -1.35
+	var edge := across * width * .5
 	var west := head + axis * approach - edge
 	var east := head + axis * approach + edge
 	var left_height: float = ground.call(west.x, west.y) + .014
@@ -39,7 +48,7 @@ func build(parent: Node3D, plan: Dictionary, ground: Callable, concrete: Texture
 		[Vector2(left, approach), left_height], [Vector2(left, 0), start],
 		[Vector2(right, approach), right_height], [Vector2(right, 0), start],
 	])
-	for span in [Vector2(0, crest), Vector2(crest, length)]:
+	for span in [Vector2(0, crest), Vector2(crest, original_toe), Vector2(original_toe, length)]:
 		var high := height_at(span.x)
 		var low := height_at(span.y)
 		quad(surface, [
@@ -75,7 +84,21 @@ func quad(surface: SurfaceTool, corners: Array) -> void:
 func height_at(run: float) -> float:
 	if run < crest:
 		return lerpf(elevations[0], elevations[1], run / crest)
-	return lerpf(elevations[1], elevations[2], (run - crest) / (length - crest))
+	if run < original_toe:
+		return lerpf(elevations[1], elevations[2], (run - crest) / (original_toe - crest))
+	return lerpf(elevations[2], -2.52, (run - original_toe) / UNDERWATER_EXTENSION)
+
+
+func channel_bed(point: Vector2, existing: float) -> float:
+	var offset := point - head
+	var run := offset.dot(axis)
+	var side := offset.dot(across)
+	if run <= 11.0 or run >= 63.0 or side <= -20.0 or side >= 8.0:
+		return existing
+	# Leave the dry apron and wharf footing in place, and blend into the open riverbed.
+	var blend := smoothstep(11.0, 25.0, run) * (1.0 - smoothstep(52.0, 63.0, run))
+	blend *= smoothstep(-20.0, -12.0, side) * (1.0 - smoothstep(4.9, 8.0, side))
+	return lerpf(existing, minf(existing, -2.94), blend)
 
 
 func floor_at(point: Vector3) -> float:

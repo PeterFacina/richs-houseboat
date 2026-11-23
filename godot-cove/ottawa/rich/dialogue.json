@@ -48,5 +48,8 @@
   {"id":"source","topic":"pump","gesture":"point","text":"Good, the pump's on. Remind me after fishing to find out why I keep needing to turn it on."},
   {"id":"bilge_math","topic":"bilge","gesture":"point","text":"Time to pump the bilge, bud. We're at the point where the water's carrying its own tools."},
   {"id":"bilge_headcount","topic":"bilge","gesture":"measure","text":"Water's getting up there. Give the bilge pump a minute and see if the level comes down."},
-  {"id":"bilge_wrench","topic":"bilge","gesture":"explain","text":"Got water coming in. Grab the hand pump. If you find a ten millimetre down there, tell it I want a word."}
+  {"id":"bilge_wrench","topic":"bilge","gesture":"explain","text":"Got water coming in. Grab the hand pump. If you find a ten millimetre down there, tell it I want a word."},
+  {"id":"princecraft_board","topic":"princecraft_board","gesture":"greet","text":"This one fits in the parking spot."},
+  {"id":"princecraft_speed","topic":"princecraft_speed","gesture":"shrug","text":"Easy. My beer’s got no seat belt."},
+  {"id":"princecraft_idle","topic":"princecraft_idle","gesture":"explain","text":"Perfect. Now I can drink with both hands."}
 ]

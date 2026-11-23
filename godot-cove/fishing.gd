@@ -121,6 +121,9 @@ var swimming := false
 var target_index := -1
 var rod_pressed := false
 var interact_pressed := false
+var ignition_hold := -1.0
+var ignition_prompt: Label
+var ignition_ring: IgnitionRing
 var mower := LawnMower.new()
 var spare_mower := LawnMower.new()
 var shannon_job := ShannonJob.new()
@@ -132,6 +135,24 @@ var jump_was_held := false
 var multiplayer_trip := false
 var lobby: Lobby
 var leaving_trip := false
+@export var launch_boat_scene: PackedScene = preload("res://launch_houseboat.tscn")
+
+
+class IgnitionRing extends Control:
+	var progress := 0.0:
+		set(value):
+			if progress != value:
+				progress = value
+				queue_redraw()
+
+	func _draw() -> void:
+		if progress <= 0.0:
+			return
+		var start := -PI * .5
+		var end := start + TAU * progress
+		var points := maxi(3, ceili(progress * 48.0))
+		draw_arc(Vector2.ZERO, 13.0, start, end, points, Color(0, 0, 0, .65), 4.0, true)
+		draw_arc(Vector2.ZERO, 13.0, start, end, points, Color.WHITE, 2.0, true)
 
 
 func _ready() -> void:
@@ -139,10 +160,11 @@ func _ready() -> void:
 	river = Ottawa.new()
 	add_child(river)
 	river.build()
-	vessel = Boat.new()
+	vessel = launch_boat_scene.instantiate() as Boat
 	vessel.center = river.point(1)
 	vessel.top_speed = 6.5
 	vessel.water_check = river.can_sail
+	vessel.marina_check = river.marina_hull_clear
 	vessel.water_flow = river.downstream
 	vessel.wave_sampler = river.wave_height
 	vessel.river_engine = true
@@ -167,6 +189,7 @@ func _ready() -> void:
 	add_child(fish)
 	fish.hide()
 	build_hud()
+	build_ignition_prompt()
 	fps.offset_left = -228
 	fps.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	build_tension_display()
@@ -217,6 +240,7 @@ func _ready() -> void:
 	cheats = Cheats.new()
 	cheat_center.add_child(cheats)
 	cheats.dismissed.connect(close_cheats)
+	cheats.test_cash_requested.connect(campaign.add_test_cash)
 	add_child(public_works)
 	public_works.build(river)
 	add_child(mower)
@@ -229,7 +253,7 @@ func _ready() -> void:
 	safety.setup(self)
 	hud.add_child(pause_menu)
 	pause_menu.setup(self)
-	for menu in [pause_menu, chart, campaign.board]:
+	for menu in [pause_menu, chart, campaign.board, campaign.boats_menu]:
 		menu.visibility_changed.connect(update_menu_hud)
 	helicopter = Helicopter.new()
 	add_child(helicopter)
@@ -298,7 +322,7 @@ func finish_return_to_title(message: String) -> void:
 
 
 func update_menu_hud() -> void:
-	var show_hud: bool = not (pause_menu.visible or chart.visible or campaign.board.visible)
+	var show_hud: bool = not (pause_menu.visible or chart.visible or campaign.board.visible or campaign.boats_menu.visible)
 	(objective.get_parent() as Control).visible = show_hud
 	marker.self_modulate.a = 1.0 if show_hud else 0.0
 	campaign.info.self_modulate.a = marker.self_modulate.a
@@ -320,6 +344,11 @@ func build_tension_display() -> void:
 
 
 func _input(event: InputEvent) -> void:
+	if is_instance_valid(campaign) and campaign.boats_menu.visible:
+		if event.is_action_pressed(&"ui_cancel"):
+			campaign.boats_menu.close()
+			get_viewport().set_input_as_handled()
+		return
 	if skill_screen.is_inside_tree() and not get_tree().paused:
 		if event is InputEventJoypadButton and event.pressed and ((event.button_index == JOY_BUTTON_BACK and (skill_screen.panel.visible or not menu_blocks_play())) or (event.button_index == JOY_BUTTON_B and skill_screen.panel.visible)):
 			skill_screen.toggle()
@@ -412,9 +441,8 @@ func _input(event: InputEvent) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if skill_screen.panel.visible:
-		return
-	if pause_menu.visible or fish_guide.visible or teleport_dialog.visible or backpack.inventory.visible or cheats.visible:
+	if skill_screen.panel.visible or campaign.boats_menu.visible or pause_menu.visible or fish_guide.visible \
+			or teleport_dialog.visible or backpack.inventory.visible or cheats.visible:
 		return
 	if flying or mower.rider != null:
 		if event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_F4:
@@ -470,10 +498,17 @@ func _unhandled_input(event: InputEvent) -> void:
 				return
 			KEY_R:
 				if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and not chart.visible:
-					rod_pressed = true
+					if driving:
+						if play_input():
+							vessel.nudge_throttle(1.0)
+					else:
+						rod_pressed = true
 				return
 			KEY_F:
-				if aboard() and not chart.visible:
+				if driving:
+					if play_input():
+						vessel.nudge_throttle(-1.0)
+				elif aboard() and not chart.visible:
 					sonar_overlay.visible = not sonar_overlay.visible
 				return
 			KEY_E:
@@ -482,6 +517,8 @@ func _unhandled_input(event: InputEvent) -> void:
 	if chart.visible and (event is InputEventMouseButton or event is InputEventMouseMotion):
 		return
 	if event is InputEventMouseButton and event.pressed and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+		if event.button_index == MOUSE_BUTTON_LEFT and campaign.marina_fuel.is_local_holder():
+			return
 		if event.button_index == MOUSE_BUTTON_LEFT and fists_available():
 			rig.punch()
 			return
@@ -511,16 +548,21 @@ func _physics_process(delta: float) -> void:
 	var has_input := play_input()
 	campaign.run_shortcuts(has_input and not flying and mower.rider == null and marina_cars.active < 0)
 	has_input = play_input()
+	update_ignition(delta, has_input)
 	var use_cabin: bool = has_input and not flying and mower.rider == null and marina_cars.active < 0 and aboard() and not vessel.skiff and not driving and absf(vessel.speed) <= 1.20
+	use_cabin = use_cabin and not campaign.marina_fuel.is_local_holder()
 	use_cabin = use_cabin and not campaign.crewplay.hands_busy()
 	use_cabin = use_cabin and not campaign.amenities.seated()
 	use_cabin = use_cabin and not in_aircraft()
-	var did_use := cabin.update(delta, clock, use_cabin, interact_pressed, Input.is_physical_key_pressed(KEY_E))
+	var fuel_press: bool = interact_pressed and has_input and can_use_fuel() and campaign.marina_fuel.interact()
+	var reserved_press := fuel_press or (interact_pressed and has_input and campaign.launch_interaction() != "")
+	var did_use := cabin.update(delta, clock, use_cabin, interact_pressed and not reserved_press,
+		Input.is_physical_key_pressed(KEY_E) and not reserved_press)
 	var can_use_yard := interact_pressed and has_input and can_talk_to_shannon()
 	var office_leaf := public_works.office_handle(eye) if can_use_yard else -1
 	var bay := public_works.nearby_door(eye) if can_use_yard else null
 	public_works.advance(delta, player, mower, spare_mower)
-	if interact_pressed and has_input and not did_use and not cabin.busy():
+	if interact_pressed and has_input and not fuel_press and not did_use and not cabin.busy():
 		if marina_cars.active >= 0:
 			marina_cars.interact()
 		elif mower.rider != null:
@@ -575,6 +617,8 @@ func _physics_process(delta: float) -> void:
 		mower.update_rider_camera(eye)
 	elif marina_cars.active < 0:
 		eye.rotation.x = pitch + cabin.camera_pitch
+		if not in_aircraft():
+			eye.position.y = vessel.helm_eye_height() if driving else 1.58
 	campaign.amenities.pin_local()
 	marina_cars.step(delta, axis(KEY_W, KEY_S), axis(KEY_D, KEY_A), Input.is_physical_key_pressed(KEY_SPACE),
 		has_input and not cabin.busy())
@@ -583,7 +627,8 @@ func _physics_process(delta: float) -> void:
 	var wake: Vector3 = vessel.global_basis.z.slide(Vector3.UP).normalized()
 	if vessel.speed < -.13:
 		wake = -wake
-	river.set_wake(vessel.motor.prop.global_position, wake, absf(vessel.speed), vessel.motor.thrust, vessel.motor.wash_direction())
+	river.set_wake(vessel.motor.prop.global_position, wake, absf(vessel.speed), vessel.motor.thrust,
+		vessel.motor.wash_direction(), vessel.wake_spread, vessel.wake_peak_speed)
 	if trophy.update(delta, clock) and viewpoint.distance_squared_to(trophy.slick) < 48.0 * 48.0:
 		var roll := trophy.circling(clock)
 		effects.break_surface(effects.on_water(roll, clock), .94, "splash")
@@ -670,7 +715,16 @@ func fists_available() -> bool:
 	return backpack.equipped == Backpack.FISTS and play_input() and hands_available()
 
 
+func stow_for_fueling() -> void:
+	release_line()
+	equip_gear(Backpack.NONE)
+
+
 func hands_available() -> bool:
+	return can_use_fuel() and not campaign.marina_fuel.is_local_holder()
+
+
+func can_use_fuel() -> bool:
 	return not flying and mower.rider == null and marina_cars.active < 0 and not swimming and not driving and not cabin.hands_in_use() and not campaign.dive.active \
 		and campaign.preview_id.is_empty() and not campaign.crewplay.hands_busy() and not campaign.amenities.seated() and not in_aircraft()
 
@@ -736,6 +790,67 @@ func can_board_from_water() -> bool:
 
 func step_vessel(delta: float, rudder: float) -> void:
 	campaign.step_boat(delta, rudder)
+
+
+func interact() -> void:
+	super.interact()
+	if driving:
+		pitch = vessel.helm_view_pitch
+		update_view()
+
+
+func update_helm_throttle(delta: float) -> void:
+	vessel.hold_throttle(delta, axis(KEY_R, KEY_F), axis(KEY_W, KEY_S))
+
+
+func at_ignition_key() -> bool:
+	return driving and vessel.key_focused(eye)
+
+
+func update_ignition(delta: float, has_input: bool) -> void:
+	var focused := has_input and at_ignition_key()
+	if focused and vessel.ignition == Boat.Ignition.RUN:
+		ignition_hold = -1.0
+		if interact_pressed:
+			interact_pressed = false
+			campaign.request("boat_ignition", "stop")
+		return
+	if focused and interact_pressed:
+		interact_pressed = false
+		if ignition_hold < 0.0:
+			ignition_hold = 0.0
+			campaign.request("boat_ignition", "start")
+	if ignition_hold < 0.0:
+		return
+	var duration := Boat.START_TIME
+	if not focused or not Input.is_physical_key_pressed(KEY_E):
+		if ignition_hold < duration:
+			campaign.request("boat_ignition", "cancel")
+		ignition_hold = -1.0
+	elif ignition_hold < duration:
+		ignition_hold = minf(duration, ignition_hold + delta)
+		if ignition_hold >= duration:
+			campaign.request("boat_ignition", "finish")
+
+
+func build_ignition_prompt() -> void:
+	ignition_ring = IgnitionRing.new()
+	ignition_ring.name = "IgnitionRing"
+	ignition_ring.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hud.add_child(ignition_ring)
+	ignition_ring.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	ignition_ring.hide()
+	ignition_prompt = label("", 16, Color.WHITE)
+	ignition_prompt.name = "IgnitionPrompt"
+	ignition_prompt.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hud.add_child(ignition_prompt)
+	ignition_prompt.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	ignition_prompt.offset_left = 23.0
+	ignition_prompt.offset_right = 180.0
+	ignition_prompt.offset_top = -13.0
+	ignition_prompt.offset_bottom = 13.0
+	ignition_prompt.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	ignition_prompt.hide()
 
 
 func recover_after_fall() -> Vector3:
@@ -1509,9 +1624,15 @@ func refresh_journal() -> void:
 
 
 func update_hud() -> void:
+	ignition_prompt.visible = play_input() and at_ignition_key()
+	var engine_running: bool = ignition_prompt.visible and vessel.ignition == Boat.Ignition.RUN
+	if ignition_prompt.visible:
+		ignition_prompt.text = "Press E to stop" if engine_running else "Hold E to start"
+	ignition_ring.visible = ignition_prompt.visible and not engine_running and ignition_hold > 0.0
+	ignition_ring.progress = clampf(ignition_hold / Boat.START_TIME, 0.0, 1.0) if ignition_ring.visible else 0.0
 	backpack.update_throttle(mower.throttle_index if mower.rider != null and play_input() else -1, mower.throttle_label())
 	backpack.hud_available = not campaign.crewplay.hands_busy() and not cabin.hands_in_use() and not chart.visible and not fish_guide.visible and not cheats.visible \
-		and not campaign.controls_blocked() and not cabin.busy()
+		and not campaign.controls_blocked() and not cabin.busy() and not campaign.marina_fuel.is_local_holder()
 	var location := "Ottawa River"
 	var at: Vector3 = vessel.center if aboard() else player.global_position
 	if river.meta.has("lamure") and at.distance_squared_to(river.point(3)) < 175.0 * 175.0:
@@ -1554,7 +1675,9 @@ func update_hud() -> void:
 	elif cabin.hands_in_use() or cabin.focus >= 0:
 		instruction.text = ""
 	elif driving:
-		instruction.text = "W/S  Throttle   A/D  Steer   E  Leave helm   ·   %.1f km/h" % (vessel.speed * 3.6)
+		instruction.text = "R/F  Throttle   S  Reverse   A/D  Steer   Hold X  Center wheel"
+		if not ignition_prompt.visible:
+			instruction.text += "   E  Leave helm"
 	elif fishing == Fishing.CASTING:
 		instruction.text = "Casting…"
 	elif fishing == Fishing.WAITING:
@@ -1621,6 +1744,10 @@ func update_hud() -> void:
 				instruction.text = bay.prompt()
 			elif can_mount_mower():
 				instruction.text = "E  Mount lawn mower"
+	if play_input() and can_use_fuel() and clock >= note_until:
+		var fuel_hint: String = campaign.marina_fuel.hint()
+		if not fuel_hint.is_empty():
+			instruction.text = fuel_hint
 	backpack.waypoint.visible = target_index >= 0
 	if target_index >= 0:
 		var target: Vector3 = river.point(target_index)
