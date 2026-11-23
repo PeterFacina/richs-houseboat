@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Game Prompt Studio</title>
+  <link rel="stylesheet" href="/app.css">
+  <script type="module" src="/app.js"></script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+  <header class="bar">
+    <div class="brand"><span class="mark" aria-hidden="true"><i></i><i></i><i></i></span>
+      <div><strong>Game Prompt Studio</strong><span>Rich’s Houseboat</span></div>
+    </div>
+    <nav id="nav" aria-label="Studio" hidden>
+      <button type="button" data-view="compose" aria-current="page">Studio</button>
+      <button type="button" data-view="library">Library</button>
+      <button type="button" data-view="knowledge">Knowledge</button>
+      <button type="button" data-view="imports">Imports</button>
+      <button type="button" data-view="settings">Settings</button>
+    </nav>
+    <div class="account"><span id="connection" class="badge quiet">Connecting</span><button id="logout" class="subtle" type="button" hidden>Sign out</button></div>
+  </header>
+  <main id="main" tabindex="-1">
+    <div id="notice" role="status" class="notice" hidden></div>
+    <section id="login" class="panel login" hidden>
+      <h1>Team sign in</h1>
+      <form id="login-form">
+        <label>Account<input name="username" autocomplete="username" required maxlength="80"></label>
+        <label>Password<input type="password" name="password" autocomplete="current-password" required maxlength="256"></label>
+        <button class="primary" type="submit">Sign in</button>
+      </form>
+    </section>
+    <section id="tailscale-access" class="panel login" hidden>
+      <h1>Tailscale access required</h1>
+      <p>Open Studio from a Tailscale account with access to this workspace.</p>
+    </section>
+    <section id="compose" class="view" hidden>
+      <div class="hero">
+        <div><p class="eyebrow">OTTAWA RIVER PROJECT</p><h1>Prompt workspace</h1><p>Turn rough game notes into a Codex prompt backed by project sources.</p></div>
+        <dl class="metrics"><div><dt>Indexed files</dt><dd id="file-count">—</dd></div><div><dt>Saved prompts</dt><dd id="record-count">—</dd></div></dl>
+      </div>
+      <div class="workspace">
+        <section class="panel">
+          <div class="panel-title"><div><h2>Task brief</h2><p>Describe what you saw and what you want to change.</p></div><button id="new-task" type="button" class="subtle">New task</button></div>
+          <form id="compose-form">
+            <label>Task title <span class="optional">Optional</span><input id="task-title" maxlength="120" placeholder="Multiplayer hand visibility"></label>
+            <label>Rough notes<textarea id="task-note" rows="7" maxlength="6500" required placeholder="My friends can’t see my hands when I fish or open the cooler. Check the view from a guest’s boat, too."></textarea></label>
+            <div class="split">
+              <label>Detail<select id="task-tier"><option value="quick">Quick</option><option value="detailed" selected>Detailed</option><option value="comprehensive">Comprehensive</option></select></label>
+              <label>Priority<select id="task-priority"><option>Low</option><option selected>Normal</option><option>High</option></select></label>
+            </div>
+            <details class="extras">
+              <summary>Tags, author and source focus</summary>
+              <div class="split">
+                <label>Tags<input id="task-tags" maxlength="160" placeholder="multiplayer, animation"></label>
+                <label id="author-field">Author<input id="task-author" maxlength="80" placeholder="Local host"></label>
+              </div>
+              <label>Emphasize files <span class="optional">Up to four</span><select id="task-focus" multiple size="4" aria-describedby="focus-help"></select></label>
+              <small id="focus-help">Hold Ctrl to select multiple files on Windows.</small>
+            </details>
+            <div class="actions">
+              <button id="generate" class="primary" type="submit">Generate prompt <span aria-hidden="true">↗</span></button>
+              <button id="save-draft" type="button">Save note</button>
+              <button id="cancel" type="button" hidden>Cancel generation</button>
+            </div>
+            <div id="activity" class="activity" role="status"></div>
+          </form>
+        </section>
+        <section class="panel output">
+          <div class="panel-title"><div><h2>Codex prompt</h2><p id="prompt-meta">Your generated brief will appear here.</p></div><span id="prompt-status" class="badge quiet" hidden></span></div>
+          <div id="empty-output" class="empty-output"><span aria-hidden="true" class="terminal">›_</span><p>Enter a task brief to generate a prompt.</p></div>
+          <div id="editor" hidden>
+            <label class="sr-only" for="prompt-text">Editable Codex prompt</label>
+            <textarea id="prompt-text" spellcheck="false" rows="15" maxlength="30000"></textarea>
+            <div id="findings" class="findings" role="status" hidden></div>
+            <details class="extras"><summary>Outcome and status</summary>
+              <div class="details-body"><label>Status<select id="record-status"></select></label>
+              <label>Outcome notes<textarea id="record-outcome" rows="3" maxlength="3500" placeholder="Record what actually happened."></textarea></label>
+              <div id="revision-list" class="muted"></div></div>
+            </details>
+            <details class="extras" id="attachment-tools">
+              <summary>Screenshots</summary>
+              <div class="details-body">
+                <div id="attachment-list" class="attachment-grid"></div>
+                <form id="attachment-form">
+                  <label>Image<input type="file" id="attachment-file" accept="image/png,image/jpeg,image/webp" required></label>
+                  <label>Source or permission<input id="attachment-origin" maxlength="160" placeholder="My in-game capture" required></label>
+                  <label>Description<textarea id="attachment-description" rows="2" maxlength="600" placeholder="What should Codex look for?"></textarea></label>
+                  <small>Up to four images per prompt. Ollama uses your description when regenerating from this record.</small>
+                  <button type="submit">Attach screenshot</button>
+                </form>
+              </div>
+            </details>
+            <div class="actions">
+              <button id="download" class="primary" type="button">Download .txt</button>
+              <button id="copy" type="button">Copy</button>
+              <button id="save" type="button">Save changes</button>
+            </div>
+          </div>
+        </section>
+        <section class="panel sources">
+          <div class="panel-title"><div><h2>Context used</h2><p>Source excerpts and historical reports retrieved for this prompt.</p></div></div>
+          <div id="evidence-list"><p class="muted">Generate or open a saved prompt to inspect its context.</p></div>
+        </section>
+      </div>
+    </section>
+    <section id="library" class="view" hidden>
+      <div class="section-head"><h1>Prompt library</h1><p>Find and reopen saved notes, generated prompts and outcomes.</p></div>
+      <div class="panel">
+        <form id="search-form" class="filters">
+          <label>Search<input name="q" type="search" placeholder="Notes, prompts or outcomes"></label>
+          <label>Status<select id="filter-status" name="status"><option value="">All statuses</option></select></label>
+          <label>Author<input name="author" placeholder="All authors"></label>
+          <label>Tag<input name="tags" placeholder="All tags"></label>
+          <label>From<input name="from" type="date"></label><label>To<input name="to" type="date"></label>
+          <button class="primary" type="submit">Search</button>
+        </form>
+        <div id="library-list" class="rows"></div>
+        <div class="actions"><button id="library-prev" type="button" hidden>Previous</button><button id="library-more" type="button" hidden>Next</button></div>
+      </div>
+    </section>
+    <section id="knowledge" class="view" hidden>
+      <div class="section-head"><h1>Project knowledge</h1><p>Inspect the Rich’s Houseboat index and the evidence behind project facts.</p></div>
+      <div class="workspace">
+        <section class="panel"><div class="panel-title"><h2>Verified project facts</h2></div><div id="facts-list" class="rows"></div></section>
+        <section class="panel"><div class="panel-title"><h2>Reported issues</h2></div><div id="reports-list" class="rows"></div></section>
+        <section class="panel sources">
+          <div class="panel-title"><div><h2>Source index</h2><p id="index-details"></p></div><div class="actions compact admin-only"><button id="scan" type="button">Rescan</button><button id="rebuild" type="button">Rebuild</button></div></div>
+          <details class="extras"><summary>Indexed files</summary><div id="indexed-list" class="rows"></div></details>
+          <details class="extras"><summary>Scan exclusions</summary><div id="ignored-list" class="rows"></div></details>
+        </section>
+      </div>
+    </section>
+    <section id="imports" class="view" hidden>
+      <div class="section-head"><h1>Import history</h1><p>Add selected project notes or teammate prompts with their source and author.</p></div>
+      <div class="workspace">
+        <section class="panel">
+          <div class="panel-title"><h2>Select documents</h2></div>
+          <form id="import-form">
+            <label>UTF-8 text files<input id="import-files" type="file" accept=".txt,.md,text/plain,text/markdown" multiple></label>
+            <small>Up to 16 files, 60,000 characters each.</small>
+            <div class="split"><label>Original author<input id="import-author" maxlength="80" placeholder="Unknown"></label><label>Source label<input id="import-label" maxlength="120" placeholder="Teammate prompt archive"></label></div>
+            <div class="actions"><button id="import-preview" type="button">Preview selection</button><button id="import-project" type="button" hidden>Preview project notes</button></div>
+            <div id="import-results" class="rows"></div>
+            <button id="import-submit" class="primary" type="submit" disabled>Import batch</button>
+          </form>
+        </section>
+        <section class="panel"><div class="panel-title"><h2>Import batches</h2></div><div id="batches" class="rows"></div></section>
+      </div>
+    </section>
+    <section id="settings" class="view" hidden>
+      <div class="section-head"><h1>Settings and diagnostics</h1><p>Choose the model and context that fit this host.</p></div>
+      <div class="workspace">
+        <section class="panel"><div class="panel-title"><h2>Generation defaults</h2></div>
+          <form id="settings-form">
+            <label>Ollama model<input id="model-name" list="model-options" required maxlength="130"><datalist id="model-options"></datalist></label>
+            <div class="split"><label>Context tokens<select id="model-context"><option>4096</option><option>8192</option><option>12288</option><option>16384</option></select></label>
+            <label>Keep warm, minutes<input id="model-keepalive" type="number" min="0" max="20" required></label></div>
+            <label>Default detail<select id="model-tier"><option value="quick">Quick</option><option value="detailed">Detailed</option><option value="comprehensive">Comprehensive</option></select></label>
+            <button class="primary admin-only" type="submit">Save settings</button>
+          </form>
+        </section>
+        <section class="panel"><div class="panel-title"><h2>Host status</h2><button id="refresh-model" type="button">Refresh</button></div>
+          <div id="model-details" class="rows"></div>
+          <div class="backup admin-only"><h3>Database backup</h3><p>Save a consistent snapshot in the host’s studio data folder.</p><button id="backup" type="button">Create backup</button></div>
+        </section>
+      </div>
+    </section>
+  </main>
+</body>
+</html>
