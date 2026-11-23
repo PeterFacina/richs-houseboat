@@ -5,6 +5,7 @@ const Car = preload("res://marina_car_model.gd")
 const Graphics = preload("res://river_graphics.gd")
 const Masonry = preload("res://deep_river_plaza_masonry.gdshader")
 const Pavement = preload("res://deep_river_plaza_pavement.gdshader")
+const Roads = preload("res://deep_river_roads.gd")
 
 # The two surveyed walls meet at the chamfered street corner. The parking
 # frontage is on the long wall, with the shorter wall facing Champlain Street.
@@ -44,7 +45,7 @@ var column_material := Kit.paint(CREAM, .71)
 
 
 func build(parent: Node3D, building: Dictionary, elevation: Callable,
-		asphalt_scan: Texture2D, glass_material: ShaderMaterial) -> void:
+		asphalt_scan: Texture2D, glass_material: ShaderMaterial, road_material: ShaderMaterial) -> void:
 	footprint = building
 	ground = elevation
 	name = "DeepRiverPlaza"
@@ -71,7 +72,7 @@ func build(parent: Node3D, building: Dictionary, elevation: Callable,
 
 	build_shell(asphalt_scan)
 	build_walk(return_end)
-	build_lot(asphalt_scan)
+	build_lot(road_material)
 	build_storefronts()
 	build_corner_roof()
 	var painted := Kit.paint(Color.WHITE, .72)
@@ -130,7 +131,6 @@ func build_shell(scan: Texture2D) -> void:
 	finish(block, masonry(Color("#c6bdae"), Color("#a39786"), Vector2(.39, .195), .018),
 		"SideBlock", true)
 	var membrane := pavement(scan, Color("#555650"))
-	membrane.set_shader_parameter("roof", true)
 	finish(roof, membrane, "FlatRoof", true)
 
 	# Roof drains and low-profile mechanical housings read from the flyover.
@@ -220,39 +220,36 @@ func walk_section(pavers: SurfaceTool, curb: SurfaceTool, ramps: SurfaceTool,
 			ground_quad(curb, a[4], b[4], a[5], b[5], outward)
 
 
-func build_lot(scan: Texture2D) -> void:
+func build_lot(road_material: ShaderMaterial) -> void:
 	var asphalt := surface()
-	var stripe := surface()
 	var width := BAY_COUNT * BAY_WIDTH
 	var far := APRON_DEPTH + BAY_DEPTH
-	lot_rectangle(asphalt, BAY_START - .90, width + 1.75, APRON_DEPTH - .12, far + 1.20, LOT_LEVEL)
-	for i in BAY_COUNT + 1:
-		var u := BAY_START + i * BAY_WIDTH
-		lot_rectangle(stripe, u - .055, .11, APRON_DEPTH + .23, far, LOT_LEVEL + .009)
-	var crossing := BAY_START + RAMP_BAY * BAY_WIDTH
-	for i in 7:
-		var offset := APRON_DEPTH + .33 + i * .68
-		lot_rectangle(stripe, crossing + .30, BAY_WIDTH - .60, offset, offset + .16, LOT_LEVEL + .009)
-	finish(asphalt, pavement(scan, Color.WHITE), "ParkingAsphalt", false, false)
-	var paint := pavement(scan, Color.WHITE)
-	paint.set_shader_parameter("road_paint", true)
-	finish(stripe, paint, "WornBayPaint", false, false)
+	# Carry the lot just under the Ridge Road edge along its open frontage.
+	lot_rectangle(asphalt, BAY_START - .90, width + 1.75, APRON_DEPTH - .12, far + 2.85)
+	var material := road_material.duplicate() as ShaderMaterial
+	material.set_shader_parameter("parking_lot", true)
+	material.set_shader_parameter("parking_bays", Vector4(BAY_START, BAY_WIDTH, BAY_COUNT, APRON_DEPTH))
+	material.set_shader_parameter("parking_aisle", Vector2(BAY_START + RAMP_BAY * BAY_WIDTH, far))
+	Roads.install(self, asphalt, Vector3.ZERO, material, "ParkingAsphalt", true)
 	park_car(1, 0, Color("#a14840"), false)
 	park_car(5, 1, Color("#d8d9d4"), true)
 	park_car(8, 2, Color("#42636e"), false)
 
 
-func lot_rectangle(mesh: SurfaceTool, u: float, width: float, start: float, end: float, lift: float) -> void:
-	var rows := ceili((end - start) / 1.25)
-	var columns := ceili(width / 1.25)
+func lot_rectangle(mesh: SurfaceTool, u: float, width: float, start: float, end: float) -> void:
+	var rows := ceili((end - start) / .65)
+	var columns := ceili(width / .65)
 	for i in columns:
 		var left := u + width * i / columns
 		var right := u + width * (i + 1) / columns
 		for j in rows:
 			var near := lerpf(start, end, float(j) / rows)
 			var far := lerpf(start, end, float(j + 1) / rows)
-			ground_quad(mesh, on_grade(front_at(left, near), lift), on_grade(front_at(right, near), lift),
-				on_grade(front_at(left, far), lift), on_grade(front_at(right, far), lift), Vector3.UP)
+			for uv: Vector2 in [Vector2(left, near), Vector2(right, near), Vector2(left, far),
+					Vector2(right, near), Vector2(right, far), Vector2(left, far)]:
+				var lift := lerpf(LOT_LEVEL, .008, smoothstep(9.0, 11.85, uv.y))
+				mesh.set_uv(uv)
+				mesh.add_vertex(on_grade(front_at(uv.x, uv.y), lift))
 
 
 func park_car(bay: int, model: int, paint: Color, reversed: bool) -> void:
