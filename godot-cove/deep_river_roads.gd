@@ -2,6 +2,7 @@ extends RefCounted
 
 const Kit = preload("res://scenery.gd")
 const PublicWorks = preload("res://public_works.gd")
+const CivicParking = preload("res://deep_river_civic_parking.gd")
 const ROAD_LAYER := 1 << 18
 const CHUNK_SIZE := 256.0
 const JUNCTION_LIFT := .043
@@ -11,6 +12,8 @@ const HIGHWAY := [13, 15, 44, 2, 8, 7, 3]
 const HIGHWAY_HALF_WIDTH := 5.65
 const SIGNALS = preload("res://deep_river_signals.gd")
 const CHAMPLAIN := 6
+const DEEP_RIVER_ROAD := 11
+const CIVIC_ACCESS := Vector2(99.3, 4.5)
 const PARKING_LIMITS := Vector4(12.0, 21.0, 105.0, 115.0)
 const STREET_HALF_WIDTH := 3.4
 const PARKING_HALF_WIDTH := 8.7
@@ -68,6 +71,7 @@ func build(map: Node3D, data: Dictionary, elevation: Callable, parking_mask: Tex
 	paved.set_shader_parameter("road_normal", normal)
 	paved.set_shader_parameter("asphalt_scan", gravel_grain)
 	paved.set_shader_parameter("concrete_scan", stone)
+	paved.set_shader_parameter("champlain_access", CIVIC_ACCESS)
 	if parking_mask != null:
 		marina_apron = parking_mask.get_image()
 		marina_area = detail_areas[0]
@@ -83,7 +87,7 @@ func build(map: Node3D, data: Dictionary, elevation: Callable, parking_mask: Tex
 	# one surface in the overlap, with both approaches at the same grade.
 	var streets: Array = data.streets
 	add_street(HIGHWAY[0], highway_line(streets), HIGHWAY_HALF_WIDTH)
-	var through := [RIDGE, CHAMPLAIN, BROCKHOUSE, MARINA_APPROACH]
+	var through := [RIDGE, DEEP_RIVER_ROAD, CHAMPLAIN, BROCKHOUSE, MARINA_APPROACH]
 	for index: int in through:
 		var line: Array = champlain_line(streets[index]) if index == CHAMPLAIN else streets[index]
 		add_street(index, line, STREET_HALF_WIDTH)
@@ -113,8 +117,15 @@ func build(map: Node3D, data: Dictionary, elevation: Callable, parking_mask: Tex
 		install(network, batch.shoulder, origin, gravel, "GravelShoulder", true)
 		if batch.has("sidewalk"):
 			install(network, batch.sidewalk, origin, sidewalk, "ChamplainSidewalk", true)
+	var edges: Array[PackedVector2Array] = []
 	for span: Span in spans:
+		if CivicParking.BOUNDS.intersects(span.pavement_bounds):
+			var outline := PackedVector2Array()
+			for point in span.outline:
+				outline.append(point - CivicParking.ORIGIN)
+			edges.append(outline)
 		span.neighbors.clear()
+	CivicParking.new().build(network, ground, paved, edges, ROAD_LAYER)
 	chunks.clear()
 	spans.clear()
 
@@ -260,7 +271,10 @@ func build_span(span: Span) -> void:
 
 
 func emit_champlain_sidewalk(surface: SurfaceTool, span: Span, first: float, last: float, origin: Vector2) -> void:
+	var middle := span.station + (first + last) * .5 * span.length
 	for side: float in [-1.0, 1.0]:
+		if side < 0.0 and absf(middle - CIVIC_ACCESS.x) < CIVIC_ACCESS.y:
+			continue
 		var profile := [Vector2(0, .049), Vector2(.16, .156), Vector2(CHAMPLAIN_SIDEWALK_WIDTH, .143)]
 		for i in range(1, profile.size()):
 			var left: Vector2 = profile[i - 1]

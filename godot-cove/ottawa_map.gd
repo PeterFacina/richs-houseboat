@@ -255,6 +255,7 @@ func build() -> void:
 			return PublicWorks.cleared_for_construction(foot) or park.owns_tree(foot) \
 				or residential_driveways.clears_tree(point) \
 				or RoadNetwork.clears_champlain_tree(point, street_start, street_axis) \
+				or RoadNetwork.CivicParking.covers(point) \
 				or PropertySites.clears_tree(point) \
 				or highway_has_tree_conflict(point, highway_clearance) \
 				or point.distance_squared_to(RiverbankPark.GAZEBO_SITE) < 36.0 \
@@ -682,7 +683,7 @@ func build_town() -> BuildingsDriveways:
 	windows = buildings.windows
 	bind_day_sky(windows)
 	add_child(town_hall)
-	town_hall.build(ground_height, concrete_scan, asphalt_scan, waterfront.render_trees)
+	town_hall.build(ground_height, concrete_scan, waterfront.render_trees)
 	bind_day_sky(town_hall.glass)
 	bind_day_sky(town_hall.glass_alt)
 	return buildings.driveways
