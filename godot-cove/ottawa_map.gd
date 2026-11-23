@@ -11,6 +11,7 @@ const RiverbankPark = preload("res://riverbank_park.gd")
 const BrockhouseWay = preload("res://brockhouse_way.gd")
 const Swisha = preload("res://swisha_dam.gd")
 const Town = preload("res://deep_river_buildings.gd")
+const BuildingsDriveways = preload("res://deep_river_driveways.gd")
 const TownHall = preload("res://deep_river_town_hall.gd")
 const PropertySites = preload("res://deep_river_properties.gd")
 const RoadNetwork = preload("res://deep_river_roads.gd")
@@ -217,7 +218,7 @@ func build() -> void:
 			for col in range(0, detail.grid.x - 1, TILE):
 				tile(col, row, ground, detail)
 	build_water()
-	build_town()
+	var residential_driveways := build_town()
 	property_sites = PropertySites.build(self, ground_height, concrete_scan, scanned_surface("brick"), wood_scan)
 	build_landmarks()
 	var park := RiverbankPark.new()
@@ -241,6 +242,7 @@ func build() -> void:
 			if Vector2(foot.x, foot.z).distance_squared_to(PLAZA_PORTICO_TREE) < .25:
 				return true
 			return PublicWorks.cleared_for_construction(foot) or park.owns_tree(foot) \
+				or residential_driveways.clears_tree(Vector2(foot.x, foot.z)) \
 				or PropertySites.clears_tree(Vector2(foot.x, foot.z)) \
 				or Vector2(foot.x, foot.z).distance_squared_to(RiverbankPark.GAZEBO_SITE) < 36.0 \
 				or (lamure_patch != null and pines.place_from_survey(foot, height)))
@@ -639,7 +641,7 @@ func set_surface_slick(data: Vector4) -> void:
 	near_water.set_shader_parameter("surface_slick", data)
 
 
-func build_town() -> void:
+func build_town() -> BuildingsDriveways:
 	var tile_image := Image.load_from_file(BASE + "deep_river_roofs.png")
 	tile_image.generate_mipmaps()
 	var textures := ImageTexture.create_from_image(tile_image)
@@ -659,13 +661,15 @@ func build_town() -> void:
 	roads.build(self, meta, ground_height, marina_paving, detail_areas,
 		ROAD_SCAN, ROAD_NORMAL, concrete_scan, asphalt_scan)
 	buildings.build(self, footprints, textures, ground_height, meta.distance_scale,
-		scanned_surface("brick"), asphalt_scan, wood_scan, roads.paved)
+		scanned_surface("brick"), asphalt_scan, wood_scan, roads.paved, meta.streets,
+		regional_streets, meta.buildings, concrete_scan)
 	windows = buildings.windows
 	bind_day_sky(windows)
 	add_child(town_hall)
 	town_hall.build(ground_height, concrete_scan, asphalt_scan, waterfront.render_trees)
 	bind_day_sky(town_hall.glass)
 	bind_day_sky(town_hall.glass_alt)
+	return buildings.driveways
 
 
 func roadside_sign_foot(foot: Vector3, half_span: float) -> Vector3:
