@@ -733,7 +733,10 @@ func pose_action(age: float) -> void:
 		return
 	var item := hand_items[active]
 	item.transform = Actions.prop_pose(active, age, reach)
-	Actions.attach(right_hand, item.transform, Actions.right_grip(active), Actions.right_pose(active))
+	if active in [Props.Item.BONG, Props.Item.PEN]:
+		Actions.attach_smoking_grip(right_hand, item.transform, Actions.right_grip(active), Actions.right_pose(active), 1.0)
+	else:
+		Actions.attach(right_hand, item.transform, Actions.right_grip(active), Actions.right_pose(active))
 	left_hand.hide()
 	if active == Props.Item.BONG:
 		var packing := age >= .59 and age < 1.82
@@ -746,7 +749,7 @@ func pose_action(age: float) -> void:
 		if lighting:
 			lighter.basis = Basis.from_euler(Vector3(.08, .0, -.15))
 			lighter.position = bowl + Vector3.UP * .008 - lighter.basis * Vector3(.003, .076, 0)
-			Actions.attach(left_hand, lighter.transform, Vector3(0, .025, 0), "pinch")
+			Actions.attach_smoking_grip(left_hand, lighter.transform, Vector3(0, .025, 0), "pinch", -1.0)
 			left_hand.show()
 	elif active in [Props.Item.MOLSON, Props.Item.MILLER] and age >= .58 and age < 1.23:
 		Actions.attach(left_hand, item.transform, Vector3(0, .125, -.004), "pinch")

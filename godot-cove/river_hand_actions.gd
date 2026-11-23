@@ -58,3 +58,11 @@ static func right_pose(kind: int) -> String:
 
 static func attach(hand: Node3D, item: Transform3D, point: Vector3, pose: String) -> void:
 	Hands.align(hand, item * point, item.basis * VERTICAL_GRIP, pose)
+
+
+static func attach_smoking_grip(hand: Node3D, item: Transform3D, point: Vector3, pose: String, side: float) -> void:
+	# Put the thumb toward the top of the prop and angle the wrist back
+	# toward the shoulder on the side holding it.
+	var grip := Basis(Vector3.RIGHT, Vector3.FORWARD, Vector3.UP)
+	grip = Basis(Vector3.UP, -side * PI * .25) * grip
+	Hands.align(hand, item * point, item.basis * grip, pose)
