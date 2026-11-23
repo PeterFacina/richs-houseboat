@@ -3,27 +3,24 @@ extends RefCounted
 const Kit = preload("res://scenery.gd")
 const Cleat = preload("res://mooring_cleat.gd")
 const Launch = preload("res://marina_launch.gd")
+const Docks = preload("res://marina_docks.gd")
 const DECK_HEIGHT := 1.02
-const LAUNCH_WIDTH := 2.45
+const LAUNCH_WIDTH := 2.72
 
 var deck: PackedVector2Array
-var launch_dock: PackedVector2Array
-var waterfront_bounds := Rect2()
+var launch_mark := Vector3.INF
+var boarding_step := Vector3.INF
+var launch_forward := Vector3.FORWARD
+var launch_side := Vector3.RIGHT
+var launch_heading := 0.0
 var light_lens: StandardMaterial3D
 var light_spill: OmniLight3D
 var launch := Launch.new()
 
 
-func build(parent: Node3D, layout: Dictionary, ground: Callable, concrete: Texture2D,
-		walkway: Callable, float_height: float) -> void:
+func build(parent: Node3D, layout: Dictionary, ground: Callable, concrete: Texture2D, docks: Docks) -> void:
 	deck = polygon(layout.deck)
-	launch_dock = polygon(layout.launch_dock)
-	waterfront_bounds = Rect2(deck[0], Vector2.ZERO)
-	for path in [deck, launch_dock]:
-		for p: Vector2 in path:
-			waterfront_bounds = waterfront_bounds.expand(p)
-	waterfront_bounds = waterfront_bounds.grow(LAUNCH_WIDTH * .5)
-
+	docks.add_polygon(deck)
 	var wharf := Node3D.new()
 	wharf.name = "PublicWharf"
 	parent.add_child(wharf)
@@ -32,20 +29,8 @@ func build(parent: Node3D, layout: Dictionary, ground: Callable, concrete: Textu
 	cement.set_shader_parameter("concrete", concrete)
 	build_deck(wharf, cement)
 	build_approach(wharf, polygon(layout.approach), ground, cement)
-	if layout.has("launch_ramp"):
-		launch.build(wharf, layout.launch_ramp, ground, concrete)
-	for index in range(1, launch_dock.size()):
-		var a := at(launch_dock[index - 1], float_height)
-		var b := at(launch_dock[index], float_height)
-		if index == 1:
-			a.y = maxf(a.y, ground.call(a.x, a.z))
-		var bend := (b - a).normalized() * .34
-		walkway.call(wharf, a - (bend if index > 1 else Vector3.ZERO),
-			b + (bend if index < launch_dock.size() - 1 else Vector3.ZERO), LAUNCH_WIDTH)
-	var boarding_hardware: Array[Transform3D] = []
-	add_cleats(boarding_hardware, at(launch_dock[-2], float_height + .09),
-		at(launch_dock[-1], float_height + .09), .92, [.16, .39, .64, .87], .74)
-	Cleat.place(wharf, boarding_hardware).name = "LaunchDockCleats"
+	launch.build(wharf, ground, concrete)
+	build_launch_dock(polygon(layout.launch_dock), docks)
 
 	var white := Kit.paint(Color("#e3e5df"), .59, .16)
 	var rails := Kit.paint(Color("#c4c9c1"), .52, .23)
@@ -58,17 +43,60 @@ func build(parent: Node3D, layout: Dictionary, ground: Callable, concrete: Textu
 	build_shack(parent, layout, ground)
 
 
-func blocks_water(point: Vector3) -> bool:
-	var p := Vector2(point.x, point.z)
-	if not waterfront_bounds.has_point(p):
-		return false
-	if Geometry2D.is_point_in_polygon(p, deck):
-		return true
-	for index in range(1, launch_dock.size()):
-		var dock_edge := Geometry2D.get_closest_point_to_segment(p, launch_dock[index - 1], launch_dock[index])
-		if dock_edge.distance_squared_to(p) < LAUNCH_WIDTH * LAUNCH_WIDTH * .25:
-			return true
-	return false
+func build_launch_dock(path: PackedVector2Array, docks: Docks) -> void:
+	var entry := at(path[0], Docks.DECK)
+	var hinge := at(path[1], Docks.DECK)
+	var end := at(path[2], Docks.DECK)
+	launch_forward = (end - hinge).normalized()
+	launch_side = launch_forward.cross(Vector3.UP)
+	launch_heading = atan2(-launch_forward.x, -launch_forward.z)
+	docks.gangway("LaunchGangway", docks.bank(entry), hinge + launch_forward * .10, LAUNCH_WIDTH)
+	docks.span("LaunchFloat", hinge, end, LAUNCH_WIDTH, true)
+	for offset: float in [1.85, 7.5, 14.6, 22.1, 27.1]:
+		for side: float in [-1.0, 1.0]:
+			var anchor := hinge + launch_forward * offset + launch_side * side * 1.07
+			docks.cleats.append(Transform3D(Basis.looking_at(launch_forward).scaled_local(Vector3.ONE * .83), anchor))
+	docks.ladder(end - launch_forward * .86, launch_forward, LAUNCH_WIDTH, -1.0)
+	docks.ladder(hinge + launch_forward * 10.7, launch_forward, LAUNCH_WIDTH, 1.0)
+	boarding_step = end - launch_forward * 4.6 + launch_side * .62
+	var pedestal := StaticBody3D.new()
+	pedestal.name = "LaunchBoatStation"
+	docks.root.add_child(pedestal)
+	pedestal.position = boarding_step + launch_side * (LAUNCH_WIDTH * .5 - .72)
+	pedestal.basis = Basis.looking_at(launch_side)
+	var green := Kit.paint(Color("#24534c"), .72)
+	var metal := Kit.paint(Color("#b7bbb0"), .52, .25)
+	Kit.collider(pedestal, Vector3.UP * .48, Vector3(.12, .96, .13))
+	Kit.box_at(pedestal, Vector3.UP * .47, Vector3(.12, .94, .13), metal)
+	Kit.box_at(pedestal, Vector3.UP * 1.14, Vector3(.74, .43, .13), green)
+	Kit.box_at(pedestal, Vector3(0, .968, .081), Vector3(.66, .025, .018), metal)
+	text_on(pedestal, "BOATS", Vector3(0, 1.23, .078), .0033)
+	text_on(pedestal, "PUBLIC LAUNCH", Vector3(0, 1.07, .078), .00175)
+	text_on(pedestal, "LAUNCH", Vector3(0, 1.17, -.078), .0025).rotation.y = PI
+	launch_mark = pedestal.position + Vector3.UP * 1.14
+
+
+func launch_center(half_beam: float) -> Vector3:
+	var dock_center := boarding_step - launch_side * .62
+	return (dock_center + launch_side * (LAUNCH_WIDTH * .5 + half_beam + .58)) * Vector3(1, 0, 1)
+
+
+func at_launch_station(feet: Vector3) -> bool:
+	var along := (feet - boarding_step).dot(launch_forward)
+	var across := (feet - boarding_step).dot(launch_side) + .62
+	return absf(feet.y - boarding_step.y) < .48 and absf(along) <= 3.25 and absf(across) < LAUNCH_WIDTH * .5
+
+
+static func text_on(parent: Node3D, value: String, at_point: Vector3, pixel: float) -> Label3D:
+	var sign := Label3D.new()
+	sign.text = value
+	sign.position = at_point
+	sign.font_size = 35
+	sign.pixel_size = pixel
+	sign.outline_size = 0
+	sign.modulate = Color("#f5edda")
+	parent.add_child(sign)
+	return sign
 
 
 func update_light(clock: float, dusk: float) -> void:
@@ -266,8 +294,8 @@ func build_shack(parent: Node3D, layout: Dictionary, ground: Callable) -> void:
 	siding.shader = preload("res://marina_shack_siding.gdshader")
 	var trim := Kit.paint(Color("#e6e9e2"), .73)
 	var base := Kit.paint(Color("#7d8176"), .94)
-	var roof := Kit.paint(Color("#839b9d"), .74, .16)
-	var roof_seam := Kit.paint(Color("#778e90"), .70, .15)
+	var roof := Kit.paint(Color("#456b57"), .74, .16)
+	var roof_seam := Kit.paint(Color("#395948"), .70, .15)
 	var glass := Kit.paint(Color("#405158"), .36, .16)
 	var dark_trim := Kit.paint(Color("#657778"), .74)
 	Kit.box_at(shack, Vector3(0, -.30, 0), Vector3(width + .04, .61, depth + .04), base)
@@ -304,7 +332,17 @@ func build_shack(parent: Node3D, layout: Dictionary, ground: Callable) -> void:
 	Kit.box_at(shack, door + Vector3.FORWARD * .073, Vector3(.89, 2.03, .056), dark_trim)
 	Kit.box_at(shack, door + Vector3(-.32, -.08, -.115), Vector3(.13, .040, .045), base)
 	Kit.box_at(shack, door + Vector3(0, -.99, -.32), Vector3(1.46, .13, .68), base)
-	service_window(shack, Vector3(-.75, 1.62, front), 2.85, trim, glass)
+	var service := Vector3(-.75, 1.54, front)
+	service_window(shack, service, 2.85, trim, glass)
+	Kit.box_at(shack, service + Vector3(0, -.49, -.23), Vector3(3.12, .09, .47),
+		Kit.paint(Color("#ae8862"), .81))
+	Kit.box_at(shack, service + Vector3(0, .51, -.19), Vector3(3.15, .11, .38), roof)
+	var board := Vector3(-.52, 2.28, front - .065)
+	Kit.box_at(shack, board, Vector3(3.91, .32, .12), dark_trim)
+	text_on(shack, "DEEP RIVER MARINA", board + Vector3.FORWARD * .071, .0071).rotation.y = PI
+	var basin_sign := Vector3(.66, 2.36, -front + .073)
+	Kit.box_at(shack, basin_sign, Vector3(2.96, .30, .10), dark_trim)
+	text_on(shack, "MARINA OFFICE", basin_sign + Vector3.BACK * .060, .0056)
 	service_window(shack, Vector3(.66, 1.58, -front), 1.63, trim, glass)
 
 

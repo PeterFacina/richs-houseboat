@@ -3,6 +3,12 @@ Open `godot-cove/project.godot` in Godot 4.7.2 and press F5. Choose **Play Solo*
 
 Rich walks a loop on the bow deck, checking the fish finder, looking over the rail, and inspecting his wrench. Look at him and press **E** to stop him for a story. He has 50 voiced lines and leaves roughly two minutes between casual remarks. Subtitles appear nearby, and the host shares his patrol and lines with the crew. His voice was synthesized offline from an original script using Kokoro. [Kokoro model and credits](https://huggingface.co/hexgrad/Kokoro-82M).
 
+Open the **Boats** sign at the Deep River launch to spawn the Princecraft Holiday DLX, Classic, or Panorama. At the helm, aim at the dash key and hold **E** until the white ring fills. Release **E**, then tap it at the key to shut down and coast. Tap or hold **R/F** to set throttle, use **S** to reverse, and steer with **A/D**. The wheel holds its angle when you let go. Hold **X** to center it. Big Rich sits beside you on the Princecraft and has voiced lines for boarding, picking up speed, and slowing to idle.
+
+The Visitor Dock has two fuel pumps. Press **E** to take a nozzle and connect it to the red tank on a stopped boat. Hold the left mouse button to dispense. Press **E** to disconnect and return the nozzle to the pump you took it from. The Marina Attendant at the stand can talk you through it.
+
+The Princecraft ignition uses **Boat Outboard Motor 02** by SoundJay.com under the SoundJay game-use terms. The startup was trimmed to the crank and catch, with the crank repeated to cover the key hold and both clips mixed to mono for stern playback. [Source recording](https://www.soundjay.com/boat-sound-effects.html) · [SoundJay terms of use](https://www.soundjay.com/tos.html)
+
 Open **B → River → Go to landing** on your first trip. Walk down the pier to the cabin plot and press **B** to claim it and place a cabin. Aim at the ground, use **Q** to rotate, and left-click to build. **E** opens the door. Slow down within 22 m of a marked berth and press **L** to tie up and step ashore. Press **L** at the landing to board again.
 
 The **Jobs** page has fishing, freight, surveys, rescue tows, and salvage. Check in at the listed landing to collect timber, parts, and cash. A local depth survey opens ferry service to Swisha and Chalk River. Build cabins at two landings to open a supply line for lower supply prices and better freight pay. Boats, landings, construction, inventory, and active jobs are saved between sessions.

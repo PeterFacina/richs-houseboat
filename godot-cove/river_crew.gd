@@ -3,7 +3,7 @@ extends Node3D
 signal changed
 signal stopped
 signal requested(peer: int, action: String, argument: Variant)
-signal command_received(throttle: float, rudder: float)
+signal command_received(throttle: float, rudder: float, center_wheel: bool)
 signal state_received(state: Dictionary, dock: int, captain: int, revision: int)
 signal ship_received(state: Dictionary)
 signal result_received(message: String, board_at: int, use_boat: bool)
@@ -236,10 +236,10 @@ func share_ship(state: Dictionary) -> void:
 
 
 @rpc("any_peer", "call_remote", "unreliable_ordered", 2)
-func steer(throttle: float, rudder: float) -> void:
+func steer(throttle: float, rudder: float, center_wheel := false) -> void:
 	if on_server() and is_finite(throttle) and is_finite(rudder):
 		if int(get_meta("captain", 0)) == multiplayer.get_remote_sender_id():
-			command_received.emit(clampf(throttle, -.32, 1.0), clampf(rudder, -1.0, 1.0))
+			command_received.emit(clampf(throttle, -.32, 1.0), clampf(rudder, -1.0, 1.0), center_wheel)
 
 
 @rpc("any_peer", "call_remote", "unreliable_ordered", 2)

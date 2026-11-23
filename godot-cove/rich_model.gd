@@ -7,10 +7,12 @@ const HEAD_HEIGHT := .239
 
 var torso: Node3D
 var head: Node3D
+var hips: MeshInstance3D
 var upper_arms: Array[Node3D] = []
 var elbows: Array[Node3D] = []
 var wrists: Array[Node3D] = []
 var legs: Array[Node3D] = []
+var shorts_legs: Array[MeshInstance3D] = []
 var pace := 0.0
 var arm_surfaces: Array[ShaderMaterial] = []
 var face: ShaderMaterial
@@ -27,11 +29,11 @@ func build() -> void:
 	arm_skin.roughness = .87
 	for side: float in [-1.0, 1.0]:
 		build_leg(side, shorts, arm_skin)
-	var seat := loft(self, [
+	hips = loft(self, [
 		Vector4(.628, .047, .051, .053), Vector4(.674, .137, .079, .078),
 		Vector4(.720, .180, .097, .089), Vector4(.775, .176, .094, .086),
 		Vector4(.844, .161, .087, .077), Vector4(.862, .009, .009, .012)], shorts, 40)
-	seat.position.z = -.015
+	hips.position.z = -.015
 	torso = joint(self, Vector3(0, .784, 0), "Torso")
 	loft(torso, [
 		Vector4(.000, .157, .085, .102), Vector4(.012, .172, .091, .112),
@@ -59,11 +61,11 @@ func build_leg(side: float, shorts: Material, skin: Material) -> void:
 	var foot := Kit.mesh_at(leg, preload("res://ottawa/rich/bare_leg.res"), Vector3.ZERO, skin)
 	foot.name = "BareLeg"
 	foot.scale.x = side
-	loft(leg, [
+	shorts_legs.append(loft(leg, [
 		Vector4(.463, .077, .073, .083), Vector4(.477, .080, .076, .085),
 		Vector4(.509, .080, .077, .086), Vector4(.569, .089, .083, .090),
 		Vector4(.633, .089, .089, .094), Vector4(.713, .096, .095, .099),
-		Vector4(.798, .087, .086, .090)], shorts, 40, .003)
+		Vector4(.798, .087, .086, .090)], shorts, 40, .003))
 
 func build_arm(side: float, shirt: Material, cuff: Material, skin: StandardMaterial3D) -> void:
 	var upper := joint(torso, Vector3(side * .159, .475, .001), "Shoulder")
@@ -247,7 +249,8 @@ static func add_bill_strip(mesh: SurfaceTool, a: Vector3, b: Vector3, c: Vector3
 		mesh.add_vertex(vertex)
 
 func pose(delta: float, clock: float, look_yaw: float, look_up: float, gesture: String,
-		age: float, mouth: float, distance := 0.0, speed := 0.0, activity := "", task_age := 0.0) -> void:
+		age: float, mouth: float, distance := 0.0, speed := 0.0, activity := "", task_age := 0.0,
+		seated := false) -> void:
 	var weight := smoothstep(.12, .67, age)
 	var settle := 1.0 - exp(-delta * 8.0)
 	var rhythm := (.68 + .32 * sin(age * 4.4)) * weight
@@ -260,6 +263,8 @@ func pose(delta: float, clock: float, look_yaw: float, look_up: float, gesture: 
 	torso.rotation.x += .13 * check_display + .069 * pace + (.047 if activity == "rail" else 0.0)
 	torso.rotation.z += sin(stride) * pace * .024
 	torso.position.y = .784 + (1.0 - cos(stride * 2.0)) * pace * .006
+	hips.position.y = -.304 if seated else 0.0
+	torso.position.y += hips.position.y
 	head.rotation.y = head_turn * .76
 	head.rotation.x = lerpf(head.rotation.x, clampf(-look_up, -.24, .23) + mouth * .053 - inspect_wrench * .20, settle)
 	head.rotation.z = .027 + sin(clock * 1.2) * .024 - mouth * .031
@@ -278,6 +283,20 @@ func pose(delta: float, clock: float, look_yaw: float, look_up: float, gesture: 
 		arm.x += step * .14 * pace
 		var bend := -.235 + .034 * cos(clock * 1.72 + side)
 		var wrist := Vector3(.033, .07 * side, .063 * side)
+		var trousers := shorts_legs[i]
+		var shin: MeshInstance3D = legs[i].get_node("BareLeg")
+		if seated:
+			legs[i].position = Vector3(side * .115, .013, .339 + side * .031)
+			legs[i].rotation.x = -.04
+			trousers.position = Vector3(0, .432, .454)
+			trousers.rotation.x = -PI * .5
+			shin.scale.y = .90
+			arm.x -= .11
+			bend -= .95
+		else:
+			trousers.position = Vector3.ZERO
+			trousers.rotation.x = 0.0
+			shin.scale.y = 1.0
 		if i == 0:
 			arm.x -= inspect_wrench * .32
 			bend -= inspect_wrench * .86

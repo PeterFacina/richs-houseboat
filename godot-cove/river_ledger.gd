@@ -3,6 +3,7 @@ extends RefCounted
 const SAVE := "user://ottawa_river_campaign.json"
 const CREW_SAVE := "user://ottawa_river_multiplayer.json"
 const PROFILE := "user://ottawa_crew_id.txt"
+const FUEL_CAPACITY := 34.0
 const Data = preload("res://river_campaign_data.gd")
 
 var state: Dictionary
@@ -16,7 +17,7 @@ func _init() -> void:
 
 func fresh() -> Dictionary:
 	return {
-		"format": 1, "wood": 36, "parts": 11, "cash": 28, "fuel": 34.0, "charge": .46,
+		"format": 1, "wood": 36, "parts": 11, "cash": 28, "cash_change": 0, "fuel": FUEL_CAPACITY, "charge": .46,
 		"sites": {}, "routes": {}, "equipment": {}, "visited": [0], "surveys": {}, "scores": {}, "records": {}, "doors": {}, "lifts": {},
 		"job": -1, "stage": "", "job_fish": [], "freight_run": 0.0, "last_dock": -1, "craft": "houseboat", "tow": false,
 		"bilge": 0.0, "pump_on": true, "modern_houseboat": false,
@@ -70,6 +71,16 @@ func profile_id(path := PROFILE) -> String:
 	if file != null:
 		file.store_string(generated)
 	return generated
+
+
+func wallet_cents() -> int:
+	return int(state.cash) * 100 + clampi(int(state.get("cash_change", 0)), 0, 99)
+
+
+func set_wallet_cents(cents: int) -> void:
+	@warning_ignore("integer_division")
+	state.cash = cents / 100
+	state.cash_change = cents % 100
 
 
 func site(index: int) -> Dictionary:

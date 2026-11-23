@@ -24,6 +24,8 @@ var voice := AudioStreamPlayer3D.new()
 var captions: PanelContainer
 var caption_text: Label
 var hull: AnimatableBody3D
+var seated := false
+var seat_anchor := Vector3.ZERO
 var lines := {}
 var by_topic := {}
 var unused := {}
@@ -127,12 +129,39 @@ func make_captions(hud: Control) -> void:
 	captions.hide()
 
 
+func mount(ship: AnimatableBody3D, as_passenger: bool, anchor := Vector3.ZERO) -> void:
+	if hull == ship and seated == as_passenger:
+		return
+	hull = ship
+	seated = as_passenger
+	seat_anchor = anchor
+	reparent(ship, false)
+	stand.reparent(ship, false)
+	(stand.shape as CapsuleShape3D).height = 1.04 if seated else 1.56
+	position = seat_anchor if seated else STATION
+	rotation.y = PI if seated else REST_YAW
+	stand.position = position + Vector3.UP * (.81 if seated else .790)
+	voice.position.y = 1.16 if seated else 1.48
+	remote_patrol.clear()
+	activity = ""
+	walking = false
+	pending_topic = ""
+	speaking_id = ""
+	voice.stop()
+	captions.hide()
+	model.pose(1.0, 0.0, 0.0, 0.0, "", 0.0, 0.0, 0.0, 0.0, "", 0.0, seated)
+
+
+func talk_target() -> Vector3:
+	return to_global(Vector3(0, 1.15 if seated else 1.31, .02))
+
+
 func close_enough(feet: Vector3) -> bool:
 	return feet.distance_squared_to(global_position) <= TALK_RANGE * TALK_RANGE
 
 
 func focused(camera: Camera3D, player: CharacterBody3D) -> bool:
-	var target := to_global(Vector3(0, 1.31, .02))
+	var target := talk_target()
 	var approach := target - camera.global_position
 	if not close_enough(player.global_position) or approach.normalized().dot(-camera.global_basis.z) < .94:
 		return false
@@ -265,7 +294,10 @@ func tick(delta: float, clock: float, camera: Camera3D, show_subtitles: bool, au
 	var range_squared := camera.global_position.distance_squared_to(global_position)
 	var aloud := not speaking_id.is_empty()
 	var previous := position
-	if author:
+	if seated:
+		position = seat_anchor
+		rotation.y = PI
+	elif author:
 		follow_patrol(delta, crew_on_deck, aloud)
 		if aloud:
 			var to_listener := listening_to - position
@@ -276,14 +308,14 @@ func tick(delta: float, clock: float, camera: Camera3D, show_subtitles: bool, au
 		rotation.y = lerp_angle(rotation.y, float(remote_patrol[1]), 1.0 - exp(-delta * 13.0))
 		activity = str(remote_patrol[2])
 		stop_age = float(remote_patrol[3])
-	stand.position = position + Vector3.UP * .790
+	stand.position = position + Vector3.UP * (.81 if seated else .790)
 	var distance := position.distance_to(previous)
 	traveled += distance
 	captions.visible = aloud and show_subtitles and range_squared < 9.0 * 9.0
 	if range_squared > 28.0 * 28.0:
 		return
 	var aim := listening_to if aloud else hull.to_local(camera.global_position)
-	var offset := aim - position - Vector3.UP * 1.53
+	var offset := aim - position - Vector3.UP * (1.24 if seated else 1.53)
 	var diff := wrapf(atan2(offset.x, offset.z) - rotation.y, -PI, PI)
 	var glide := clampf(distance / maxf(delta * WALK_SPEED, .0001), 0.0, 1.0)
 	var glance := aloud or (activity.is_empty() and range_squared < 2.7 * 2.7 and absf(diff) < 1.55)
@@ -298,4 +330,4 @@ func tick(delta: float, clock: float, camera: Camera3D, show_subtitles: bool, au
 		motion = float(lip_motion[sample]) / 255.0
 	var gesture: String = lines[speaking_id].gesture if aloud else ""
 	model.pose(delta, clock, head_yaw, head_pitch, gesture, time_spoken if aloud else 0.0,
-		motion, traveled, glide, activity if not aloud else "", stop_age)
+		motion, traveled, glide, activity if not aloud else "", stop_age, seated)

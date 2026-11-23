@@ -33,6 +33,8 @@ uniform vec2 map_size = vec2(1.0);
 uniform vec2 center = vec2(0.0);
 uniform vec4 boat_wake = vec4(0.0);
 uniform vec2 wake_heading = vec2(0.0, 1.0);
+uniform float wake_spread = .34;
+uniform float wake_peak_speed = 5.8;
 uniform vec2 prop_heading = vec2(0.0, 1.0);
 uniform float evening = 0.0;
 uniform vec4 bow_light = vec4(0.0);
@@ -184,12 +186,14 @@ void fragment() {
 		vec2 shift = world.xz - boat_wake.xy;
 		float along = dot(shift, wake_heading);
 		float across = dot(shift, vec2(wake_heading.y, -wake_heading.x));
-		float speed = smoothstep(.45, 5.8, boat_wake.z);
-		if (along > -4.6 && along < 74.0 && abs(across) < 27.0) {
+		float crest_strength = smoothstep(.34, .56, wake_spread);
+		float speed = smoothstep(mix(.45, .65, crest_strength), wake_peak_speed, boat_wake.z);
+		if (along > -4.6 && along < 74.0 && abs(across) < 4.0 + 70.0 * wake_spread) {
 			float run = max(0.0, along + 3.5);
-			float side = abs(across) - (1.10 + run * 0.34);
+			float spread = mix(min(.34, wake_spread), wake_spread, speed);
+			float side = abs(across) - (1.10 + run * spread);
 			float cusp = exp(-abs(side) * (1.11 - min(.52, run * .008)));
-			float amplitude = speed * cusp * exp(-run / (13.0 + speed * 15.0));
+			float amplitude = speed * cusp * exp(-run / (13.0 + speed * 15.0)) * mix(1.0, 1.42, crest_strength);
 			float crest = sin(side * 2.0 + run * .44 - clock * 3.6);
 			normal_slope += vec2(wake_heading.y, -wake_heading.x) * sign(across) * crest * amplitude * .083;
 			float froth = water_noise(vec2(run * 3.7 - clock * 3.1, across * 13.0));

@@ -4,6 +4,17 @@ const SceneKit = preload("res://scenery.gd")
 const Swell = preload("res://swell.gd")
 const Outboard = preload("res://outboard.gd")
 const Panorama = preload("res://houseboat_panorama.gd")
+const FuelTank = preload("res://boat_fuel_tank.gd")
+const HelmConsole = preload("res://boat_helm_console.gd")
+const Tools = preload("res://crew_tools.gd")
+const STARTER = preload("res://ottawa/princecraft/starter.wav")
+const CATCH = preload("res://ottawa/princecraft/catch.wav")
+const START_TIME := .75
+const SHUTDOWN_TIME := .32
+const START_VOLUME := -13.0
+const THROTTLE_STEP := .05
+const THROTTLE_REPEAT_DELAY := .22
+enum Ignition { OFF, START, RUN }
 const BERTH := Vector3(0.0, 0.0, 12.0)
 const HELM := Vector3(0.0, 0.80, -1.44)
 const SPAN := [Vector2(-3.8, 0.0), Vector2(-3.31, 0.76), Vector2(-2.63, 1.30),
@@ -18,6 +29,7 @@ var throttle := 0.0
 var departed := false
 var top_speed := 5.2
 var water_check: Callable
+var marina_check: Callable
 var hull_name := "LANTERN"
 var river_engine := false
 var motor: Outboard
@@ -32,6 +44,27 @@ var throttle_cap := 1.0
 var modern_design := false
 var classic_exterior: Node3D
 var panorama_exterior: Node3D
+var fuel_filler: Marker3D
+var helm_console: HelmConsole
+var ignition := Ignition.OFF
+var wheel_angle := 0.0
+var requested_throttle := 0.0
+var throttle_repeat := 0.0
+var crank_time := 0.0
+var crank_confirmed := false
+var shutdown_left := 0.0
+var startup_audio: AudioStreamPlayer3D
+var steering_rate := .69
+var throttle_rate := .34
+var drive_response := .52
+var coast_response := 1.18
+var yaw_rate := .45
+var wave_response := .56
+var turn_heel := .054
+var wake_spread := .36
+var wake_peak_speed := 5.3
+var wheel_radius := .229
+var helm_view_pitch := -.33
 
 
 func _ready() -> void:
@@ -39,12 +72,29 @@ func _ready() -> void:
 	sync_to_physics = false
 	geometry()
 	if river_engine:
+		if uses_battery():
+			yaw_rate = .80
+			wave_response = 1.0
+			steering_rate = .95
+			throttle_rate = .48
+			drive_response = .74
+			coast_response = 1.55
+			wake_spread = .33
+			wake_peak_speed = 6.2
+		fuel_filler = FuelTank.build(self, fuel_tank_mount(), "RESERVE" if uses_battery() else "FUEL")
+		build_controls()
 		motor = Outboard.new()
-		motor.position = Vector3(0, .30, 2.11) if skiff else Vector3(0, .55, 6.72)
-		if skiff:
-			motor.electric = true
-			motor.scale = Vector3.ONE * .60
+		motor.position = motor_mount()
+		motor.electric = uses_battery()
+		motor.scale = Vector3.ONE * motor_size()
 		add_child(motor)
+		startup_audio = AudioStreamPlayer3D.new()
+		startup_audio.name = "OutboardStartup"
+		startup_audio.position = motor.sound.position
+		startup_audio.unit_size = 5.1
+		startup_audio.max_distance = 87.0
+		startup_audio.volume_db = START_VOLUME
+		motor.add_child(startup_audio)
 	sail(0.0, 0.0, false, 0.0)
 
 
@@ -52,8 +102,109 @@ func helm_anchor() -> Vector3:
 	return Vector3(0, .39, .67) if skiff else HELM
 
 
+func fuel_tank_mount() -> Vector3:
+	return Vector3(-.27, .36, 1.49) if skiff else Vector3(-1.07, .75, -1.69)
+
+
+func build_controls() -> void:
+	var console := HelmConsole.new()
+	if skiff:
+		mount_controls(console,
+			Transform3D(Basis(Vector3.RIGHT, -.38).scaled(Vector3.ONE * .74), Vector3(0, 1.236, -.55)),
+			Transform3D(Basis.IDENTITY.scaled(Vector3.ONE * .78), Vector3(.315, .95, -.29)))
+		SceneKit.box_at(self, Vector3(0, 1.113, -.58), Vector3(.131, .20, .12), console.trim)
+	else:
+		mount_controls(console, Transform3D(Basis(Vector3.RIGHT, -.32), Vector3(0, 1.982, -2.54)),
+			Transform3D(Basis.IDENTITY, Vector3(.408, 1.56, -2.32)))
+		SceneKit.box_at(self, Vector3(0, 1.75, -2.59), Vector3(.175, .31, .17), console.trim)
+		SceneKit.box_at(self, Vector3(.304, 1.50, -2.38), Vector3(.24, .072, .18), console.trim)
+
+
+func mount_controls(console: HelmConsole, dash: Transform3D, lever: Transform3D) -> void:
+	helm_console = console
+	helm_console.name = "InstrumentPanel"
+	add_child(helm_console)
+	helm_console.transform = dash
+	helm_console.build(self, lever)
+
+
+func helm_eye_height() -> float:
+	return 1.58
+
+
+func status_panel_mount() -> Vector3:
+	return Vector3(.54, 1.204, -.07) if skiff else Vector3(-.63, 1.66, -2.36)
+
+
+func uses_battery() -> bool:
+	return skiff
+
+
+func motor_mount() -> Vector3:
+	return Vector3(0, .30, 2.11) if skiff else Vector3(0, .55, 6.72)
+
+
+func motor_size() -> float:
+	return .60 if skiff else 1.0
+
+
+func speed_limit(towing: bool) -> float:
+	if skiff:
+		return 11.9 if foil else 8.4
+	return 4.5 if towing else 6.5
+
+
 func board_anchor() -> Vector3:
 	return Vector3(.16, .45, -.91) if skiff else Vector3(0, .93, -2.28)
+
+
+func launch_half_beam() -> float:
+	return 1.02 if skiff else 1.55
+
+
+func berth_at(at: Vector3, yaw: float) -> void:
+	center = at
+	heading = yaw
+	speed = 0.0
+	throttle = 0.0
+	wave_pose = Vector3.ZERO
+	foil_lift = 0.0
+	departed = false
+	global_transform = Transform3D(Basis(Vector3.UP, heading), center)
+	if motor != null:
+		wheel_angle = 0.0
+		motor.steering = 0.0
+		helm_wheel.basis = Basis.IDENTITY
+		reset_ignition()
+	reset_physics_interpolation()
+
+
+func waterline(at: Vector3, yaw: float) -> PackedVector2Array:
+	var beam := launch_half_beam()
+	var bow := 2.45 if skiff else 3.82
+	var stern := 2.43 if skiff else 7.05
+	return world_outline(at, yaw, [Vector2(0, -bow), Vector2(beam * .82, -bow * .69),
+			Vector2(beam, -bow * .35), Vector2(beam, stern * .85), Vector2(.31, stern),
+			Vector2(-.31, stern), Vector2(-beam, stern * .85), Vector2(-beam, -bow * .35),
+			Vector2(-beam * .82, -bow * .69)])
+
+
+static func world_outline(at: Vector3, yaw: float, corners: Array[Vector2]) -> PackedVector2Array:
+	var outline := PackedVector2Array()
+	for corner: Vector2 in corners:
+		outline.append(Vector2(at.x, at.z) + corner.rotated(-yaw))
+	return outline
+
+
+func can_place(at: Vector3, yaw: float) -> bool:
+	var forward := Vector3(-sin(yaw), 0, -cos(yaw))
+	var side := forward.cross(Vector3.UP)
+	var fore := 2.18 if skiff else 3.35
+	var aft := 2.35 if skiff else 6.65
+	var beam := .945 if skiff else 1.39
+	return in_channel(at) and in_channel(at + forward * fore) and in_channel(at - forward * aft) \
+		and in_channel(at + side * beam) and in_channel(at - side * beam) \
+		and (not marina_check.is_valid() or marina_check.call(waterline(at, yaw), .49 if skiff else .88))
 
 
 func supports_deck(world: Vector3) -> bool:
@@ -65,10 +216,9 @@ func supports_deck(world: Vector3) -> bool:
 
 func sail(delta: float, clock: float, driving: bool, rudder: float) -> void:
 	if river_engine:
-		motor.run(delta, throttle * throttle_cap, rudder, departed, speed)
-		if helm_wheel != null:
-			helm_wheel.rotation.z = -motor.steering * 2.40
+		update_motor(delta)
 		sail_river(delta, clock)
+		helm_console.update_instruments(speed, throttle)
 		return
 	speed = move_toward(speed, throttle * top_speed, delta * (2.1 if driving else 3.6))
 	if driving:
@@ -96,34 +246,144 @@ func sail(delta: float, clock: float, driving: bool, rudder: float) -> void:
 	transform = Transform3D(Basis.from_euler(tilt), center + Vector3.UP * heave)
 
 
+func clear_helm() -> void:
+	throttle = 0.0
+	requested_throttle = 0.0
+	throttle_repeat = 0.0
+	if ignition == Ignition.START:
+		set_ignition(Ignition.OFF)
+
+
+func key_focused(camera: Camera3D) -> bool:
+	var offset := helm_console.ignition_key.global_position - camera.global_position
+	var forward := -camera.global_basis.z
+	var distance := offset.dot(forward)
+	return distance > 0.0 and distance < 1.8 and (offset - forward * distance).length_squared() < .0025
+
+
+func set_ignition(phase: int) -> void:
+	if phase == ignition:
+		return
+	var previous := ignition
+	ignition = phase
+	crank_time = 0.0
+	crank_confirmed = false
+	helm_console.ignition_key.rotation.z = [0.0, -.91, -.47][phase]
+	shutdown_left = 0.0
+	if phase == Ignition.OFF:
+		clear_helm()
+		motor.thrust = 0.0
+		if previous == Ignition.RUN:
+			shutdown_left = SHUTDOWN_TIME
+			return
+	startup_audio.stop()
+	startup_audio.volume_db = START_VOLUME
+	if phase == Ignition.START:
+		motor.rpm = 0.0
+		motor.sound.stop()
+	if not uses_battery() and (phase == Ignition.START or (phase == Ignition.RUN and previous == Ignition.START)):
+		startup_audio.stream = STARTER if phase == Ignition.START else CATCH
+		startup_audio.play()
+
+
+func reset_ignition() -> void:
+	set_ignition(Ignition.OFF)
+	clear_helm()
+	shutdown_left = 0.0
+	startup_audio.stop()
+	motor.sound.stop()
+	motor.rpm = 0.0
+
+
+func tick_ignition(delta: float) -> void:
+	if ignition != Ignition.START:
+		return
+	crank_time += delta
+	if crank_confirmed and crank_time >= START_TIME:
+		set_ignition(Ignition.RUN)
+	elif crank_time > START_TIME + 2.0:
+		set_ignition(Ignition.OFF)
+
+
+func nudge_throttle(direction: float) -> void:
+	if ignition == Ignition.RUN:
+		change_throttle(direction, THROTTLE_STEP)
+		throttle_repeat = THROTTLE_REPEAT_DELAY
+
+
+func hold_throttle(delta: float, adjustment: float, legacy: float) -> void:
+	if ignition != Ignition.RUN:
+		requested_throttle = 0.0
+		return
+	if adjustment != 0.0:
+		var delay := throttle_repeat
+		throttle_repeat = maxf(0.0, delay - delta)
+		change_throttle(adjustment, maxf(0.0, delta - delay) * throttle_rate)
+	else:
+		throttle_repeat = 0.0
+		requested_throttle = clampf(requested_throttle + legacy * delta * .90, -.32, 1.0)
+
+
+func change_throttle(direction: float, amount: float) -> void:
+	requested_throttle = move_toward(requested_throttle, 1.0 if direction > 0.0 else 0.0, amount)
+
+
+func advance_steering(delta: float, direction: float, center_wheel: bool) -> void:
+	if center_wheel:
+		wheel_angle = move_toward(wheel_angle, 0.0, delta * 1.6)
+	else:
+		wheel_angle = clampf(wheel_angle + direction * delta * steering_rate, -1.0, 1.0)
+
+
+func update_motor(delta: float) -> void:
+	var running := ignition == Ignition.RUN
+	var gain := 1.0 if running else 0.0
+	if shutdown_left > 0.0:
+		shutdown_left = maxf(0.0, shutdown_left - delta)
+		gain = shutdown_left / SHUTDOWN_TIME
+		if startup_audio.playing:
+			if gain > 0.0:
+				startup_audio.volume_db = START_VOLUME + linear_to_db(gain)
+			else:
+				startup_audio.stop()
+	var power := throttle * throttle_cap if running else 0.0
+	motor.run(delta, power, wheel_angle, running and not startup_audio.playing, speed, gain)
+	helm_wheel.basis = Basis(Vector3.BACK, -wheel_angle * 1.272)
+
+
 func sail_river(delta: float, clock: float) -> void:
-	var wanted := signf(throttle) * top_speed * pow(absf(throttle * throttle_cap), .77)
-	if throttle < 0.0:
+	var power := throttle * throttle_cap if ignition == Ignition.RUN else 0.0
+	var wanted := signf(power) * top_speed * pow(absf(power), .77)
+	if power < 0.0:
 		wanted *= .72
-	speed = lerpf(speed, wanted, 1.0 - exp(-delta * (.66 if motor.gear != 0 else 1.43)))
+	speed = lerpf(speed, wanted, 1.0 - exp(-delta * (drive_response if motor.gear != 0 else coast_response)))
 	var steer_force := minf(1.0, absf(speed) * .19 + motor.thrust * .48)
 	var reverse := -1.0 if (speed < -.18 or (absf(speed) <= .18 and throttle < 0.0)) else 1.0
-	heading = wrapf(heading - motor.steering * steer_force * (.94 if skiff else .67) * delta * reverse, -PI, PI)
-	var fore := Vector3(-sin(heading), 0, -cos(heading))
-	var right := fore.cross(Vector3.UP)
+	var turn := wrapf(heading - motor.steering * steer_force * yaw_rate * delta * reverse, -PI, PI)
 	var length := .65 if skiff else 1.0
 	var beam := .68 if skiff else 1.0
 	if departed:
 		var current: Vector3 = water_flow.call(center, clock)
-		var next := center + (fore * speed + current * .78) * delta
-		if in_channel(next) and in_channel(next + fore * 3.35 * length) and in_channel(next - fore * (3.61 if skiff else 6.65) * length) \
-				and in_channel(next + right * 1.39 * beam) and in_channel(next - right * 1.39 * beam):
+		var course := Vector3(-sin(turn), 0, -cos(turn))
+		var next := center + (course * speed + current * .78) * delta
+		if can_place(next, turn):
 			center = next
+			heading = turn
 		else:
 			speed *= .53
+			if not marina_check.is_valid() or marina_check.call(waterline(center, turn), .49 if skiff else .88):
+				heading = turn
+	var fore := Vector3(-sin(heading), 0, -cos(heading))
+	var right := fore.cross(Vector3.UP)
 	var port := sample(center - right * 1.21 * beam, clock)
 	var starboard := sample(center + right * 1.21 * beam, clock)
 	var bow := sample(center + fore * 2.78 * length, clock)
 	var stern := sample(center - fore * (2.61 if skiff else 5.35) * length, clock)
 	foil_lift = lerpf(foil_lift, smoothstep(4.8, 9.6, speed) if foil else 0.0, 1.0 - exp(-delta * 1.8))
-	var ride := Vector3((port + starboard + bow + stern) * .25,
-		clampf(atan2(bow - stern, 5.39 if skiff else 8.13), -.093, .093) + smoothstep(1.05, top_speed, absf(speed)) * .027,
-		clampf(atan2(starboard - port, 2.42) + motor.steering * steer_force * .054, -.145, .145))
+	var ride := Vector3((port + starboard + bow + stern) * .25 * minf(1.0, wave_response),
+		clampf(atan2(bow - stern, 5.39 if skiff else 8.13) * wave_response, -.093, .093)
+			+ smoothstep(1.05, top_speed, absf(speed)) * .027,
+		clampf((atan2(starboard - port, 2.42) + motor.steering * steer_force * turn_heel) * wave_response, -.145, .145))
 	wave_pose = wave_pose.lerp(ride, 1.0 - exp(-delta * 6.7))
 	var wave_scale := lerpf(1.0, .22, foil_lift)
 	transform = Transform3D(Basis.from_euler(Vector3(wave_pose.y * wave_scale, heading, wave_pose.z * wave_scale)),
@@ -177,6 +437,10 @@ func set_modern_design(enabled: bool) -> void:
 		Panorama.build(panorama_exterior, hull_name, finish(Color("#b8a280"), .82, true),
 			finish(Color("#8c8b7f"), .82, true))
 	modern_design = enabled
+	yaw_rate = .41 if enabled else .45
+	wave_response = .52 if enabled else .56
+	drive_response = .49 if enabled else .52
+	wake_spread = .38 if enabled else .36
 	classic_exterior.visible = not enabled
 	panorama_exterior.visible = enabled
 
@@ -312,11 +576,21 @@ func skiff_geometry() -> void:
 	SceneKit.box_at(self, Vector3(0, .73, 1.03), Vector3(.82, .12, .39), grips)
 	SceneKit.box_at(self, Vector3(0, .53, 1.03), Vector3(.29, .39, .27), alloy)
 	SceneKit.box_at(self, Vector3(0, .54, -1.37), Vector3(1.47, .31, .55), timber)
+	var shaft := Node3D.new()
+	add_child(shaft)
+	shaft.position = Vector3(0, 1.143, -.225)
+	shaft.rotation.x = -.34
+	Tools.tube(self, Vector3(0, 1.053, -.39), shaft.position, .037, .034, grips)
+	helm_wheel = Node3D.new()
+	shaft.add_child(helm_wheel)
+	wheel_radius = .149
 	var wheel := TorusMesh.new()
 	wheel.inner_radius = .132
 	wheel.outer_radius = .169
-	helm_wheel = SceneKit.mesh_at(self, wheel, Vector3(0, 1.08, -.31), grips)
-	helm_wheel.rotation.x = 1.23
+	SceneKit.mesh_at(helm_wheel, wheel, Vector3.ZERO, grips).rotation.x = PI * .5
+	for i in 3:
+		var angle := TAU * i / 3.0
+		SceneKit.beam(helm_wheel, Vector3.ZERO, Vector3(cos(angle), sin(angle), 0) * wheel_radius, .017, rail)
 	var tag := Label3D.new()
 	tag.text = "ELECTRIC"
 	tag.pixel_size = .0028

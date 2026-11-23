@@ -79,12 +79,12 @@ func fit(boat: Boat) -> void:
 	Kit.box_at(battery, Vector3(0, .303, 0), Vector3(.405, .044, .316), steel)
 	for side in [-1.0, 1.0]:
 		cylinder(battery, Vector3(side * .128, .344, .082), .026, .047, bronze)
-	var panel_mount := Vector3(.54, 1.204, -.07) if boat.skiff else Vector3(-.63, 1.66, -2.36)
+	var panel_mount := boat.status_panel_mount()
 	var console := Node3D.new()
 	console.name = "BatteryBilgeDisplay"
 	tools.add_child(console)
 	console.position = panel_mount
-	if boat.skiff:
+	if boat.uses_battery():
 		var foot := Vector3(panel_mount.x, .36, panel_mount.z)
 		var bracket := panel_mount - Vector3.UP * .105
 		Kit.box_at(tools, foot.lerp(bracket, .5), Vector3(.076, bracket.y - foot.y, .085), dark).name = "StatusPanelPedestal"
@@ -92,6 +92,9 @@ func fit(boat: Boat) -> void:
 		for x in [-.061, .061]:
 			for z in [-.055, .055]:
 				cylinder(tools, foot + Vector3(x, .022, z), .008, .008, dark)
+	elif boat.skiff:
+		console.rotation.x = -.36
+		console.scale = Vector3.ONE * .62
 	else:
 		console.rotation = Vector3(-.47, .51, 0)
 		var display_back := console.transform * Vector3(0, -.062, -.028)
@@ -256,7 +259,7 @@ func animate(delta: float, water_time: float, ledger: Ledger, live_target: Vecto
 	var capacity := 1.8 if ledger.has_upgrade("battery") else .46
 	panel.text = "BAT %d%%  •  BILGE %.0f L\n%s     %s" % [
 		roundi(100.0 * status.charge / capacity), 90.0 * status.bilge, pipe,
-		"FOIL UP" if vessel.foil_lift > .6 else ("ELECTRIC" if vessel.skiff else "%.0f L FUEL" % status.fuel)]
+		"FOIL UP" if vessel.foil_lift > .6 else ("ELECTRIC" if vessel.uses_battery() else "%.0f L FUEL" % status.fuel)]
 	if status.tow:
 		if not is_instance_valid(barge):
 			barge = make_barge()

@@ -80,7 +80,7 @@ func _ready() -> void:
 	add_cooling_water()
 
 
-func run(delta: float, throttle: float, rudder: float, started: bool, underway: float) -> void:
+func run(delta: float, throttle: float, rudder: float, started: bool, underway: float, sound_gain := 1.0) -> void:
 	gear = 0 if absf(throttle) < .045 else (1 if throttle > 0.0 else -1)
 	var load := clampf(absf(throttle), 0.0, 1.0)
 	var idle := 0.0 if electric else IDLE_RPM
@@ -93,12 +93,12 @@ func run(delta: float, throttle: float, rudder: float, started: bool, underway: 
 	prop.rotate_z(rpm * (TAU / 60.0 / 2.31) * gear * delta)
 	cooling.emitting = not electric and rpm > 430.0
 	cooling.initial_velocity_max = 1.09 + rpm / WIDE_OPEN_RPM * .44
-	if rpm > 165.0:
+	if rpm > 165.0 and sound_gain > 0.0:
 		if not sound.playing:
 			sound.play()
 		sound.pitch_scale = clampf(rpm / (2820.0 if electric else 1320.0), .60, 4.2)
 		sound.volume_db = lerpf(-30.0 if electric else -23.0, -16.0 if electric else -7.0,
-			smoothstep(idle, WIDE_OPEN_RPM, rpm))
+			smoothstep(idle, WIDE_OPEN_RPM, rpm)) + linear_to_db(sound_gain)
 	elif sound.playing:
 		sound.stop()
 
