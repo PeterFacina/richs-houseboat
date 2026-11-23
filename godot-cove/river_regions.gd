@@ -173,8 +173,10 @@ func build_cemetery(outline: Array) -> void:
 	var entrance := a.lerp(b, .5)
 	road([[entrance.x, entrance.y], [cemetery.x, cemetery.z]], 2.4, true)
 	var sign := Label3D.new()
+	sign.add_to_group(&"town_roadside_signs")
+	sign.set_meta(&"sign_span", 2.8)
 	sign.text = "DEEP RIVER CEMETERY\nQuiet grounds"
-	sign.position = ground(entrance) + Vector3.UP * 1.5
+	sign.position = game.river.roadside_sign_foot(ground(entrance + (b - a).normalized() * 5.0), 2.8) + Vector3.UP * 1.5
 	sign.font_size = 40
 	sign.pixel_size = .012
 	sign.billboard = BaseMaterial3D.BILLBOARD_ENABLED

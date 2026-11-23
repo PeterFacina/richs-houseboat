@@ -125,11 +125,15 @@ func build_hud() -> void:
 	var framing := VBoxContainer.new()
 	framing.position = Vector2(25, 23)
 	ui.add_child(framing)
+	framing.anchor_right = .49
+	framing.offset_right = -12
 	var title := label("RICH'S HOUSEBOAT", 15, Color("#e2ba84"))
 	framing.add_child(title)
 	objective = label("Board the houseboat", 29, Color("#fff5de"))
+	objective.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	framing.add_child(objective)
 	instruction = label("WASD  Walk onto the deck", 17, Color("#e0e8e3"))
+	instruction.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	framing.add_child(instruction)
 	progress = ProgressBar.new()
 	progress.custom_minimum_size = Vector2(220, 8)
