@@ -33,3 +33,9 @@ Post one comment with the tested commit, GPU, Ollama version, `ollama ps` proces
 Flag irrelevant sources, lost details, or invented findings. On failure include the exact error and last successful step. Leave credentials and machine-specific paths out of the comment. Keep this to benchmarking without game changes or fine-tuning.
 
 For the function-ranking follow-up, compare against the results in PR #26. In both fishing runs, inspect the actual excerpts in the JSON for the rod flag in `river_crew.gd` and the `show_rod` / `rod.visible` gate in `crew_avatar.gd`. Check whether the model uses that evidence and proposes a host/guest verification. For the mower and shoreline, call out any useful evidence the new ranking drops. Record the commits on both sides since the game checkout may have changed since PR #26.
+
+## Fishing prompt comparison
+
+Run `node tools/graphify-studio-benchmark/fishing-prompt-comparison.mjs` from the checkout root with Qwen3 14B available in Ollama. The runner uses the PR #28 fishing report and Studio's default retrieval without Graphify hints. It selects evidence once, then makes two requests with identical inputs, using the current system instructions first and adding a state-tracing instruction second. It prints JSON with the sources, both export results, and successful briefs. Add `--dry-run` to verify the requests with a simulated response.
+
+Post both briefs and say whether each identifies the multiplayer rod flag, the avatar's three visibility conditions, and a host/guest check that can tell where visibility is lost. Flag unsupported fixes and any export failure. This is a single comparison of two prompt variants with a stochastic model.
