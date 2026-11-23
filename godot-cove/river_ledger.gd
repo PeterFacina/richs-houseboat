@@ -22,7 +22,7 @@ func fresh() -> Dictionary:
 		"job": -1, "stage": "", "job_fish": [], "freight_run": 0.0, "last_dock": -1, "craft": "houseboat", "tow": false,
 		"bilge": 0.0, "pump_on": true, "modern_houseboat": false,
 		"ice_chest": [], "meals": 0, "held_fish": {}, "camp_fish": {},
-		"progression": {}, "verified_job_fish": 0, "job_serial": 0, "catch_serial": 0, "work_minutes": 480.0, "last_mowing_day": -1, "last_commercial_day": -1,
+		"progression": {}, "properties": {}, "verified_job_fish": 0, "job_serial": 0, "catch_serial": 0, "work_minutes": 480.0, "last_mowing_day": -1, "last_commercial_day": -1,
 	}
 
 
