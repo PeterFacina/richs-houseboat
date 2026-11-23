@@ -9,6 +9,8 @@ const Works = preload("res://public_works.gd")
 const TALK_DISTANCE := 2.8
 const PAY := 20
 const GUIDE_REFRESH := .18
+const DESTINATION_ICON = preload("res://mowing_destination.svg")
+const DESTINATION_GLOW = preload("res://mowing_destination_glow.svg")
 const OFFER: Array[String] = ["Do you want this job today, lil man?"]
 const REMINDERS: Array[String] = [
 	"We gonna put you into the ringer, son.",
@@ -41,10 +43,9 @@ var job_day := -1
 var job_state: Dictionary
 var markers: Node3D
 var tuft_cells: Dictionary = {}
-var waypoint: Label3D
+var waypoint: Node3D
+var waypoint_distance: Label3D
 var road_guide: RoadGuide
-var guide_start := Vector3.INF
-var guide_finish := Vector3.INF
 var target_tuft := -1
 var target_origin := Vector3.INF
 var guide_timer := 0.0
@@ -136,9 +137,7 @@ func clear_job() -> void:
 	target_tuft = -1
 	target_origin = Vector3.INF
 	guide_timer = 0.0
-	road_guide.hide()
-	guide_start = Vector3.INF
-	guide_finish = Vector3.INF
+	road_guide.reset()
 	status = Status.AVAILABLE
 	progress.hide()
 
@@ -182,16 +181,42 @@ func build_lawn(route: Dictionary) -> void:
 	paint.vertex_color_use_as_albedo = true
 	boundary.material_override = paint
 	markers.add_child(boundary)
-	waypoint = Label3D.new()
-	waypoint.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	waypoint.font_size = 28
-	waypoint.outline_size = 6
-	waypoint.pixel_size = .00135
-	waypoint.fixed_size = true
-	waypoint.no_depth_test = true
-	waypoint.modulate = Color("#a8ffdb")
-	waypoint.outline_modulate = Color("#142923")
+	build_waypoint()
+
+
+func build_waypoint() -> void:
+	waypoint = Node3D.new()
+	waypoint.name = "MowingDestination"
 	game.add_child(waypoint)
+	waypoint.hide()
+
+	var glow := Sprite3D.new()
+	glow.texture = DESTINATION_GLOW
+	glow.axis = Vector3.AXIS_Y
+	glow.pixel_size = .022
+	glow.position.y = .19
+	waypoint.add_child(glow)
+
+	var pin := Sprite3D.new()
+	pin.texture = DESTINATION_ICON
+	pin.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	pin.fixed_size = true
+	pin.pixel_size = .00135
+	pin.offset.y = 29.0
+	pin.position.y = 3.1
+	waypoint.add_child(pin)
+
+	waypoint_distance = Label3D.new()
+	waypoint_distance.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	waypoint_distance.font_size = 26
+	waypoint_distance.outline_size = 6
+	waypoint_distance.pixel_size = pin.pixel_size
+	waypoint_distance.fixed_size = true
+	waypoint_distance.modulate = Color("#fff4dc")
+	waypoint_distance.outline_modulate = Color("#422803")
+	waypoint_distance.position.y = pin.position.y
+	waypoint_distance.offset.y = -20.0
+	waypoint.add_child(waypoint_distance)
 
 
 func ribbon_segment(ribbon: SurfaceTool, start: Vector3, finish: Vector3) -> void:
@@ -324,7 +349,6 @@ func update_navigation() -> void:
 	var parking: Vector3 = game.public_works.at_ground(Works.PARKING[bay])
 	var parked := not mounted and active_mower.global_position.distance_squared_to(parking) < 3.0 * 3.0
 	var destination := global_position if parked else parking
-	var objective := "Return to Shannon" if parked else "Park zero-turn"
 	if not returning:
 		if target_tuft < 0 or mower.grass_cut[target_tuft] \
 				or (origin.distance_squared_to(target_origin) > 6.0 * 6.0 \
@@ -333,22 +357,18 @@ func update_navigation() -> void:
 			target_origin = origin
 		if target_tuft < 0:
 			waypoint.hide()
-			road_guide.hide()
+			road_guide.reset()
 			return
 		destination = mower.grass_point(target_tuft)
-		objective = route_name
 	var meters := roundi(Vector2(destination.x - origin.x, destination.z - origin.z).length())
-	waypoint.position = destination + Vector3.UP * (4.0 if meters > 22 else 2.6)
-	waypoint.text = "◇\n%s  ·  %d m" % [objective, meters]
+	waypoint.global_position = destination
+	waypoint_distance.text = "%d m" % meters
 	var clear: bool = not game.chart.visible and not game.fish_guide.visible and not game.campaign.controls_blocked()
 	waypoint.visible = clear
 	if not clear or not mounted or meters < 2:
-		road_guide.hide()
-		guide_start = Vector3.INF
-	elif guide_start.distance_squared_to(origin) >= 8.0 * 8.0 or guide_finish.distance_squared_to(destination) >= 2.0 * 2.0:
-		guide_start = origin
-		guide_finish = destination
-		road_guide.draw_route(road_guide.route(origin, destination, game.public_works))
+		road_guide.reset()
+	else:
+		road_guide.navigate(origin, destination, game.public_works)
 
 
 func required_cuts() -> int:
@@ -373,6 +393,8 @@ func tick(delta: float, can_talk: bool) -> void:
 	if guide_timer <= 0.0 and status in [Status.CUTTING, Status.RETURNING]:
 		update_navigation()
 		guide_timer = GUIDE_REFRESH
+	if road_guide.visible:
+		road_guide.update_paint(game.mower.to_global(game.mower.CUT_DECK))
 	var distance: float = game.player.global_position.distance_to(global_position)
 	name_tag.visible = distance < 14.0
 	progress.visible = status in [Status.CUTTING, Status.RETURNING] and not game.chart.visible and not game.fish_guide.visible \

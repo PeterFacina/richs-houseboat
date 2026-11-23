@@ -3,21 +3,29 @@ extends MeshInstance3D
 const Works = preload("res://public_works.gd")
 const CELL := 4.5
 const STREET_STEP := 2.5
-const ROUTE_COLOR := Color("#32e9bd")
+const PAINT = preload("res://mowing_chevrons.gdshader")
+const CHEVRON_SPACING := 5.5
+const RIGHT_LANE_OFFSET := 1.7
+const OFF_ROUTE_DISTANCE := 7.0
 
 var roads := AStar2D.new()
 var buckets: Dictionary = {}
 var river: Node3D
+var paint := ShaderMaterial.new()
+var points := PackedVector2Array()
+var distances := PackedFloat32Array()
+var destination := Vector3.INF
+var last_search_origin := Vector2.INF
+var segment := 1
+var progress := 0.0
+var chevron_profile := PackedVector2Array()
 
 
 func setup(map: Node3D) -> void:
 	river = map
+	chevron_profile = rounded_chevron()
 	cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	var paint := StandardMaterial3D.new()
-	paint.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	paint.cull_mode = BaseMaterial3D.CULL_DISABLED
-	paint.vertex_color_use_as_albedo = true
-	paint.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	paint.shader = PAINT
 	material_override = paint
 	hide()
 
@@ -78,39 +86,102 @@ func route(from: Vector3, to: Vector3, works: Node3D) -> PackedVector2Array:
 	return result
 
 
-func draw_route(points: PackedVector2Array) -> void:
-	if points.size() < 2:
-		hide()
+func reset() -> void:
+	hide()
+	destination = Vector3.INF
+
+
+func navigate(origin: Vector3, target: Vector3, works: Node3D) -> void:
+	var position_on_map := flat(origin)
+	var changed := destination.distance_squared_to(target) >= 4.0
+	var moved := last_search_origin.distance_squared_to(position_on_map) >= 16.0
+	if not changed and (not moved or track(position_on_map) <= OFF_ROUTE_DISTANCE * OFF_ROUTE_DISTANCE):
 		return
+	destination = target
+	last_search_origin = position_on_map
+	draw_route(route(origin, target, works))
+	update_paint(origin)
+
+
+func track(origin: Vector2) -> float:
+	var nearest := INF
+	var best_segment := segment
+	for index in range(maxi(1, segment - 8), mini(points.size(), segment + 17)):
+		var start := points[index - 1]
+		var finish := points[index]
+		if start == finish:
+			continue
+		var closest := Geometry2D.get_closest_point_to_segment(origin, start, finish)
+		var distance := closest.distance_squared_to(origin)
+		if distance < nearest:
+			nearest = distance
+			best_segment = index
+			progress = distances[index - 1] + start.distance_to(closest)
+	segment = best_segment
+	return nearest
+
+
+func update_paint(origin: Vector3) -> void:
+	if visible:
+		track(flat(origin))
+		paint.set_shader_parameter("progress", progress)
+
+
+func draw_route(path: PackedVector2Array) -> void:
+	points = path
+	distances.resize(path.size())
+	if not distances.is_empty():
+		distances[0] = 0.0
+	segment = 1
+	progress = 0.0
 	var surface := SurfaceTool.new()
 	surface.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var distance := 0.0
-	var next_arrow := 2.0
-	for index in range(1, points.size()):
-		var start := points[index - 1]
-		var finish := points[index]
+	var next_arrow := 3.0
+	var has_arrows := false
+	for index in range(1, path.size()):
+		var start := path[index - 1]
+		var finish := path[index]
 		var length := start.distance_to(finish)
-		if length < .02:
-			continue
-		var axis := (finish - start) / length
-		var side := axis.orthogonal()
-		var steps := ceili(length / 1.5)
-		for step in steps:
-			var a := start.lerp(finish, float(step) / steps)
-			var b := start.lerp(finish, float(step + 1) / steps)
-			polygon(surface, [a - side * .20, a + side * .20, b + side * .20,
-				a - side * .20, b + side * .20, b - side * .20], Color(ROUTE_COLOR, .68), .17)
-		while next_arrow <= distance + length:
-			var tip := start + axis * (next_arrow - distance)
-			var mid := tip - axis * .72
-			polygon(surface, [tip, mid + side * .62, mid - side * .62], ROUTE_COLOR, .19)
-			next_arrow += 5.0
+		distances[index] = distance + length
+		if length > .001:
+			var axis := (finish - start) / length
+			var lane_offset := Vector2.ZERO
+			# Only graph segments represent road centerlines, including on the return trip.
+			if index > 1 and index < path.size() - 1:
+				lane_offset = Vector2(-axis.y, axis.x) * RIGHT_LANE_OFFSET
+			while next_arrow <= distance + length:
+				var tip := start + axis * (next_arrow - distance)
+				add_chevron(surface, tip + lane_offset, axis, next_arrow)
+				has_arrows = true
+				next_arrow += CHEVRON_SPACING
 		distance += length
-	mesh = surface.commit()
-	visible = mesh != null
+	mesh = surface.commit() if has_arrows else null
+	visible = has_arrows
 
 
-func polygon(surface: SurfaceTool, points: Array, color: Color, lift: float) -> void:
-	for point: Vector2 in points:
-		surface.set_color(color)
-		surface.add_vertex(Vector3(point.x, river.ground_height(point.x, point.y) + lift, point.y))
+func rounded_chevron() -> PackedVector2Array:
+	var outline := PackedVector2Array([
+		Vector2.ZERO, Vector2(.62, -.39), Vector2(.53, -.76),
+		Vector2(0, -.41), Vector2(-.53, -.76), Vector2(-.62, -.39),
+	])
+	var rounded := PackedVector2Array()
+	for index in outline.size():
+		var corner := outline[index]
+		var before := corner.move_toward(outline[posmod(index - 1, outline.size())], .09)
+		var after := corner.move_toward(outline[(index + 1) % outline.size()], .09)
+		for step in range(5):
+			var t := float(step) / 4.0
+			rounded.append(before.lerp(corner, t).lerp(corner.lerp(after, t), t))
+	var triangles := PackedVector2Array()
+	for index in Geometry2D.triangulate_polygon(rounded):
+		triangles.append(rounded[index])
+	return triangles
+
+
+func add_chevron(surface: SurfaceTool, tip: Vector2, axis: Vector2, at: float) -> void:
+	var side := axis.orthogonal()
+	for vertex in chevron_profile:
+		var point := tip + side * vertex.x + axis * vertex.y
+		surface.set_uv(Vector2(at, 0.0))
+		surface.add_vertex(Vector3(point.x, river.ground_height(point.x, point.y) + .19, point.y))
