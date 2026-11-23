@@ -4,6 +4,7 @@ const CELL := 48.0
 const MAX_LENGTH := 44.0
 const HALF_WIDTH := 1.49
 const MAX_CROSS_GRADE := .38
+const RoadNetwork = preload("res://deep_river_roads.gd")
 const Graphics = preload("res://river_graphics.gd")
 const MATERIALS := [Color("#646560"), Color("#b7b3a5"), Color("#77756d")]
 
@@ -18,8 +19,12 @@ var accepted: Array[Dictionary] = []
 
 func setup(streets: Array, regional: Array, footprints: Array, elevation: Callable) -> void:
 	ground = elevation
-	index_streets(streets, 3.4)
-	index_streets(regional, 3.2)
+	for i in streets.size():
+		if i not in RoadNetwork.HIGHWAY:
+			index_street(streets[i], 3.4)
+	index_street(RoadNetwork.highway_line(streets), RoadNetwork.HIGHWAY_HALF_WIDTH)
+	for street: Array in regional:
+		index_street(street, 3.2)
 	for building: Dictionary in footprints:
 		var polygon := PackedVector2Array()
 		for edge: Array in building.walls:
@@ -30,16 +35,15 @@ func setup(streets: Array, regional: Array, footprints: Array, elevation: Callab
 		index(buildings, bounds.grow(.4), {"bounds": bounds, "polygon": polygon})
 
 
-func index_streets(streets: Array, half_width: float) -> void:
-	for street: Array in streets:
-		for i in range(1, street.size()):
-			var a := Vector2(street[i - 1][0], street[i - 1][1])
-			var b := Vector2(street[i][0], street[i][1])
-			if a.distance_squared_to(b) < .03:
-				continue
-			var axis := (b - a).normalized()
-			var span := {"a": a, "b": b, "normal": Vector2(-axis.y, axis.x), "width": half_width}
-			index(roads, Rect2(a, Vector2.ZERO).expand(b).grow(6.0), span)
+func index_street(street: Array, half_width: float) -> void:
+	for i in range(1, street.size()):
+		var a := Vector2(street[i - 1][0], street[i - 1][1])
+		var b := Vector2(street[i][0], street[i][1])
+		if a.distance_squared_to(b) < .03:
+			continue
+		var axis := (b - a).normalized()
+		var span := {"a": a, "b": b, "normal": Vector2(-axis.y, axis.x), "width": half_width}
+		index(roads, Rect2(a, Vector2.ZERO).expand(b).grow(half_width + 1.1), span)
 
 
 func index(grid: Dictionary, area: Rect2, item: Dictionary) -> void:
@@ -117,6 +121,8 @@ func find_approach(end: Vector2, outward: Vector2, door: Vector2, garage: bool) 
 				if -direction.dot(side) < .56:
 					continue
 				var entry := projected + side * (float(span.width) - .24)
+				if entry.distance_squared_to(RoadNetwork.SIGNALS.JUNCTION) < 19.0 * 19.0:
+					continue
 				if entry.distance_squared_to(end) < 5.5 * 5.5:
 					continue
 				if not garage:
@@ -157,7 +163,9 @@ func clear_route(entry: Vector2, end: Vector2, across: Vector2, normal: Vector2,
 			for road: Dictionary in near(roads, point):
 				if road.a == target.a and road.b == target.b:
 					continue
-				if point.distance_squared_to(Geometry2D.get_closest_point_to_segment(point, road.a, road.b)) < 4.0 * 4.0:
+				var road_margin: float = road.width + .6
+				var road_center := Geometry2D.get_closest_point_to_segment(point, road.a, road.b)
+				if point.distance_squared_to(road_center) < road_margin * road_margin:
 					return false
 	return true
 

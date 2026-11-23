@@ -7,13 +7,16 @@ const CHUNK_SIZE := 256.0
 const JUNCTION_LIFT := .043
 
 # Indexes refer to the surveyed polylines in ottawa/river.json.
+const HIGHWAY := [13, 15, 44, 2, 8, 7, 3]
+const HIGHWAY_HALF_WIDTH := 5.65
+const SIGNALS = preload("res://deep_river_signals.gd")
 const CHAMPLAIN := 6
 const RIDGE := 49
 const BROCKHOUSE := 76
 const MARINA_APPROACH := 62
 const PLAZA_FRONTAGE := Vector2(18025.0, 13243.0)
 
-enum Marking { NONE, SOLID, BROKEN }
+enum Marking { NONE, SOLID, BROKEN, HIGHWAY }
 
 class Span:
 	var street: int
@@ -73,11 +76,12 @@ func build(map: Node3D, data: Dictionary, elevation: Callable, parking_mask: Tex
 	# Through roads own the overlap with side streets. Draw and collide with
 	# one surface in the overlap, with both approaches at the same grade.
 	var streets: Array = data.streets
+	add_street(HIGHWAY[0], highway_line(streets), HIGHWAY_HALF_WIDTH)
 	var through := [RIDGE, CHAMPLAIN, BROCKHOUSE, MARINA_APPROACH]
 	for index: int in through:
 		add_street(index, streets[index], 3.4)
 	for index in streets.size():
-		if not through.has(index):
+		if not through.has(index) and index not in HIGHWAY:
 			add_street(index, streets[index], 3.4)
 	add_street(streets.size(), PublicWorks.CEDAR_ROAD, 3.4)
 	add_street(streets.size() + 1, PublicWorks.YARD_DRIVE, 2.85)
@@ -88,6 +92,9 @@ func build(map: Node3D, data: Dictionary, elevation: Callable, parking_mask: Tex
 	var network := Node3D.new()
 	network.name = "DeepRiverRoads"
 	map.add_child(network)
+	var signals := SIGNALS.new()
+	network.add_child(signals)
+	signals.build(streets, ground)
 	for cell: Vector2i in chunks:
 		var batch: Dictionary = chunks[cell]
 		var origin := Vector3(cell.x * CHUNK_SIZE, 0.0, cell.y * CHUNK_SIZE)
@@ -97,6 +104,13 @@ func build(map: Node3D, data: Dictionary, elevation: Callable, parking_mask: Tex
 		span.neighbors.clear()
 	chunks.clear()
 	spans.clear()
+
+
+static func highway_line(streets: Array) -> Array:
+	var highway: Array = []
+	for index: int in HIGHWAY:
+		highway.append_array(streets[index])
+	return highway
 
 
 func add_street(street: int, line: Array, width: float) -> void:
@@ -136,6 +150,10 @@ func add_street(street: int, line: Array, width: float) -> void:
 		span.marking = Marking.SOLID if street == RIDGE else Marking.NONE
 		if street == BROCKHOUSE:
 			span.marking = Marking.BROKEN
+		if street in HIGHWAY:
+			span.shoulder = 1.55
+			span.marking = Marking.HIGHWAY
+			span.fine = span.bounds.grow(30.0).has_point(SIGNALS.JUNCTION)
 		span.outline = PackedVector2Array([
 			span.start - span.left * width, span.start + span.left * width,
 			span.end + span.right * width, span.end - span.right * width])
@@ -265,7 +283,7 @@ func emit_vertex(surface: SurfaceTool, span: Span, point: Vector2, nearby: Array
 	if span.street == RIDGE:
 		paint *= smoothstep(26.0, 40.0, point.distance_to(PLAZA_FRONTAGE))
 	var style := float(span.marking) / 3.0
-	var edges := 1.0 if span.street == BROCKHOUSE and not downtown.has_point(point) else 0.0
+	var edges := 1.0 if span.street in HIGHWAY or (span.street == BROCKHOUSE and not downtown.has_point(point)) else 0.0
 	surface.set_color(Color(style, edges, (1.0 - joins) * end_blend * (1.0 - apron), 1.0))
 	surface.set_uv(Vector2(lateral, station))
 	surface.set_uv2(Vector2(shoulder_mix if shoulder else paint * end_blend, transverse))

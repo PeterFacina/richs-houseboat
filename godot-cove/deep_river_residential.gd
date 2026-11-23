@@ -468,4 +468,3 @@ func chimney(eave: float) -> void:
 		var flashing := Color("#5c6263")
 		block(frames, axis, Vector3(0, .06, 0), Vector3(.25, .38, .23), flashing)
 		block(frames, axis, Vector3(0, .253, 0), Vector3(.32, .07, .29), flashing.darkened(.17))
-

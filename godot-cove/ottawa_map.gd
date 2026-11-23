@@ -60,6 +60,7 @@ class TerrainPatch:
 var town_hall := TownHall.new()
 var property_sites: Array[Node3D] = []
 var meta: Dictionary
+var highway_clearance: Array[Dictionary] = []
 var regional_streets: Array = preload("res://ottawa/regional_access.json").data.mcanulty_roads
 var elevation: PackedFloat32Array
 var shore: PackedByteArray
@@ -105,6 +106,12 @@ var lamure := LamureBeach.new()
 
 func build() -> void:
 	meta = JSON.parse_string(FileAccess.get_file_as_string(BASE + "river.json"))
+	for index: int in RoadNetwork.HIGHWAY:
+		var line: Array = meta.streets[index]
+		for i in range(1, line.size()):
+			var a := Vector2(line[i - 1][0], line[i - 1][1])
+			var b := Vector2(line[i][0], line[i][1])
+			highway_clearance.append({"a": a, "b": b, "area": Rect2(a, Vector2.ZERO).expand(b).grow(11.5)})
 	elevation = FileAccess.get_file_as_bytes(BASE + "height.bin").to_float32_array()
 	shore = FileAccess.get_file_as_bytes(BASE + "shore.bin")
 	columns = int(meta.columns)
@@ -244,6 +251,7 @@ func build() -> void:
 			return PublicWorks.cleared_for_construction(foot) or park.owns_tree(foot) \
 				or residential_driveways.clears_tree(Vector2(foot.x, foot.z)) \
 				or PropertySites.clears_tree(Vector2(foot.x, foot.z)) \
+				or highway_has_tree_conflict(Vector2(foot.x, foot.z), highway_clearance) \
 				or Vector2(foot.x, foot.z).distance_squared_to(RiverbankPark.GAZEBO_SITE) < 36.0 \
 				or (lamure_patch != null and pines.place_from_survey(foot, height)))
 	if meta.has("riverbank"):
@@ -466,6 +474,8 @@ func trees_for_tile(col: int, row: int, rng: RandomNumberGenerator, tree: Mesh, 
 	var tile_center := Vector3((col + TILE * 0.5) * step, 0, (row + TILE * 0.5) * step)
 	var distance_from_city := Vector3(col * step, 0, row * step).distance_to(city)
 	var near_dam := tile_center.distance_to(dam_center) < 2150.0
+	var tile_area := Rect2(Vector2(col, row) * step, Vector2.ONE * TILE * step)
+	var near_highway := highway_clearance.filter(func(span: Dictionary): return span.area.intersects(tile_area))
 	var count := 1500 if near_dam or distance_from_city < 4300.0 else 550
 	for _i in count:
 		var x := rng.randf_range(col, mini(col + TILE, columns - 1)) * step
@@ -474,7 +484,8 @@ func trees_for_tile(col: int, row: int, rng: RandomNumberGenerator, tree: Mesh, 
 			continue
 		var location := Vector2(x, z)
 		if swisha_patch.area.has_point(location) or marina_patch.area.has_point(location) or canopy_area.has_point(location) \
-				or PublicWorks.road_clearance(location) or PropertySites.clears_tree(location):
+				or PublicWorks.road_clearance(location) or PropertySites.clears_tree(location) \
+				or highway_has_tree_conflict(location, near_highway):
 			continue
 		if wet_clearance(Vector3(x, 0, z)) > 0.0:
 			continue
@@ -672,6 +683,14 @@ func build_town() -> BuildingsDriveways:
 	return buildings.driveways
 
 
+static func highway_has_tree_conflict(point: Vector2, spans: Array) -> bool:
+	for span: Dictionary in spans:
+		if span.area.has_point(point) and point.distance_squared_to(
+				Geometry2D.get_closest_point_to_segment(point, span.a, span.b)) < 11.5 * 11.5:
+			return true
+	return false
+
+
 func roadside_sign_foot(foot: Vector3, half_span: float) -> Vector3:
 	var point := Vector2(foot.x, foot.z)
 	var height_offset := foot.y - ground_height(foot.x, foot.z)
@@ -710,10 +729,11 @@ func road_at_sign(point: Vector2, half_span: float) -> Dictionary:
 	if meta.has("brockhouse"):
 		var road: Array = meta.brockhouse.road_segment
 		lines.append([[road[0], road[1]], [road[2], road[3]]])
-	var clearance := 3.4 + half_span
-	var best := clearance * clearance
+	var best := INF
 	var found := {}
-	for line: Array in lines:
+	for index in lines.size():
+		var line: Array = lines[index]
+		var clearance := (RoadNetwork.HIGHWAY_HALF_WIDTH if index in RoadNetwork.HIGHWAY else 3.4) + half_span
 		for i in range(1, line.size()):
 			var a := Vector2(line[i - 1][0], line[i - 1][1])
 			var b := Vector2(line[i][0], line[i][1])
@@ -721,7 +741,7 @@ func road_at_sign(point: Vector2, half_span: float) -> Dictionary:
 				continue
 			var center := Geometry2D.get_closest_point_to_segment(point, a, b)
 			var distance := point.distance_squared_to(center)
-			if distance < best:
+			if distance < best and distance < clearance * clearance:
 				best = distance
 				var normal := (b - a).orthogonal().normalized()
 				if (point - center).dot(normal) < -.015:

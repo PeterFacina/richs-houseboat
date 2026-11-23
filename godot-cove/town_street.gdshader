@@ -42,6 +42,10 @@ void fragment() {
 		float broken = 1.0 - smoothstep(1.43, 1.49 + fwidth(UV.y), dash);
 		yellow = paint_line(UV.x, .060) * step(.5, style) * mix(1.0, broken, step(1.5, style)) * UV2.x;
 		white = paint_line(abs(UV.x) - 3.13, .055) * COLOR.g * UV2.x;
+		if (style > 2.5) {
+			yellow = paint_line(abs(UV.x) - .135, .064) * UV2.x;
+			white = paint_line(abs(UV.x) - 5.11, .072) * COLOR.g * UV2.x;
+		}
 		float walk = max(paint_line(UV2.y - 6.35, .10), paint_line(UV2.y - 8.35, .10));
 		float stop = paint_line(UV2.y - 9.55, .14) * step(.14, UV.x);
 		white = max(white, max(walk, stop) * (1.0 - step(3.22, abs(UV.x))));
