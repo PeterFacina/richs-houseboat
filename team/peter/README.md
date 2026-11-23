@@ -11,3 +11,4 @@
 - Link active branches, pull requests, and playtest releases here.
 - The workflow pilot confirmed that Discord can open a task in Codex.
 - Ethan’s GPU generated the brief for this Discord report.
+- The GPU worker automatically picked up the Discord report for issue #36.
