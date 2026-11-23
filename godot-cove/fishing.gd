@@ -950,8 +950,8 @@ func interact() -> void:
 		update_view()
 
 
-func update_helm_throttle(delta: float) -> void:
-	vessel.hold_throttle(delta, axis(KEY_R, KEY_F), axis(KEY_W, KEY_S))
+func update_helm_throttle(delta: float, has_input: bool) -> void:
+	vessel.hold_throttle(delta, axis(KEY_R, KEY_F) if has_input else 0.0, axis(KEY_W, KEY_S) if has_input else 0.0)
 
 
 func at_ignition_key() -> bool:
@@ -1829,7 +1829,7 @@ func update_hud() -> void:
 	elif cabin.hands_in_use() or cabin.focus >= 0:
 		instruction.text = ""
 	elif driving:
-		instruction.text = "R/F  Throttle   S  Reverse   A/D  Steer   Hold X  Center wheel"
+		instruction.text = "Hold W/S  Drive/reverse   R/F  Set throttle   A/D  Steer   X  Center wheel"
 		if not ignition_prompt.visible:
 			instruction.text += "   E  Leave helm"
 	elif fishing == Fishing.CASTING:
