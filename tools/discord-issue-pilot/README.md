@@ -2,6 +2,8 @@
 
 Run this on the Windows host with Node.js 24. The pilot builds a fixed Codex prompt for a notes-only task. It can run before Game Prompt Studio or Ollama is connected.
 
+To include a generated brief in each new issue, run an additional loopback-mode Studio instance on the bot host and set `STUDIO_URL=http://127.0.0.1:8765` in the bot's `.env` (use the actual local port). Use a separate Studio data directory and port if Studio's team instance already runs on that PC. Start Studio against the shared game checkout and keep Ollama on loopback. The bot waits for Studio's guarded export before posting the issue. If Studio is busy or rejects the export, the issue is left uncreated and the Discord action can be retried. Keep live testing to agreed notes-only tasks.
+
 1. Install a Discord application in Rich’s Houseboat Dev with the bot and application commands scopes. The bot needs View Channel, Read Message History, and Send Messages in #issues.
 2. Make a GitHub fine-grained token restricted to `PeterFacina/richs-houseboat` with Issues write and Pull requests read. The teammate running Codex uses their own repository access for the PR.
 3. Give the loopback launcher its own private Tailscale HTTPS origin and route that origin to `http://127.0.0.1:8766`. Keep the existing Studio origin serving Studio. Check that Josh can open the launcher on his PC.

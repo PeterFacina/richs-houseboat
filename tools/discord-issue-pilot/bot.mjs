@@ -3,6 +3,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { ApplicationCommandType, ButtonBuilder, ButtonStyle, Client, Events, GatewayIntentBits,
   MessageFlags, ActionRowBuilder } from 'discord.js';
 import { codexLink, repository, pullStatus } from './workflow.mjs';
+import { studioClient } from './studio.mjs';
 
 const { DISCORD_TOKEN, DISCORD_GUILD_ID, DISCORD_CHANNEL_ID, GITHUB_TOKEN,
   LAUNCH_URL, DISCORD_ROLE_ID } = process.env;
@@ -14,6 +15,7 @@ if (launch.protocol !== 'https:' || launch.pathname !== '/' || launch.search || 
     || launch.username || launch.password) {
   throw new Error('LAUNCH_URL must be a private HTTPS origin.');
 }
+const generateBrief = process.env.STUDIO_URL ? studioClient(process.env.STUDIO_URL) : null;
 
 const db = new DatabaseSync('pilot.sqlite');
 db.exec('PRAGMA journal_mode = WAL');
@@ -54,6 +56,8 @@ function card(report, status) {
 
 async function submit(message) {
   const source = message.id;
+  // Generate before reserving an issue so a failed export or busy model can be retried.
+  const brief = generateBrief && !find.get(source) ? await generateBrief(message.content) : null;
   const reservation = db.prepare('INSERT OR IGNORE INTO reports (source, created) VALUES (?, ?)')
     .run(source, new Date().toISOString());
   let report = find.get(source);
@@ -67,6 +71,7 @@ async function submit(message) {
           + '## Original report\n\n' + message.content + '\n\n'
           + 'Discord report: ' + message.url + '\n\n'
           + '## Done when\n\nThe requested notes change is in a linked draft PR, ready for human review.\n\n'
+          + (brief ? '## Game Prompt Studio brief\n\n' + brief + '\n\n' : '')
           + marker,
       });
     } else {
@@ -142,7 +147,9 @@ client.on(Events.InteractionCreate, async interaction => {
   } catch (error) {
     console.error(error.message);
     if (interaction.deferred) {
-      await interaction.editReply('The pilot could not complete that action. Ask the bot operator to check the log.')
+      const reply = error.message.startsWith('Studio ') ? error.message
+        : 'The pilot could not complete that action. Ask the bot operator to check the log.';
+      await interaction.editReply(reply)
         .catch(() => {});
     }
   }

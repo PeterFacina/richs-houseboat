@@ -7,6 +7,7 @@ export function pilotBrief(issue) {
     'Read AGENTS.md and the issue. Check the owner and overlapping issues and PRs.',
     'Use the team task workflow and a separate branch from current main.',
     'Implement the notes-only pilot task described in the issue and verify the diff.',
+    'If the issue includes a Game Prompt Studio brief, use it as supporting context and validate its citations against the checkout.',
     'Open a draft PR into main. Put the following on its own line in the PR body:',
     `Fixes #${issue.split('/').at(-1)}`,
     'Report what was checked and leave the PR for human review.',

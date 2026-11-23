@@ -1,0 +1,8 @@
+GAME PROMPT STUDIO
+Rich’s Houseboat
+
+1. On this PC, double-click Open Game Prompt Studio.cmd in this folder.
+2. Open http://127.0.0.1:8765/ if your browser does not open.
+3. Enter a rough game note and select Generate prompt.
+4. Edit the result, then click Download .txt. Reopen it later from Library.
+5. To set up a new host, open README.md.
