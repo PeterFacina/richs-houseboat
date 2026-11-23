@@ -242,6 +242,8 @@ func _ready() -> void:
 	campaign.setup(self)
 	add_child(properties)
 	properties.setup(self)
+	for site: Node3D in river.property_sites:
+		properties.register_site(site)
 	if not multiplayer_trip:
 		for species_name: String in campaign.ledger.state.records:
 			discovered_species["Muskellunge" if species_name == "Trophy muskellunge" else species_name] = true
@@ -369,9 +371,7 @@ func build_tension_display() -> void:
 
 func _input(event: InputEvent) -> void:
 	if properties.panel.visible:
-		if event.is_action_pressed(&"ui_cancel"):
-			properties.close()
-			get_viewport().set_input_as_handled()
+		properties.build_input(event)
 		return
 	if is_instance_valid(campaign) and campaign.boats_menu.visible:
 		if event.is_action_pressed(&"ui_cancel"):
@@ -475,7 +475,9 @@ func _input(event: InputEvent) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if properties.panel.visible or skill_screen.panel.visible or campaign.boats_menu.visible or pause_menu.visible or fish_guide.visible \
+	if properties.panel.visible:
+		return
+	if skill_screen.panel.visible or campaign.boats_menu.visible or pause_menu.visible or fish_guide.visible \
 			or teleport_dialog.visible or backpack.inventory.visible or cheats.visible:
 		return
 	if flying or mower.rider != null:
@@ -649,7 +651,7 @@ func _physics_process(delta: float) -> void:
 		yaw += mower.drive(delta, throttle, steering)
 		update_view()
 	else:
-		move_on_river(delta, has_input and not cabin.busy())
+		move_on_river(delta, (has_input or properties.aiming) and not cabin.busy())
 	if mower.rider != null:
 		eye.rotation.x = pitch
 		mower.update_rider_camera(eye)

@@ -24,6 +24,8 @@ var property_id := ""
 var property_name := ""
 var price := 0
 var floor_bounds := Rect2()
+var grid_size := Vector2i(COLUMNS, ROWS)
+var overlay: Node3D
 var sale_position := Vector3.ZERO
 var furnishings := Node3D.new()
 var rendered_items := {}
@@ -52,8 +54,8 @@ static func tile_bounds(item: Dictionary) -> Rect2i:
 	return Rect2i(Vector2i(int(item.x), int(item.z)), footprint(item.type, bool(item.turned)))
 
 
-static func tile_center(area: Rect2i) -> Vector3:
-	var center := (Vector2(area.position) + Vector2(area.size) * .5 - Vector2(COLUMNS, ROWS) * .5) * CELL
+func tile_center(area: Rect2i) -> Vector3:
+	var center := (Vector2(area.position) + Vector2(area.size) * .5 - Vector2(grid_size) * .5) * CELL
 	return Vector3(center.x, 0, center.y)
 
 
@@ -85,16 +87,20 @@ func sync(state: Dictionary) -> void:
 	for id: String in items:
 		if not rendered_items.has(id):
 			var item: Dictionary = items[id]
-			rendered_items[id] = {"key": model_key(item), "node": build_item(item)}
+			var prop := build_item(item)
+			prop.set_meta("warehouse_tile", tile_bounds(item).position)
+			rendered_items[id] = {"key": model_key(item), "node": prop}
 
 
 static func model_key(item: Dictionary) -> Array:
 	return [item.type, item.x, item.z, item.turned, item.get("ready_at", 0)]
 
 
-func build_item(item: Dictionary) -> StaticBody3D:
+func build_item(item: Dictionary, parent: Node3D = null) -> StaticBody3D:
 	var prop := StaticBody3D.new()
-	furnishings.add_child(prop)
+	if parent == null:
+		parent = furnishings
+	parent.add_child(prop)
 	prop.position = tile_center(tile_bounds(item))
 	prop.rotation.y = PI * .5 if item.turned else 0.0
 	var timber := Kit.paint(Color("#ac8053"))

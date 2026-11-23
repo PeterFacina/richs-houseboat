@@ -12,6 +12,7 @@ const BrockhouseWay = preload("res://brockhouse_way.gd")
 const Swisha = preload("res://swisha_dam.gd")
 const Town = preload("res://deep_river_buildings.gd")
 const TownHall = preload("res://deep_river_town_hall.gd")
+const PropertySites = preload("res://deep_river_properties.gd")
 const RoadNetwork = preload("res://deep_river_roads.gd")
 const PublicWorks = preload("res://public_works.gd")
 const Waves = preload("res://swell.gd")
@@ -56,6 +57,7 @@ class TerrainPatch:
 			lerpf(mask[next.y * grid.x + cell.x], mask[next.y * grid.x + next.x], blend.x), blend.y)
 
 var town_hall := TownHall.new()
+var property_sites: Array[Node3D] = []
 var meta: Dictionary
 var regional_streets: Array = preload("res://ottawa/regional_access.json").data.mcanulty_roads
 var elevation: PackedFloat32Array
@@ -216,6 +218,7 @@ func build() -> void:
 				tile(col, row, ground, detail)
 	build_water()
 	build_town()
+	property_sites = PropertySites.build(self, ground_height, concrete_scan, scanned_surface("brick"), wood_scan)
 	build_landmarks()
 	var park := RiverbankPark.new()
 	if meta.has("riverbank"):
@@ -238,6 +241,7 @@ func build() -> void:
 			if Vector2(foot.x, foot.z).distance_squared_to(PLAZA_PORTICO_TREE) < .25:
 				return true
 			return PublicWorks.cleared_for_construction(foot) or park.owns_tree(foot) \
+				or PropertySites.clears_tree(Vector2(foot.x, foot.z)) \
 				or Vector2(foot.x, foot.z).distance_squared_to(RiverbankPark.GAZEBO_SITE) < 36.0 \
 				or (lamure_patch != null and pines.place_from_survey(foot, height)))
 	if meta.has("riverbank"):
@@ -468,7 +472,7 @@ func trees_for_tile(col: int, row: int, rng: RandomNumberGenerator, tree: Mesh, 
 			continue
 		var location := Vector2(x, z)
 		if swisha_patch.area.has_point(location) or marina_patch.area.has_point(location) or canopy_area.has_point(location) \
-				or PublicWorks.road_clearance(location):
+				or PublicWorks.road_clearance(location) or PropertySites.clears_tree(location):
 			continue
 		if wet_clearance(Vector3(x, 0, z)) > 0.0:
 			continue
@@ -642,7 +646,7 @@ func build_town() -> void:
 	var buildings := Town.new()
 	var footprints: Array = meta.buildings.filter(func(building: Dictionary) -> bool:
 		return not PublicWorks.REPLACED_FOOTPRINTS.has(building.id) and building.id != RiverbankPark.GAZEBO_FOOTPRINT \
-			and not TownHall.FOOTPRINTS.has(building.id))
+			and not TownHall.FOOTPRINTS.has(building.id) and not PropertySites.replaces(building.id))
 	if lamure_patch != null:
 		var shelter := Vector2(meta.lamure.shelter[0], meta.lamure.shelter[1])
 		footprints = footprints.filter(func(building: Dictionary):

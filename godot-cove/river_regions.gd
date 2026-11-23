@@ -2,6 +2,7 @@ extends Node3D
 
 const Kit = preload("res://scenery.gd")
 const Pines = preload("res://lamure_pines.gd")
+const PropertySites = preload("res://deep_river_properties.gd")
 const SECTION_SIZE := 18000.0
 const NAMES := ["Entire river reach", "Deep River", "Swisha / Des Joachims", "Chalk River"]
 var game: Node3D
@@ -36,6 +37,7 @@ func setup(scene: Node3D) -> void:
 	road([[swisha.x, swisha.z], [2580, 3790], [2580, 3450], [2470, 3360], [2270, 3380]], 6.4, false, true)
 	clear_pad_trees()
 	plant_travel_groves(ski_trail)
+	clear_property_trees()
 	region_label = Label.new()
 	region_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	game.hud.add_child(region_label)
@@ -141,7 +143,7 @@ func plant_travel_groves(trail: Array) -> void:
 						clear = false
 						break
 				if not clear: break
-			if clear:
+			if clear and not PropertySites.clears_tree(point):
 				var foot := ground(point)
 				if foot.y > 1:
 					pines.plant(foot, random.randf_range(7.5, 15.0), random)
@@ -193,6 +195,23 @@ func clear_pad_trees() -> void:
 				var pose: Transform3D = item.multimesh.get_instance_transform(index)
 				var point: Vector3 = item.to_global(pose.origin)
 				if Vector2(point.x - helipad.x, point.z - helipad.z).length() < 11:
+					pose.basis = Basis(Vector3.ZERO, Vector3.ZERO, Vector3.ZERO)
+					item.multimesh.set_instance_transform(index, pose)
+
+
+func clear_property_trees() -> void:
+	for kind in ["tree_detail", "tree_silhouette", "tree_stem", "regional_crown", "regional_trunk"]:
+		for item in get_tree().get_nodes_in_group("river_graphics_" + kind):
+			if not item is MultiMeshInstance3D or not game.river.is_ancestor_of(item):
+				continue
+			var aabb: AABB = item.global_transform * item.get_aabb()
+			var area := Rect2(Vector2(aabb.position.x, aabb.position.z), Vector2(aabb.size.x, aabb.size.z))
+			if not PropertySites.near_property(area):
+				continue
+			for index in item.multimesh.instance_count:
+				var pose: Transform3D = item.multimesh.get_instance_transform(index)
+				var point: Vector3 = item.to_global(pose.origin)
+				if PropertySites.clears_tree(Vector2(point.x, point.z)):
 					pose.basis = Basis(Vector3.ZERO, Vector3.ZERO, Vector3.ZERO)
 					item.multimesh.set_instance_transform(index, pose)
 
