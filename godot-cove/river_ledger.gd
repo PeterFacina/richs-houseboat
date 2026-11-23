@@ -27,7 +27,7 @@ func fresh() -> Dictionary:
 	}
 
 
-func load_file() -> void:
+func load_file() -> bool:
 	recovered_primary = ""
 	for path: String in [save_path, save_path + ".prev"]:
 		if not FileAccess.file_exists(path):
@@ -52,7 +52,8 @@ func load_file() -> void:
 			state.held_fish.clear()
 			if path != save_path:
 				recovered_primary = save_path
-			return
+			return true
+	return false
 
 
 func save_file() -> void:

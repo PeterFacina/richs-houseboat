@@ -85,6 +85,8 @@ func setup(fishing_game: Node3D) -> void:
 	houseboat = game.vessel as Boat
 	if game.multiplayer_trip:
 		ledger.save_path = Ledger.CREW_SAVE
+	else:
+		ledger.save_path = game.SoloSaves.CAMPAIGNS[game.solo_slot]
 	ledger.load_file()
 	houseboat.set_modern_design(ledger.state.modern_houseboat)
 	crew.name = "Crew"
