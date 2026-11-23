@@ -14,6 +14,8 @@ const SHUTDOWN_TIME := .32
 const START_VOLUME := -13.0
 const THROTTLE_STEP := .05
 const THROTTLE_REPEAT_DELAY := .22
+const CURRENT_SAMPLE_INTERVAL := 2.8
+const MAX_WIND_DRIFT := 1.8
 enum Ignition { OFF, START, RUN }
 const BERTH := Vector3(0.0, 0.0, 12.0)
 const HELM := Vector3(0.0, 0.80, -1.44)
@@ -34,6 +36,11 @@ var hull_name := "LANTERN"
 var river_engine := false
 var motor: Outboard
 var water_flow: Callable
+var current_rng := RandomNumberGenerator.new()
+var current_sample_left := 0.0
+var wind_target := Vector2.ZERO
+var wind_drift := Vector2.ZERO
+var current_engagement := 0.0
 var wave_sampler: Callable
 var wave_pose := Vector3.ZERO
 var helm_wheel: Node3D
@@ -49,7 +56,9 @@ var helm_console: HelmConsole
 var ignition := Ignition.OFF
 var wheel_angle := 0.0
 var requested_throttle := 0.0
+var lever_throttle := 0.0
 var throttle_repeat := 0.0
+var lever_blocked := false
 var crank_time := 0.0
 var crank_confirmed := false
 var shutdown_left := 0.0
@@ -249,7 +258,9 @@ func sail(delta: float, clock: float, driving: bool, rudder: float) -> void:
 func clear_helm() -> void:
 	throttle = 0.0
 	requested_throttle = 0.0
+	lever_throttle = 0.0
 	throttle_repeat = 0.0
+	lever_blocked = false
 	if ignition == Ignition.START:
 		set_ignition(Ignition.OFF)
 
@@ -306,26 +317,35 @@ func tick_ignition(delta: float) -> void:
 
 
 func nudge_throttle(direction: float) -> void:
-	if ignition == Ignition.RUN:
+	if ignition == Ignition.RUN and not lever_blocked:
 		change_throttle(direction, THROTTLE_STEP)
 		throttle_repeat = THROTTLE_REPEAT_DELAY
 
 
-func hold_throttle(delta: float, adjustment: float, legacy: float) -> void:
+func hold_throttle(delta: float, adjustment: float, pedal: float) -> void:
 	if ignition != Ignition.RUN:
 		requested_throttle = 0.0
 		return
-	if adjustment != 0.0:
+	if pedal != 0.0:
+		if not lever_blocked:
+			requested_throttle = 0.0
+		lever_blocked = true
+		lever_throttle = 0.0
+		throttle_repeat = 0.0
+		requested_throttle = move_toward(requested_throttle, 1.0 if pedal > 0.0 else -.32, delta * .90)
+		return
+	if adjustment == 0.0:
+		lever_blocked = false
+		throttle_repeat = 0.0
+	elif not lever_blocked:
 		var delay := throttle_repeat
 		throttle_repeat = maxf(0.0, delay - delta)
 		change_throttle(adjustment, maxf(0.0, delta - delay) * throttle_rate)
-	else:
-		throttle_repeat = 0.0
-		requested_throttle = clampf(requested_throttle + legacy * delta * .90, -.32, 1.0)
+	requested_throttle = lever_throttle
 
 
 func change_throttle(direction: float, amount: float) -> void:
-	requested_throttle = move_toward(requested_throttle, 1.0 if direction > 0.0 else 0.0, amount)
+	lever_throttle = move_toward(lever_throttle, 1.0 if direction > 0.0 else 0.0, amount)
 
 
 func advance_steering(delta: float, direction: float, center_wheel: bool) -> void:
@@ -363,9 +383,9 @@ func sail_river(delta: float, clock: float) -> void:
 	var length := .65 if skiff else 1.0
 	var beam := .68 if skiff else 1.0
 	if departed:
-		var current: Vector3 = water_flow.call(center, clock)
+		var current := passive_water_velocity(delta, clock, power != 0.0)
 		var course := Vector3(-sin(turn), 0, -cos(turn))
-		var next := center + (course * speed + current * .78) * delta
+		var next := center + (course * speed + current) * delta
 		if can_place(next, turn):
 			center = next
 			heading = turn
@@ -373,6 +393,8 @@ func sail_river(delta: float, clock: float) -> void:
 			speed *= .53
 			if not marina_check.is_valid() or marina_check.call(waterline(center, turn), .49 if skiff else .88):
 				heading = turn
+	else:
+		current_engagement = 0.0
 	var fore := Vector3(-sin(heading), 0, -cos(heading))
 	var right := fore.cross(Vector3.UP)
 	var port := sample(center - right * 1.21 * beam, clock)
@@ -388,6 +410,23 @@ func sail_river(delta: float, clock: float) -> void:
 	var wave_scale := lerpf(1.0, .22, foil_lift)
 	transform = Transform3D(Basis.from_euler(Vector3(wave_pose.y * wave_scale, heading, wave_pose.z * wave_scale)),
 		center + Vector3.UP * (wave_pose.x * wave_scale + foil_lift * .51))
+
+
+func passive_water_velocity(delta: float, clock: float, under_power: bool) -> Vector3:
+	current_sample_left -= delta
+	if current_sample_left <= 0.0:
+		current_sample_left += CURRENT_SAMPLE_INTERVAL
+		var strength := clampf(current_rng.randfn(.55, .18), 0.0, 1.0)
+		var direction := current_rng.randf_range(-.85, .85)
+		wind_target = Vector2.from_angle(direction) * strength * MAX_WIND_DRIFT
+	var blend := 1.0 - exp(-delta * 1.6)
+	wind_drift = wind_drift.lerp(wind_target, blend)
+	if under_power or not water_flow.is_valid():
+		current_engagement = 0.0
+		return Vector3.ZERO
+	current_engagement = lerpf(current_engagement, 1.0, blend)
+	var flow: Vector3 = water_flow.call(center, clock)
+	return Vector3(flow.x + wind_drift.x, 0.0, flow.z + wind_drift.y) * current_engagement
 
 
 func in_channel(candidate: Vector3) -> bool:

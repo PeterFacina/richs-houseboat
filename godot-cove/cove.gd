@@ -239,9 +239,9 @@ func _physics_process(delta: float) -> void:
 
 func move_on_river(delta: float, has_input: bool) -> void:
 	var rudder := 0.0
-	if driving and has_input:
-		update_helm_throttle(delta)
-		rudder = axis(KEY_D, KEY_A)
+	if driving:
+		update_helm_throttle(delta, has_input)
+		rudder = axis(KEY_D, KEY_A) if has_input else 0.0
 	var previous_heading: float = vessel.heading
 	step_vessel(delta, rudder)
 	if driving:
@@ -256,8 +256,9 @@ func move_on_river(delta: float, has_input: bool) -> void:
 	boarded = boarded or aboard()
 
 
-func update_helm_throttle(delta: float) -> void:
-	vessel.throttle = clampf(vessel.throttle + axis(KEY_W, KEY_S) * delta * 0.90, -0.32, 1.0)
+func update_helm_throttle(delta: float, has_input: bool) -> void:
+	if has_input:
+		vessel.throttle = clampf(vessel.throttle + axis(KEY_W, KEY_S) * delta * 0.90, -0.32, 1.0)
 
 
 func move_on_foot(delta: float, walk: Vector3, jump: bool) -> void:
