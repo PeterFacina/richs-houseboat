@@ -110,6 +110,7 @@ test('index preserves the game folder, skips credentials, private copies and ove
   const paths = fixture(t);
   mkdirSync(join(paths.game, 'ottawa'));
   writeFileSync(join(paths.game, 'ottawa', 'terrain.gd'), 'not for model');
+  writeFileSync(join(paths.game, 'ottawa_map.gd'), 'extends Node3D\n# shoreline terrain');
   writeFileSync(join(paths.game, 'passwords.txt'), 'not for model');
   writeFileSync(join(paths.game, 'secret_config.gd'), 'not for model');
   writeFileSync(join(paths.game, 'big.gd'), 'x'.repeat(500001));
@@ -123,8 +124,8 @@ test('index preserves the game folder, skips credentials, private copies and ove
   assert.ok(candidates.files.some(file => file.path === 'godot-cove/fishing_rig.gd'));
   const db = openDb(paths.storage);
   try {
-    const expected = ['godot-cove/fishing.tscn', 'godot-cove/fishing_rig.gd', 'godot-cove/project.godot'];
-    assert.equal(scan(db, paths.project).indexed, 3);
+    const expected = ['godot-cove/fishing.tscn', 'godot-cove/fishing_rig.gd', 'godot-cove/ottawa_map.gd', 'godot-cove/project.godot'];
+    assert.equal(scan(db, paths.project).indexed, 4);
     assert.deepEqual(db.prepare('SELECT path FROM files ORDER BY path').all().map(row => row.path), expected);
     assert.equal(scan(db, paths.project).changed, 0);
     assert.ok(projectProfile(db).some(fact => fact.referencedPath === 'godot-cove/fishing.tscn'));
@@ -132,8 +133,25 @@ test('index preserves the game folder, skips credentials, private copies and ove
     assert.ok(sources.some(item => item.path === 'godot-cove/fishing_rig.gd'));
     assert.ok(sources.some(item => item.kind === 'reported'));
     rmSync(join(paths.game, 'fishing_rig.gd'));
-    assert.equal(scan(db, paths.project, ['godot-cove/fishing.tscn']).indexed, 1);
+    assert.equal(scan(db, paths.project, ['godot-cove/fishing.tscn']).indexed, 2);
     assert.ok(!findEvidence(db, note, [], 4000).some(item => item.path === 'godot-cove/fishing_rig.gd'));
+  } finally { db.close(); }
+});
+
+test('focused excerpts keep matching lines beyond the beginning of an indexed chunk', t => {
+  const paths = fixture(t);
+  const file = 'godot-cove/lawn_mower.gd';
+  const lines = ['# lawn mower declarations', ...Array(12).fill('# ' + 'x'.repeat(90)),
+    'func adjust_steering_hands():', '\thands.transform = lever.transform', ...Array(13).fill('# filler')];
+  writeFileSync(join(paths.project, file), lines.join('\n'));
+  const db = openDb(paths.storage);
+  try {
+    scan(db, paths.project);
+    const [excerpt] = findEvidence(db, 'Steering hands jerk.', [file], 5800);
+    assert.equal(excerpt.path, file);
+    assert.match(excerpt.excerpt, /hands\.transform = lever\.transform/);
+    assert.equal(excerpt.excerpt.split('\n')[0], lines[excerpt.line - 1]);
+    assert.ok(excerpt.excerpt.length <= 900);
   } finally { db.close(); }
 });
 

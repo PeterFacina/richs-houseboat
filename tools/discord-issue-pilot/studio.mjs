@@ -10,10 +10,14 @@ export function studioClient(value) {
     const response = await fetch(new URL(path, url), { ...options, signal, redirect: 'error' });
     if (response.status === 409) throw new Error('Studio is busy. Try again after its current generation.');
     if (response.status === 422) throw new Error('Studio blocked the export. Review the prompt in Studio.');
-    if (!response.ok) throw new Error('Studio returned HTTP ' + response.status + ' for ' + path);
+    if (!response.ok) {
+      const detail = await response.json().catch(() => ({}));
+      throw new Error('Studio returned HTTP ' + response.status + ' for ' + path
+        + (detail.error ? ': ' + detail.error : ''));
+    }
     return response;
   }
-  return async function generate(note) {
+  return async function generate(note, focus = []) {
     const signal = AbortSignal.timeout(120_000);
     const session = await (await call('/api/session', signal)).json();
     if (session.privateMode || session.tailscaleMode || !session.user?.csrf) {
@@ -23,7 +27,7 @@ export function studioClient(value) {
       method: 'POST',
       headers: { Origin: url.origin, 'Content-Type': 'application/json',
         'X-Studio-Request': '1', 'X-Studio-CSRF': session.user.csrf },
-      body: JSON.stringify({ note, tier: 'detailed' }),
+      body: JSON.stringify({ note, tier: 'detailed', focus }),
     })).json();
     for (;;) {
       await delay(750, undefined, { signal });
@@ -32,7 +36,8 @@ export function studioClient(value) {
         return (await call('/api/prompts/' + state.recordId + '/download', signal)).text();
       }
       if (state.status !== 'working' && state.status !== 'canceling') {
-        throw new Error('Studio generation ended with status ' + state.status + '.');
+        throw new Error('Studio generation ended with status ' + state.status
+          + (state.error ? ': ' + state.error : '.'));
       }
     }
   };

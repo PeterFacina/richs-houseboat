@@ -6,7 +6,7 @@ const allowed = new Set(['gd', 'tscn', 'tres', 'godot', 'gdshader', 'gdshaderinc
 const rootDocs = ['AGENTS.md', 'GAME GUIDE AND ASSET CREDITS.md', 'START HERE.txt', 'Play Ottawa River.cmd'];
 const historic = ['Ethan House Boat and UI Update.txt', 'Richs Houseboat - Feature List for Peter.txt'];
 const maxBytes = 500_000;
-const privateName = /(?:^|[/_.-])(?:\.git|\.godot|node_modules|\.venv|ottawa|build|cache|exports?|secrets?|credentials?|tokens?|passwords?|private|keys?|env)(?:[/_.-]|$)/i;
+const privateName = /(?:^|[/_.-])(?:\.git|\.godot|node_modules|\.venv|build|cache|exports?|secrets?|credentials?|tokens?|passwords?|private|keys?|env)(?:[/_.-]|$)/i;
 const sensitive = /-----BEGIN [^\n]{0,40}PRIVATE KEY-----|(?:^|\n)\s*(?:export\s+)?(?:[A-Z0-9_]*(?:PASSWORD|API_KEY|ACCESS_TOKEN|SECRET_KEY)|SECRET)\s*[:=]\s*["']?[A-Za-z0-9_+/=-]{8,}/i;
 const stop = new Set('a an and are as at be but by can do for from get had has have how i in is it its me my of on or our so than that the their them then there these they this to use was we were what when where which who will with would you your fix make want need game should must'.split(' '));
 
@@ -32,7 +32,8 @@ export function candidateFiles(project, exclusions = []) {
     if (depth > 8 || files.length >= 650) return skip(path, 'scan limit');
     if (exclusions.some(rule => path.toLowerCase() === rule.toLowerCase() ||
         path.toLowerCase().startsWith(rule.toLowerCase() + '/'))) return skip(path, 'configured exclusion');
-    if (path !== 'godot-cove/project.godot' && privateName.test(path)) return skip(path, 'generated, private or cache path');
+    if (path.toLowerCase() === 'godot-cove/ottawa' ||
+        (path !== 'godot-cove/project.godot' && privateName.test(path))) return skip(path, 'generated, private or cache path');
     try {
       const status = safeStat(root, path);
       if (!status) return skip(path, 'missing or linked path');
@@ -148,10 +149,43 @@ export function discovered(project, exclusions = []) {
   });
 }
 
-export function findEvidence(db, note, focus, budget) {
-  const tokens = [...new Set((note + ' ' + focus.join(' ')).toLowerCase()
+function searchTerms(text) {
+  return [...new Set(text.toLowerCase()
     .split(/[\W_]+/u).filter(word => word.length > 2 && !stop.has(word)))].slice(0, 24);
-  const query = tokens.map(word => '"' + word + '"*').join(' OR ');
+}
+
+function searchQuery(terms) {
+  return terms.map(word => '"' + word + '"*').join(' OR ');
+}
+
+function focusExcerpt(row, terms, limit) {
+  const lines = row.excerpt.split('\n');
+  const matches = lines.map(line => {
+    const words = line.toLowerCase().split(/[\W_]+/u);
+    return terms.filter(term => words.some(word => word.startsWith(term)));
+  });
+  let best = { excerpt: '', distinct: -1, hits: -1, line: row.line };
+  for (let start = 0; start < lines.length; start++) {
+    let excerpt = '';
+    const distinct = new Set();
+    let hits = 0;
+    for (let end = start; end < lines.length; end++) {
+      if (excerpt.length + lines[end].length + 1 > limit) break;
+      excerpt += lines[end] + '\n';
+      for (const term of matches[end]) distinct.add(term);
+      hits += matches[end].length;
+    }
+    if (distinct.size > best.distinct || (distinct.size === best.distinct && hits > best.hits)) {
+      best = { excerpt, distinct: distinct.size, hits, line: row.line + start };
+    }
+  }
+  return { ...row, line: best.line, excerpt: best.excerpt };
+}
+
+export function findEvidence(db, note, focus, budget) {
+  const query = searchQuery(searchTerms(note + ' ' + focus.join(' ')));
+  const reportTerms = searchTerms(note);
+  const reportQuery = searchQuery(reportTerms);
   const rows = query ? db.prepare(
     'SELECT path,line,excerpt,bm25(chunks,3,0,1) AS score FROM chunks WHERE chunks MATCH ? ORDER BY score,path,line LIMIT 80'
   ).all(query) : [];
@@ -164,9 +198,12 @@ export function findEvidence(db, note, focus, budget) {
     used += excerpt.length;
   }
   for (const path of focus.slice(0, 4)) {
-    const row = rows.find(match => match.path === path) ||
+    const match = reportQuery && db.prepare(
+      'SELECT path,line,excerpt FROM chunks WHERE chunks MATCH ? AND path=? ORDER BY bm25(chunks,0,0,1),line LIMIT 1'
+    ).get(reportQuery, path);
+    const row = match ||
       db.prepare('SELECT path,line,excerpt FROM chunks WHERE path=? ORDER BY line LIMIT 1').get(path);
-    if (row) add({ ...row, kind: 'source', reason: 'Selected file' }, 900);
+    if (row) add({ ...focusExcerpt(row, reportTerms, 900), kind: 'source', reason: 'Selected file' }, 900);
   }
   const sourceCount = () => result.filter(item => item.kind === 'source').length;
   const areas = [
