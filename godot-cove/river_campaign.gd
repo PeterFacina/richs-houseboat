@@ -303,6 +303,7 @@ func run_shortcuts(has_input: bool) -> void:
 
 
 func local_interact() -> bool:
+	if game.properties.interact(): return true
 	if game.helicopter.interact(): return true
 	if amenities.interact(): return true
 	var launch_action := launch_interaction()
@@ -859,6 +860,9 @@ func tell(peer: int, text: String, at_site := -2, to_boat := false) -> void:
 
 
 func receive_result(text: String, at_site: int, to_boat: bool) -> void:
+	if at_site == game.properties.RESULT:
+		game.properties.report(text)
+		return
 	if at_site == LAUNCH_REFUSED:
 		boats_menu.report(text, false)
 		return
@@ -971,6 +975,9 @@ func add_test_cash() -> void:
 
 
 func perform(peer: int, action: String, value: Variant) -> void:
+	if action == game.properties.ACTION:
+		game.properties.perform(peer, value)
+		return
 	if action == "purchase_skill":
 		if value is Array and value.size() == 2 and value[0] is String and value[1] is int:
 			var profile := progression_for(peer)

@@ -77,6 +77,7 @@ var sonar_overlay: TextureRect
 var fish_guide: Guide
 var cabin: Cabin
 var trophy: Trophy
+var properties := preload("res://property_management.gd").new()
 var skill_screen := preload("res://progression_screen.tscn").instantiate()
 var campaign: Campaign
 var marina_cars: MarinaCars
@@ -239,6 +240,8 @@ func _ready() -> void:
 	campaign = Campaign.new()
 	add_child(campaign)
 	campaign.setup(self)
+	add_child(properties)
+	properties.setup(self)
 	if not multiplayer_trip:
 		for species_name: String in campaign.ledger.state.records:
 			discovered_species["Muskellunge" if species_name == "Trophy muskellunge" else species_name] = true
@@ -365,6 +368,11 @@ func build_tension_display() -> void:
 
 
 func _input(event: InputEvent) -> void:
+	if properties.panel.visible:
+		if event.is_action_pressed(&"ui_cancel"):
+			properties.close()
+			get_viewport().set_input_as_handled()
+		return
 	if is_instance_valid(campaign) and campaign.boats_menu.visible:
 		if event.is_action_pressed(&"ui_cancel"):
 			campaign.boats_menu.close()
@@ -467,7 +475,7 @@ func _input(event: InputEvent) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if skill_screen.panel.visible or campaign.boats_menu.visible or pause_menu.visible or fish_guide.visible \
+	if properties.panel.visible or skill_screen.panel.visible or campaign.boats_menu.visible or pause_menu.visible or fish_guide.visible \
 			or teleport_dialog.visible or backpack.inventory.visible or cheats.visible:
 		return
 	if flying or mower.rider != null:
@@ -698,7 +706,7 @@ func _process(delta: float) -> void:
 
 
 func menu_blocks_play() -> bool:
-	return skill_screen.panel.visible or pause_menu.visible or chart.visible or fish_guide.visible or backpack.inventory.visible or cheats.visible or campaign.controls_blocked()
+	return properties.panel.visible or skill_screen.panel.visible or pause_menu.visible or chart.visible or fish_guide.visible or backpack.inventory.visible or cheats.visible or campaign.controls_blocked()
 
 
 func close_cheats() -> void:
@@ -1898,6 +1906,10 @@ func update_hud() -> void:
 				instruction.text = bay.prompt()
 			elif can_mount_mower():
 				instruction.text = "E  Mount lawn mower"
+	if play_input() and clock >= note_until and mower.rider == null and marina_cars.active < 0:
+		var property_hint: String = properties.hint()
+		if not property_hint.is_empty():
+			instruction.text = property_hint
 	if play_input() and can_use_fuel() and clock >= note_until:
 		var fuel_hint: String = campaign.marina_fuel.hint()
 		if not fuel_hint.is_empty():
