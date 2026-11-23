@@ -5,7 +5,7 @@ const Voice = preload("res://shannon_voice.gd")
 const Routes = preload("res://mowing_routes.gd")
 const Model = preload("res://shannon_model.gd")
 const TALK_DISTANCE := 2.8
-const PAY := 75
+const PAY := 20
 const OFFER: Array[String] = ["Do you want this job today, lil man?"]
 const REMINDERS: Array[String] = [
 	"We gonna put you into the ringer, son.",
@@ -67,7 +67,8 @@ func setup(fishing_game: Node3D, grass_owner: AnimatableBody3D, station: Vector3
 	progress.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
 	progress.offset_left = -380
 	progress.offset_right = -28
-	progress.offset_top = 106
+	progress.offset_top = 245
+	progress.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	progress.hide()
 	calendar = game.label("", 17, Color("#fff2c5"))
 	calendar.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
@@ -175,7 +176,7 @@ func commercial_available() -> bool:
 func prompt() -> String:
 	match status:
 		Status.CUTTING: return "E  Talk to " + Voice.SPEAKER
-		Status.RETURNING: return "E  Collect $%d from %s" % [game.campaign.mowing_pay(PAY * (2 if commercial else 1)), Voice.SPEAKER]
+		Status.RETURNING: return "E  Collect $%d from %s" % [game.campaign.mowing_pay(PAY * (3 if commercial else 1)), Voice.SPEAKER]
 		Status.OFFERED: return "E  Accept today's mowing route"
 		_:
 			if int(game.campaign.ledger.state.last_mowing_day) == current_day():
@@ -228,7 +229,7 @@ func interact() -> void:
 			else:
 				job_state.last_mowing_day = job_day
 			clear_job()
-			var paid: int = game.campaign.reward_mowing(PAY * (2 if commercial else 1), commercial)
+			var paid: int = game.campaign.reward_mowing(PAY * (3 if commercial else 1), commercial)
 			game.notify_angling("Grass cutting  ·  +$%d" % paid, 4.0)
 			voice.say(FINISH, distance)
 
@@ -283,7 +284,7 @@ func update_progress() -> void:
 	if status == Status.RETURNING:
 		progress.text = "JOB COMPLETE!\nRoute requirement met  ·  Return to Shannon Larping"
 	else:
-		progress.text = "%s  ·  %d%% cut" % [route_name, floori(100.0 * cut_count / tuft_cells.size())]
+		progress.text = "%s\n✓ Route accepted   •   Cut grass: %d%%\nThen return to Shannon" % [route_name, floori(100.0 * cut_count / tuft_cells.size())]
 
 
 func tick(delta: float, can_talk: bool) -> void:

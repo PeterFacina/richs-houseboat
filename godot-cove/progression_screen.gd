@@ -1,5 +1,6 @@
 extends CanvasLayer
 
+const Atlas = preload("res://river_menu_theme.gd")
 const XP = preload("res://progression.gd")
 const COLORS := {"Fishing": Color.SKY_BLUE, "Lawn Care": Color.PALE_GREEN, "Boating": Color.TURQUOISE, "Driving": Color.ORANGE, "Business": Color.PLUM, "Exploration": Color.CORAL}
 var game: Node
@@ -13,9 +14,12 @@ var purchase := Button.new()
 var summary := Label.new()
 var tabs := HFlowContainer.new()
 var banner := Label.new()
+var promotion_tween: Tween
 var category := "Fishing"
 var selected := ""
-var previous_mode := Input.MOUSE_MODE_VISIBLE
+var dragging := false
+var graph_layout_pending := false
+var graph_revision := 0
 var last_xp := -1
 var last_level := 1
 var initialized := false
@@ -48,31 +52,36 @@ func setup(owner_game: Node) -> void:
 	banner.offset_top = 85
 	banner.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	banner.add_theme_font_size_override("font_size", 24)
-	banner.modulate = Color.GOLD
+	banner.add_theme_color_override("font_color", Atlas.CREAM)
+	banner.add_theme_stylebox_override("normal", Atlas.box(Color("#182f40dc"), Color("#dfb784bb"), 10, 18))
+	banner.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	banner.hide()
 	var surface := StyleBoxFlat.new()
-	surface.bg_color = Color("#13292f")
+	surface.bg_color = Atlas.CREAM
+	surface.set_border_width_all(2)
+	surface.border_color = Atlas.SAND
+	surface.set_corner_radius_all(14)
+	panel.theme = Atlas.get_theme()
 	surface.content_margin_left = 20
 	surface.content_margin_right = 20
 	surface.content_margin_top = 16
 	surface.content_margin_bottom = 16
 	panel.add_theme_stylebox_override("panel", surface)
-	add_child(panel)
-	panel.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	game.campaign.board.skill_page.add_child(panel)
+	game.campaign.board.skill_page.visibility_changed.connect(sync_book_page)
 	panel.hide()
 	var layout := VBoxContainer.new()
 	panel.add_child(layout)
+	layout.add_child(Atlas.text("Crew skill journal", 30, Atlas.NAVY, true))
 	layout.add_child(summary)
 	layout.add_child(tabs)
 	for branch: String in COLORS:
-		var tab := Button.new()
+		var tab := Atlas.button(branch, &"QuietAction", {"Fishing":"fish", "Lawn Care":"tools", "Boating":"river", "Driving":"chart", "Business":"jobs", "Exploration":"journal"}[branch], 40)
+		tab.toggle_mode = true
 		tab.text = branch
 		tabs.add_child(tab)
 		tab.pressed.connect(show_branch.bind(branch))
-	var close := Button.new()
-	close.text = "Close"
-	tabs.add_child(close)
-	close.pressed.connect(toggle)
+	graph.mouse_default_cursor_shape = Control.CURSOR_DRAG
 	var columns := HSplitContainer.new()
 	layout.add_child(columns)
 	columns.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -80,11 +89,17 @@ func setup(owner_game: Node) -> void:
 	graph.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var sidebar := VBoxContainer.new()
 	columns.add_child(sidebar)
-	sidebar.custom_minimum_size.x = 240
+	sidebar.custom_minimum_size.x = 200
+	sidebar.add_child(Atlas.text("Skill details", 23, Atlas.BLUE, true))
+	sidebar.add_theme_constant_override("separation", 15)
+	purchase.theme_type_variation = &"MainAction"
 	graph.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	graph.minimap_enabled = false
 	graph.zoom = .85
-	graph.show_grid = false
+	graph.add_theme_stylebox_override("panel", Atlas.box(Atlas.MIST, Atlas.SAND, 10))
+	graph.show_grid = true
+	graph.add_theme_color_override("grid_minor", Color("#1c567315"))
+	graph.add_theme_color_override("grid_major", Color("#1c567332"))
 	graph.show_arrange_button = false
 	graph.show_grid_buttons = false
 	sidebar.add_child(details)
@@ -95,17 +110,50 @@ func setup(owner_game: Node) -> void:
 		game.campaign.request("purchase_skill", [selected, rank]))
 
 func toggle() -> void:
-	panel.visible = not panel.visible
-	if panel.visible:
-		previous_mode = Input.mouse_mode
-		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
-		show_branch(category)
-		tabs.get_child(0).grab_focus()
+	if panel.is_visible_in_tree():
+		game.campaign.close_board()
 	else:
-		Input.mouse_mode = previous_mode
+		game.campaign.open_board("Skill Tree")
 
-func show_branch(branch: String) -> void:
+func sync_book_page() -> void:
+	panel.visible = game.campaign.board.skill_page.is_visible_in_tree()
+	dragging = false
+	if panel.visible:
+		show_branch(category)
+
+func _input(event: InputEvent) -> void:
+	if not panel.is_visible_in_tree():
+		return
+	if event is InputEventMouseMotion and dragging:
+		if event.button_mask & MOUSE_BUTTON_MASK_LEFT:
+			graph.scroll_offset -= event.relative
+			get_viewport().set_input_as_handled()
+		else:
+			dragging = false
+	elif event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
+		if not event.pressed:
+			if dragging:
+				dragging = false
+				get_viewport().set_input_as_handled()
+			return
+		var hovered := get_viewport().gui_get_hovered_control()
+		while hovered != null and hovered != graph:
+			if hovered is GraphNode or hovered is BaseButton or hovered is ScrollBar:
+				return
+			hovered = hovered.get_parent_control()
+		if hovered == graph:
+			dragging = true
+			get_viewport().set_input_as_handled()
+
+func show_branch(branch: String, preserve_view := false) -> void:
+	var offset := graph.scroll_offset if preserve_view and not graph_layout_pending else Vector2.ZERO
+	graph_layout_pending = true
+	graph_revision += 1
+	var revision := graph_revision
 	category = branch
+	for tab in tabs.get_children():
+		if tab is Button and tab.toggle_mode:
+			tab.set_pressed_no_signal(tab.text == branch)
 	graph.clear_connections()
 	for child in graph.get_children():
 		if child is GraphNode:
@@ -125,13 +173,17 @@ func show_branch(branch: String) -> void:
 		var row := int(skill.row)
 		var node := GraphNode.new()
 		node.name = id
+		node.draggable = false
 		node.title = skill.name
 		var card := StyleBoxFlat.new()
-		card.bg_color = Color("#20363d")
+		card.bg_color = Atlas.PAPER
+		card.content_margin_left = 10
+		card.content_margin_right = 10
 		card.set_corner_radius_all(6)
 		node.add_theme_stylebox_override("panel", card)
 		var title_box := card.duplicate() as StyleBoxFlat
-		title_box.bg_color = Color("#30474c")
+		title_box.bg_color = Atlas.BLUE
+		node.get_titlebar_hbox().get_child(0).add_theme_color_override("font_color", Atlas.PAPER)
 		node.add_theme_stylebox_override("titlebar", title_box)
 		node.position_offset = Vector2(40 + depth * 214, 92 + row * 148 + (depth % 2) * 45)
 		graph.add_child(node)
@@ -143,12 +195,16 @@ func show_branch(branch: String) -> void:
 		button.text = "%d / %d" % [rank, skill.cap]
 		button.tint = Color.GOLD if rank >= int(skill.cap) else (Color.AQUAMARINE if rank > 0 else (COLORS[branch] if XP.can_buy(profile(), id) else Color.GRAY))
 		button.pressed.connect(select_skill.bind(id))
-		node.set_slot(0, true, 0, COLORS[branch], true, 0, COLORS[branch])
+		node.set_slot(0, true, 0, Atlas.BLUE, true, 0, Atlas.BLUE)
 	for id: String in depths:
 		for dep: String in catalog[id].requires:
 			graph.connect_node(dep, 0, id, 0)
 	select_skill(selected if depths.has(selected) else first)
-	graph.set_deferred("scroll_offset", Vector2.ZERO)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	if revision == graph_revision:
+		graph.scroll_offset = offset
+		graph_layout_pending = false
 
 func profile() -> Dictionary:
 	return game.campaign.progression_for(game.campaign.crew.my_id())
@@ -201,13 +257,22 @@ func _process(_delta: float) -> void:
 	if initialized and last_xp >= 0 and xp > last_xp:
 		toast.text = "+%d XP   •   %s" % [xp - last_xp, str(p.get("reason", "")).capitalize()]
 		if stats.level > last_level:
-			banner.text = "LEVEL UP   %d\n+%d skill points" % [stats.level, stats.level - last_level]
+			banner.text = "LEVEL   %02d\n+%d skill points" % [stats.level, stats.level - last_level]
 			banner.modulate.a = 0.0
 			banner.show()
-			var pulse := create_tween()
-			pulse.tween_property(banner, "modulate:a", 1.0, .2)
-			pulse.tween_interval(1.7)
-			pulse.tween_property(banner, "modulate:a", 0.0, .4)
+			if promotion_tween:
+				promotion_tween.kill()
+			banner.offset_top = 55
+			banner.scale = Vector2(.92, .92)
+			banner.pivot_offset = banner.size * .5
+			promotion_tween = create_tween().set_trans(Tween.TRANS_QUART).set_ease(Tween.EASE_OUT)
+			promotion_tween.tween_property(banner, "modulate:a", 1.0, .32)
+			promotion_tween.parallel().tween_property(banner, "offset_top", 90, .55)
+			promotion_tween.parallel().tween_property(banner, "scale", Vector2.ONE, .55)
+			promotion_tween.tween_interval(2.1)
+			promotion_tween.tween_property(banner, "modulate:a", 0.0, .45)
+			promotion_tween.parallel().tween_property(banner, "offset_top", 72, .45)
+			promotion_tween.tween_callback(banner.hide)
 		if fade:
 			fade.kill()
 		toast.modulate.a = 0
@@ -220,4 +285,4 @@ func _process(_delta: float) -> void:
 	last_level = stats.level
 	last_points = stats.points
 	if panel.visible:
-		show_branch(category)
+		show_branch(category, true)

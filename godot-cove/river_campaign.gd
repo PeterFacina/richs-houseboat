@@ -109,9 +109,10 @@ func setup(fishing_game: Node3D) -> void:
 	info.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
 	info.offset_left = -482
 	info.offset_right = -26
-	info.offset_top = 53
-	info.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	info.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	info.offset_top = 108
+	info.add_theme_stylebox_override("normal", preload("res://river_menu_theme.gd").box(Color("#182f40d6"), Color("#dfb78499"), 8, 10))
+	info.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	ghost_paint = Kit.paint(Color(.46, .88, .69, .35))
 	ghost_paint.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	ghost_paint.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
@@ -1292,10 +1293,10 @@ func deliver(peer: int, place: int) -> void:
 	if job.kind == "freight":
 		var origin: Vector3 = landings.sites[job.home].berth
 		if ledger.state.freight_run >= origin.distance_to(landings.sites[place].berth) * .78:
-			reward[0] += 25
+			reward[0] += roundi(float(job.reward[0]) * .20)
 		var line: Dictionary = ledger.state.routes.get(ledger.route_key(job.home, place), {})
 		if not line.is_empty():
-			reward[0] += 20
+			reward[0] += roundi(float(job.reward[0]) * .12)
 			reward[2] += 2
 			line.shipments += 1
 	var profile := progression_for(peer)
@@ -1303,11 +1304,18 @@ func deliver(peer: int, place: int) -> void:
 	if job.kind == "freight":
 		var run_required: float = landings.sites[job.home].berth.distance_to(landings.sites[place].berth) * .78
 		eligible = ledger.state.freight_run >= run_required
+	var history: Dictionary = profile.get("contract_completions", {})
+	var completed := int(history.get(job.kind, 0))
+	var bonus := XP.effect(profile, "better_negotiator")
+	if eligible and int(profile.get("worked_job", -1)) == ledger.state.job_serial:
+		bonus += mini(3, completed / 4) * 5
 	if eligible:
 		for contributor: Dictionary in ledger.state.progression.values():
 			if int(contributor.get("worked_job", -1)) == ledger.state.job_serial:
 				XP.award(contributor, "fish_delivery" if job.kind == "fish" else "delivery", "job:%d" % ledger.state.job_serial)
-	var bonus := XP.effect(profile, "better_negotiator")
+				var record: Dictionary = contributor.get("contract_completions", {})
+				record[job.kind] = int(record.get(job.kind, 0)) + 1
+				contributor.contract_completions = record
 	if job.kind == "freight":
 		bonus += XP.effect(profile, "delivery_specialist")
 	reward[0] = roundi(float(reward[0]) * (1.0 + bonus / 100.0))
@@ -1468,7 +1476,7 @@ func button_selected(action: String, value: Variant) -> void:
 			game.open_chart(action == "catch_journal")
 		"fish_guide":
 			board.hide()
-			game.open_fish_guide()
+			game.open_fish_guide(board.active_page)
 		"leave":
 			var error: String = game.leave_trip()
 			if not error.is_empty():
@@ -1586,21 +1594,27 @@ func jobs_page(rows: Array[Dictionary], data: Dictionary, site: int) -> void:
 		if not complete and active.kind == "fish":
 			subtitle += "  %d of 2 logged." % ledger.state.job_fish.size()
 		elif active.kind == "freight":
-			subtitle += "  Earn an extra $25 if you run the trip under your own power."
+			subtitle += "  Earn a 20% cash bonus if you run the trip under your own power."
 		add(rows, active.name, subtitle, "Check in" if complete else "", "deliver", null, site != destination, true)
 		if active.has("offset") and not complete:
 			add(rows, "On the water", "Your buoy or skiff is marked in the world while this job is active.")
 		add(rows, "Put the job back on the board", "You can pick it up again at its original landing.",
 			"Drop job", "abandon", null, site < 0)
 		return
-	for index in Data.WORK.size():
+	var offers := range(Data.WORK.size())
+	offers.sort_custom(func(a: int, b: int) -> bool: return Data.WORK[a].reward[0] < Data.WORK[b].reward[0])
+	for index: int in offers:
 		var job: Dictionary = Data.WORK[index]
 		if job.has("skill") and rank_for(crew.my_id(), job.skill) < 1:
 			continue
 		var prize: Array = job.reward
 		var location: String = Data.dock_name(job.home)
 		var requirement := str(job.get("needs", ""))
-		var detail: String = "%s  •  %s\nPays $%d, %d timber, %d parts" % [location, job.detail, prize[0], prize[1], prize[2]]
+		var tier := "Local" if int(prize[0]) < 35 else ("Regional" if int(prize[0]) < 80 else "Specialist")
+		var detail: String = "%s contract · %s  •  %s\nPays $%d, %d timber, %d parts" % [tier, location, job.detail, prize[0], prize[1], prize[2]]
+		var history: Dictionary = progression_for(crew.my_id()).get("contract_completions", {})
+		var completed := int(history.get(job.kind, 0))
+		detail += "\n%s experience: %d finished · %d%% repeat-work bonus" % [str(job.kind).capitalize(), completed, mini(3, completed / 4) * 5]
 		var ready := Data.requirement(requirement, ledger.state.equipment)
 		if not ready:
 			detail += "  •  Needs %s" % Data.UPGRADES[requirement].name
@@ -1734,15 +1748,21 @@ func update_info() -> void:
 	if dive.active:
 		info.text = dive.status_text()
 		return
-	if job.is_empty():
-		info.text = ""
-	elif ledger.state.stage == "return":
-		info.text = "B  Check in at %s   •   %s" % [Data.dock_name(job.get("dest", job.home)), job.name]
-	elif job.kind == "fish":
-		info.text = "B  %s   •   %d of 2 fish logged" % [job.name, ledger.state.job_fish.size()]
-	else:
-		info.text = "B  %s   •   %d m to marker" % [job.name, roundi(game.vessel.center.distance_to(target_for_job()))]
-	if guiding:
+	info.text = ""
+	if not job.is_empty():
+		var destination := int(job.get("dest", job.home))
+		var landing: String = Data.dock_name(destination)
+		var ready: bool = ledger.state.stage == "return"
+		var action: String = {"survey":"Take a sounding at the buoy", "rescue":"Secure the towline", "salvage":"Lift the marked crate", "dive":"Retrieve the submerged recorder", "fish":"Log two fish", "freight":"Sail to " + landing}.get(job.kind, job.detail)
+		var distance: float = game.player.global_position.distance_to(landings.sites[destination].berth)
+		if job.kind == "fish" and not ready:
+			action += " (%d/2)" % ledger.state.job_fish.size()
+		elif job.has("offset") and not ready:
+			action += " · %d m" % roundi(game.vessel.center.distance_to(target_for_job()))
+		if job.kind == "freight":
+			ready = dock == destination
+		info.text = "%s\n✓  Contract accepted\n%s  %s\n%s  Check in at %s · %d m" % [job.name, "✓" if ready else "→", action, "→" if ready else "□", landing, roundi(distance)]
+	if guiding and job.is_empty():
 		var destination := "%s  ·  %.2f km" % [Data.dock_name(guide_site), game.player.global_position.distance_to(landings.sites[guide_site].berth) / 1000.0]
 		info.text = destination if job.is_empty() else "%s   /   %s" % [info.text, destination]
 
@@ -1753,7 +1773,11 @@ func mark_world() -> void:
 	var target := Vector3.INF
 	var hint := ""
 	var job := ledger.active_job()
-	if guide_site >= 0 and guide_site != dock:
+	if not job.is_empty() and ledger.state.stage == "return":
+		var destination := int(job.get("dest", job.home))
+		target = landings.sites[destination].berth + Vector3.UP * 2.5
+		hint = Data.dock_name(destination)
+	elif job.is_empty() and guide_site >= 0 and guide_site != dock:
 		target = landings.sites[guide_site].berth + Vector3.UP * 2.5
 		hint = Data.dock_name(guide_site)
 	elif not job.is_empty() and job.has("offset") and ledger.state.stage == "travel":

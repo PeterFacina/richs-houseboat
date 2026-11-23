@@ -110,6 +110,8 @@ var live_label: Label
 var tension_fill: StyleBoxFlat
 var random := RandomNumberGenerator.new()
 var journal: Array = []
+var discovered_species := {}
+var guide_book_page := ""
 var chart := RiverChart.new()
 var graphics := preload("res://river_graphics.gd").new()
 var teleport_dialog: ConfirmationDialog
@@ -193,6 +195,9 @@ func _ready() -> void:
 	campaign = Campaign.new()
 	add_child(campaign)
 	campaign.setup(self)
+	if not multiplayer_trip:
+		for species_name: String in campaign.ledger.state.records:
+			discovered_species["Muskellunge" if species_name == "Trophy muskellunge" else species_name] = true
 	add_child(skill_screen)
 	skill_screen.setup(self)
 	regions = Regions.new()
@@ -320,7 +325,7 @@ func _input(event: InputEvent) -> void:
 			skill_screen.toggle()
 			get_viewport().set_input_as_handled()
 			return
-		if event is InputEventKey and event.pressed and not event.echo and ((event.physical_keycode == KEY_K and (skill_screen.panel.visible or not menu_blocks_play())) or (event.physical_keycode == KEY_ESCAPE and skill_screen.panel.visible)):
+		if event is InputEventKey and event.pressed and not event.echo and ((event.physical_keycode == KEY_K and (skill_screen.panel.visible or not menu_blocks_play())) or (event.physical_keycode in [KEY_ESCAPE, KEY_B] and skill_screen.panel.visible)):
 			skill_screen.toggle()
 			get_viewport().set_input_as_handled()
 			return
@@ -747,6 +752,10 @@ func can_wade_at(point: Vector3) -> bool:
 
 func close_guide() -> void:
 	fish_guide.hide()
+	if not guide_book_page.is_empty():
+		campaign.open_board(guide_book_page)
+		guide_book_page = ""
+		return
 	if DisplayServer.get_name() != "headless":
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
@@ -1276,10 +1285,19 @@ func accept_crew_scoop(serial: int, helper: int, display_name: String) -> void:
 func read_journal() -> void:
 	var path := CREW_JOURNAL if multiplayer_trip else JOURNAL
 	var saved: Variant = JSON.parse_string(FileAccess.get_file_as_string(path)) if FileAccess.file_exists(path) else null
+	if saved is Dictionary:
+		var collection: Variant = saved.get("species", [])
+		if collection is Array:
+			for species: Variant in collection:
+				if species is String:
+					discovered_species[species] = true
+		saved = saved.get("journal", [])
 	if saved is Array:
 		for entry: Variant in saved:
 			if entry is String:
 				journal.append(entry)
+				var species_name: String = entry.get_slice("  ·  ", 0)
+				discovered_species["Muskellunge" if species_name == "Trophy muskellunge" else species_name] = true
 
 
 func record_catch() -> void:
@@ -1294,12 +1312,13 @@ func record_catch() -> void:
 			campaign.XP.award(campaign.progression_for(crew_scoop_helper), reward, "catch:%d" % campaign.ledger.state.catch_serial)
 		campaign.changed()
 	catch_count += 1
+	discovered_species[Species.profile(catch_type).name] = true
 	journal.push_front(catch_note)
 	if journal.size() > 25:
 		journal.resize(25)
 	var file := FileAccess.open(CREW_JOURNAL if multiplayer_trip else JOURNAL, FileAccess.WRITE)
 	if file:
-		file.store_string(JSON.stringify(journal))
+		file.store_string(JSON.stringify({"format": 2, "species": discovered_species.keys(), "journal": journal}))
 	refresh_journal()
 	campaign.request("catch", [name_in_journal, catch_length])
 
@@ -1380,16 +1399,12 @@ func close_chart() -> void:
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
 
-func open_fish_guide() -> void:
+func open_fish_guide(book_page := "") -> void:
+	guide_book_page = book_page
 	chart.hide()
 	sonar_overlay.hide()
 	release_line()
-	var catches: Dictionary = campaign.ledger.state.records.duplicate()
-	for entry: String in journal:
-		catches[entry.get_slice("  ·  ", 0)] = true
-	if catches.has("Trophy muskellunge"):
-		catches["Muskellunge"] = true
-	fish_guide.set_catches(catches)
+	fish_guide.set_catches(discovered_species)
 	fish_guide.show()
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 
