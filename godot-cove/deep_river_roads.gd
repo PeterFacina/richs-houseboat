@@ -3,6 +3,7 @@ extends RefCounted
 const Kit = preload("res://scenery.gd")
 const PublicWorks = preload("res://public_works.gd")
 const CivicParking = preload("res://deep_river_civic_parking.gd")
+const Furniture = preload("res://deep_river_champlain_furniture.gd")
 const ROAD_LAYER := 1 << 18
 const CHUNK_SIZE := 256.0
 const JUNCTION_LIFT := .043
@@ -14,10 +15,18 @@ const SIGNALS = preload("res://deep_river_signals.gd")
 const CHAMPLAIN := 6
 const DEEP_RIVER_ROAD := 11
 const CIVIC_ACCESS := Vector2(99.3, 4.5)
-const PARKING_LIMITS := Vector4(12.0, 21.0, 105.0, 115.0)
 const STREET_HALF_WIDTH := 3.4
 const PARKING_HALF_WIDTH := 8.7
-const CHAMPLAIN_SIDEWALK_WIDTH := 1.65
+const CHAMPLAIN_SIDEWALK_WIDTH := 2.25
+const CHAMPLAIN_WALK_START := 6.0
+const CHAMPLAIN_WALK_END := Vector2(159.98, 174.2)
+# Each station gives the pavement width on the east and west sides respectively.
+const CHAMPLAIN_PROFILE := [
+	Vector3(8.0, 3.4, 3.4), Vector3(12.0, 4.75, 4.75), Vector3(18.0, 8.7, 8.7),
+	Vector3(106.0, 8.7, 8.7), Vector3(124.0, 5.15, 8.7), Vector3(148.0, 5.15, 8.7),
+	Vector3(155.0, 3.4, 8.7), Vector3(162.5, 3.4, 8.7), Vector3(169.0, 3.4, 5.8),
+	Vector3(173.0, 3.4, 3.4),
+]
 const RIDGE := 49
 const BROCKHOUSE := 76
 const MARINA_APPROACH := 62
@@ -36,8 +45,8 @@ class Span:
 	var station: float
 	var total: float
 	var width: float
-	var start_width: float
-	var end_width: float
+	var start_width: Vector2
+	var end_width: Vector2
 	var shoulder: float
 	var marking: Marking
 	var fine: bool
@@ -72,6 +81,8 @@ func build(map: Node3D, data: Dictionary, elevation: Callable, parking_mask: Tex
 	paved.set_shader_parameter("asphalt_scan", gravel_grain)
 	paved.set_shader_parameter("concrete_scan", stone)
 	paved.set_shader_parameter("champlain_access", CIVIC_ACCESS)
+	paved.set_shader_parameter("champlain_bays", Vector4(Furniture.BAY_START, Furniture.BAY_PITCH,
+		Furniture.BAY_SLOPE, Furniture.BAY_LANE_EDGE))
 	if parking_mask != null:
 		marina_apron = parking_mask.get_image()
 		marina_area = detail_areas[0]
@@ -106,10 +117,9 @@ func build(map: Node3D, data: Dictionary, elevation: Callable, parking_mask: Tex
 	var signals := SIGNALS.new()
 	network.add_child(signals)
 	signals.build(streets, ground)
-	var sidewalk := Kit.paint(Color("#e0dacf"))
-	sidewalk.albedo_texture = stone
-	sidewalk.uv1_triplanar = true
-	sidewalk.uv1_scale = Vector3.ONE * .55
+	var sidewalk := ShaderMaterial.new()
+	sidewalk.shader = preload("res://champlain_sidewalk.gdshader")
+	sidewalk.set_shader_parameter("concrete_scan", stone)
 	for cell: Vector2i in chunks:
 		var batch: Dictionary = chunks[cell]
 		var origin := Vector3(cell.x * CHUNK_SIZE, 0.0, cell.y * CHUNK_SIZE)
@@ -126,6 +136,7 @@ func build(map: Node3D, data: Dictionary, elevation: Callable, parking_mask: Tex
 			edges.append(outline)
 		span.neighbors.clear()
 	CivicParking.new().build(network, ground, paved, edges, ROAD_LAYER)
+	Furniture.new().build(network, streets[CHAMPLAIN], ground, champlain_half_width)
 	chunks.clear()
 	spans.clear()
 
@@ -142,7 +153,12 @@ static func champlain_line(line: Array) -> Array:
 	var end := Vector2(line[1][0], line[1][1])
 	var axis := (end - start).normalized()
 	var points: Array = [line[0]]
-	for distance: float in [PARKING_LIMITS.x, PARKING_LIMITS.y, PARKING_LIMITS.z, PARKING_LIMITS.w]:
+	var breaks: Array[float] = [CHAMPLAIN_WALK_START, CHAMPLAIN_WALK_END.x, CHAMPLAIN_WALK_END.y,
+		CIVIC_ACCESS.x - CIVIC_ACCESS.y, CIVIC_ACCESS.x + CIVIC_ACCESS.y]
+	for section: Vector3 in CHAMPLAIN_PROFILE:
+		breaks.append(section.x)
+	breaks.sort()
+	for distance in breaks:
 		var at := start + axis * distance
 		points.append([at.x, at.y])
 	points.append_array(line.slice(1))
@@ -152,14 +168,32 @@ static func champlain_line(line: Array) -> Array:
 static func clears_champlain_tree(point: Vector2, start: Vector2, axis: Vector2) -> bool:
 	var delta := point - start
 	var station := delta.dot(axis)
-	return station >= PARKING_LIMITS.x and station <= PARKING_LIMITS.w and \
-		absf(delta.dot(axis.orthogonal())) <= champlain_half_width(station) + CHAMPLAIN_SIDEWALK_WIDTH + .48
+	var offset := delta.dot(axis.orthogonal())
+	var side := signf(offset)
+	return station >= CHAMPLAIN_WALK_START and station <= CHAMPLAIN_WALK_END.y and \
+		absf(offset) <= champlain_half_width(station, side) + champlain_walk_width(station, side) + .48
 
 
-static func champlain_half_width(station: float) -> float:
-	var taper_in := inverse_lerp(PARKING_LIMITS.x, PARKING_LIMITS.y, station)
-	var taper_out := inverse_lerp(PARKING_LIMITS.w, PARKING_LIMITS.z, station)
-	return lerpf(STREET_HALF_WIDTH, PARKING_HALF_WIDTH, clampf(minf(taper_in, taper_out), 0.0, 1.0))
+static func champlain_half_width(station: float, side: float) -> float:
+	var previous: Vector3 = CHAMPLAIN_PROFILE[0]
+	for next: Vector3 in CHAMPLAIN_PROFILE:
+		if station <= next.x:
+			var from := previous.y if side < 0.0 else previous.z
+			var to := next.y if side < 0.0 else next.z
+			return lerpf(from, to, clampf((station - previous.x) / maxf(.01, next.x - previous.x), 0.0, 1.0))
+		previous = next
+	return STREET_HALF_WIDTH
+
+
+static func champlain_walk_width(station: float, side: float) -> float:
+	if side >= 0.0:
+		return CHAMPLAIN_SIDEWALK_WIDTH
+	var width := lerpf(CHAMPLAIN_SIDEWALK_WIDTH, 1.92, smoothstep(116.0, 124.0, station))
+	return lerpf(width, 3.48, smoothstep(154.0, CHAMPLAIN_WALK_END.x, station))
+
+
+static func champlain_walk_end(side: float) -> float:
+	return CHAMPLAIN_WALK_END.x if side < 0.0 else CHAMPLAIN_WALK_END.y
 
 
 func add_street(street: int, line: Array, width: float) -> void:
@@ -191,9 +225,11 @@ func add_street(street: int, line: Array, width: float) -> void:
 		span.length = span.start.distance_to(span.end)
 		span.station = stations[i - 1]
 		span.total = stations[-1]
-		span.start_width = champlain_half_width(span.station) if street == CHAMPLAIN else width
-		span.end_width = champlain_half_width(stations[i]) if street == CHAMPLAIN else width
-		span.width = maxf(span.start_width, span.end_width)
+		span.start_width = Vector2(champlain_half_width(span.station, -1), champlain_half_width(span.station, 1)) \
+			if street == CHAMPLAIN else Vector2.ONE * width
+		span.end_width = Vector2(champlain_half_width(stations[i], -1), champlain_half_width(stations[i], 1)) \
+			if street == CHAMPLAIN else Vector2.ONE * width
+		span.width = maxf(maxf(span.start_width.x, span.start_width.y), maxf(span.end_width.x, span.end_width.y))
 		span.bounds = Rect2(span.start, Vector2.ZERO).expand(span.end).grow(span.width * 1.4 + 4.5)
 		span.fine = downtown.intersects(span.bounds) or close_areas.any(
 			func(area: Rect2) -> bool: return area.intersects(span.bounds))
@@ -206,8 +242,8 @@ func add_street(street: int, line: Array, width: float) -> void:
 			span.marking = Marking.HIGHWAY
 			span.fine = span.bounds.grow(30.0).has_point(SIGNALS.JUNCTION)
 		span.outline = PackedVector2Array([
-			span.start - span.left * span.start_width, span.start + span.left * span.start_width,
-			span.end + span.right * span.end_width, span.end - span.right * span.end_width])
+			span.start - span.left * span.start_width.x, span.start + span.left * span.start_width.y,
+			span.end + span.right * span.end_width.y, span.end - span.right * span.end_width.x])
 		span.pavement_bounds = Rect2(span.outline[0], Vector2.ZERO)
 		for point: Vector2 in span.outline:
 			span.pavement_bounds = span.pavement_bounds.expand(point)
@@ -262,8 +298,8 @@ func build_span(span: Span) -> void:
 					nearby, origin, true)
 				emit_strip(batch.shoulder, span, first, last, minf(lip, outer), maxf(lip, outer),
 					nearby, origin, true)
-		if span.street == CHAMPLAIN and is_equal_approx(span.start_width, PARKING_HALF_WIDTH) \
-				and is_equal_approx(span.end_width, PARKING_HALF_WIDTH):
+		var station := span.station + (first + last) * .5 * span.length
+		if span.street == CHAMPLAIN and station >= CHAMPLAIN_WALK_START and station <= CHAMPLAIN_WALK_END.y:
 			if not batch.has("sidewalk"):
 				batch.sidewalk = new_surface()
 			emit_champlain_sidewalk(batch.sidewalk, span, first, last, origin)
@@ -273,23 +309,34 @@ func build_span(span: Span) -> void:
 func emit_champlain_sidewalk(surface: SurfaceTool, span: Span, first: float, last: float, origin: Vector2) -> void:
 	var middle := span.station + (first + last) * .5 * span.length
 	for side: float in [-1.0, 1.0]:
-		if side < 0.0 and absf(middle - CIVIC_ACCESS.x) < CIVIC_ACCESS.y:
+		var end := champlain_walk_end(side)
+		if middle >= end or (side < 0.0 and absf(middle - CIVIC_ACCESS.x) < CIVIC_ACCESS.y):
 			continue
-		var profile := [Vector2(0, .049), Vector2(.16, .156), Vector2(CHAMPLAIN_SIDEWALK_WIDTH, .143)]
-		for i in range(1, profile.size()):
-			var left: Vector2 = profile[i - 1]
-			var right: Vector2 = profile[i]
+		for strip in 4:
+			surface.set_color(Color(1, 0, 0) if strip == 1 else Color.BLACK)
+			var left := strip
+			var right := strip + 1
 			if side < 0.0:
-				left = profile[i]
-				right = profile[i - 1]
+				left = strip + 1
+				right = strip
 			for corner: Vector2i in [Vector2i(0, 0), Vector2i(0, 1), Vector2i(1, 0),
 					Vector2i(0, 1), Vector2i(1, 1), Vector2i(1, 0)]:
 				var edge := left if corner.y == 0 else right
 				var fraction := first if corner.x == 0 else last
-				var point := at(span, fraction, side * (PARKING_HALF_WIDTH + edge.x))
 				var station := span.station + fraction * span.length
-				var ramp := smoothstep(0.0, 1.4, minf(station - PARKING_LIMITS.y, PARKING_LIMITS.z - station))
-				var lift := lerpf(.049, edge.y, ramp)
+				var walk_width := champlain_walk_width(station, side)
+				var profile := [Vector2(0, .051), Vector2(.17, .162), Vector2(.66, .158),
+					Vector2(walk_width - .09, .132), Vector2(walk_width, .053)]
+				var step_out: Vector2 = profile[edge]
+				var street_edge := at(span, fraction, span.width * side)
+				var point := street_edge + span.left.lerp(span.right, fraction) * side * step_out.x
+				var ramp := smoothstep(0.0, 1.75, minf(station - CHAMPLAIN_WALK_START, end - station))
+				if side < 0.0:
+					var driveway := absf(station - CIVIC_ACCESS.x) - CIVIC_ACCESS.y
+					var crossing := absf(station - 54.2) - .92
+					ramp *= smoothstep(0.0, 1.3, minf(driveway, crossing))
+				var lift := lerpf(.051, step_out.y, ramp)
+				surface.set_uv(Vector2(step_out.x, station))
 				surface.add_vertex(Vector3(point.x - origin.x, ground.call(point.x, point.y) + lift, point.y - origin.y))
 
 
@@ -328,8 +375,13 @@ func emit_strip(surface: SurfaceTool, span: Span, first: float, last: float, lef
 
 
 func at(span: Span, fraction: float, lateral: float) -> Vector2:
-	var width := lerpf(span.start_width, span.end_width, fraction)
-	return span.start.lerp(span.end, fraction) + span.left.lerp(span.right, fraction) * lateral * (width / span.width)
+	return span.start.lerp(span.end, fraction) + span.left.lerp(span.right, fraction) * lateral \
+		* (span_width_at(span, fraction, lateral) / span.width)
+
+
+func span_width_at(span: Span, fraction: float, lateral: float) -> float:
+	var widths := span.start_width.lerp(span.end_width, fraction)
+	return widths.x if lateral < 0.0 else widths.y
 
 
 func emit_vertex(surface: SurfaceTool, span: Span, point: Vector2, nearby: Array[Span],
@@ -337,7 +389,7 @@ func emit_vertex(surface: SurfaceTool, span: Span, point: Vector2, nearby: Array
 	var axis := (span.end - span.start) / span.length
 	var station := span.station + clampf((point - span.start).dot(axis), 0.0, span.length)
 	var lateral := (point - span.start).dot(axis.orthogonal())
-	var width := lerpf(span.start_width, span.end_width, (station - span.station) / span.length)
+	var width := span_width_at(span, (station - span.station) / span.length, lateral)
 	var edge := clampf(absf(lateral) / width, 0.0, 1.0)
 	var joins := 0.0
 	var paint := 1.0

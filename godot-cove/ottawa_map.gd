@@ -749,7 +749,8 @@ func road_at_sign(point: Vector2, half_span: float) -> Dictionary:
 			var center := Geometry2D.get_closest_point_to_segment(point, a, b)
 			var clearance := width + half_span
 			if index == RoadNetwork.CHAMPLAIN and i == 1:
-				clearance = RoadNetwork.champlain_half_width(a.distance_to(center)) + half_span
+				var side := (point - center).dot((b - a).orthogonal())
+				clearance = RoadNetwork.champlain_half_width(a.distance_to(center), side) + half_span
 			var distance := point.distance_squared_to(center)
 			if distance < best and distance < clearance * clearance:
 				best = distance

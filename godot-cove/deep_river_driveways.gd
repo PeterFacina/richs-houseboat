@@ -45,20 +45,26 @@ func index_street(street: Array, half_width: float, champlain := false) -> void:
 		if a.distance_squared_to(b) < .03:
 			continue
 		var axis := (b - a).normalized()
-		var start_width := RoadNetwork.champlain_half_width(station) if champlain else half_width
+		var span := {"a": a, "b": b, "normal": Vector2(-axis.y, axis.x), "width": half_width,
+			"champlain": champlain, "station": station}
 		station += a.distance_to(b)
-		var end_width := RoadNetwork.champlain_half_width(station) if champlain else half_width
-		var span := {"a": a, "b": b, "normal": Vector2(-axis.y, axis.x),
-			"start_width": start_width, "end_width": end_width, "sidewalk": champlain
-				and is_equal_approx(start_width, RoadNetwork.PARKING_HALF_WIDTH)
-				and is_equal_approx(end_width, RoadNetwork.PARKING_HALF_WIDTH)}
-		index(roads, Rect2(a, Vector2.ZERO).expand(b).grow(maxf(start_width, end_width) + 2.0), span)
+		var widest := RoadNetwork.PARKING_HALF_WIDTH if champlain else half_width
+		var margin := 3.9 if champlain else 2.0
+		index(roads, Rect2(a, Vector2.ZERO).expand(b).grow(widest + margin), span)
 
 
-func road_width(span: Dictionary, at: Vector2) -> float:
+func champlain_station(span: Dictionary, at: Vector2) -> float:
 	var a: Vector2 = span.a
-	var b: Vector2 = span.b
-	return lerpf(span.start_width, span.end_width, a.distance_to(at) / a.distance_to(b))
+	return float(span.station) + a.distance_to(at)
+
+
+func sidewalk_width(span: Dictionary, at: Vector2, side: float) -> float:
+	if not span.champlain:
+		return 0.0
+	var station := champlain_station(span, at)
+	if station < RoadNetwork.CHAMPLAIN_WALK_START or station > RoadNetwork.champlain_walk_end(side):
+		return 0.0
+	return RoadNetwork.champlain_walk_width(station, side)
 
 
 func index(grid: Dictionary, area: Rect2, item: Dictionary) -> void:
@@ -135,9 +141,13 @@ func find_approach(end: Vector2, outward: Vector2, door: Vector2, garage: bool) 
 				side *= signf((end - projected).dot(side))
 				if -direction.dot(side) < .56:
 					continue
-				if span.sidewalk:
+				var street_side := -(end - projected).dot(span.normal)
+				if sidewalk_width(span, projected, street_side) > 0.0:
 					continue
-				var entry := projected + side * (road_width(span, projected) - .24)
+				var width: float = span.width
+				if span.champlain:
+					width = RoadNetwork.champlain_half_width(champlain_station(span, projected), street_side)
+				var entry := projected + side * (width - .24)
 				if entry.distance_squared_to(RoadNetwork.SIGNALS.JUNCTION) < 19.0 * 19.0:
 					continue
 				if entry.distance_squared_to(end) < 5.5 * 5.5:
@@ -181,7 +191,11 @@ func clear_route(entry: Vector2, end: Vector2, across: Vector2, normal: Vector2,
 				if road.a == target.a and road.b == target.b:
 					continue
 				var road_center := Geometry2D.get_closest_point_to_segment(point, road.a, road.b)
-				var road_margin := road_width(road, road_center) + (RoadNetwork.CHAMPLAIN_SIDEWALK_WIDTH + .10 if road.sidewalk else .6)
+				var road_side := -(point - road_center).dot(road.normal)
+				var width: float = road.width
+				if road.champlain:
+					width = RoadNetwork.champlain_half_width(champlain_station(road, road_center), road_side)
+				var road_margin := width + maxf(.6, sidewalk_width(road, road_center, road_side) + .10)
 				if point.distance_squared_to(road_center) < road_margin * road_margin:
 					return false
 	return true

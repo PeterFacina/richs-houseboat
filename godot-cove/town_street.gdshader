@@ -4,6 +4,7 @@ shader_type spatial;
 #include "res://road_asphalt.gdshaderinc"
 
 uniform vec2 champlain_access = vec2(0.0);
+uniform vec4 champlain_bays = vec4(24.0, 3.25, .59, 3.5);
 uniform bool parking_lot = false;
 uniform vec4 parking_bays = vec4(0.0);
 uniform vec2 parking_aisle = vec2(0.0);
@@ -52,18 +53,26 @@ void fragment() {
 		}
 		if (COLOR.a < .5) {
 			float offset = abs(UV.x);
-			// The left and right rows angle forward in their respective lanes.
-			float bay = (UV.y + sign(UV.x) * (offset - 3.5) * .59 - 27.0) / 3.25;
-			float divider = (fract(bay + .5) - .5) * 3.25;
-			float stripe = paint_line(divider, .061);
-			float inside_bay = step(3.55, offset) * step(offset, 8.54);
-			float block = step(25.0, UV.y) * step(UV.y, 102.0) * step(0.0, bay + .02) * step(bay, 22.02);
-			// Keep the civic sidewalk connection clear of parking stalls.
-			float bay_start = 27.0 + floor(bay + .5) * 3.25;
+			float east = 1.0 - step(0.0, UV.x);
+			yellow = paint_line(UV.x, .048) * UV2.x * .83;
+			// Angle each row in the direction of the adjoining travel lane.
+			float bay = (UV.y + sign(UV.x) * (offset - champlain_bays.w) * champlain_bays.z -
+				champlain_bays.x) / champlain_bays.y;
+			float divider = (fract(bay + .5) - .5) * champlain_bays.y;
+			float stripe = paint_line(divider, .055);
+			float inside_bay = step(champlain_bays.w, offset) * step(offset, 8.54);
+			float bay_start = champlain_bays.x + floor(bay + .5) * champlain_bays.y;
+			float block = step(champlain_bays.x - .01, bay_start) *
+				step(bay_start, mix(161.0, 103.0, east));
 			float civic_walk = step(50.0, bay_start) * step(bay_start, 57.0);
 			float driveway = step(abs(bay_start - champlain_access.x), champlain_access.y + 1.6);
-			float entrance = max(civic_walk, driveway) * step(UV.x, 0.0);
-			white = max(white, stripe * inside_bay * block * (1.0 - entrance) * UV2.x);
+			float angled = stripe * inside_bay * block * (1.0 - max(civic_walk, driveway) * east);
+			// Use shorter parallel spaces where the plaza return narrows.
+			float parallel_end = abs(fract((UV.y - 126.0) / 7.05 + .5) - .5) * 7.05;
+			float parallel = step(125.94, UV.y) * step(UV.y, 147.22) * east *
+				max(paint_line(parallel_end, .054) * step(3.46, offset) * step(offset, 5.02),
+					paint_line(offset - 3.49, .054) * step(parallel_end, .54));
+			white = max(white, max(angled, parallel) * UV2.x);
 		}
 		float walk = max(paint_line(UV2.y - 6.35, .10), paint_line(UV2.y - 8.35, .10));
 		float stop = paint_line(UV2.y - 9.55, .14) * step(.14, UV.x);

@@ -74,6 +74,7 @@ func build(parent: Node3D, building: Dictionary, elevation: Callable,
 	build_walk(return_end)
 	build_lot(road_material)
 	build_storefronts()
+	build_champlain_frontage()
 	build_corner_roof()
 	var painted := Kit.paint(Color.WHITE, .72)
 	painted.vertex_color_use_as_albedo = true
@@ -327,6 +328,26 @@ func build_storefronts() -> void:
 
 	build_baskets(front_at(10.03, .70))
 	build_bench(corner + return_axis * 7.8 + return_normal * 3.85, return_axis)
+
+
+func build_champlain_frontage() -> void:
+	var start := wall_point(footprint.walls[SIDE][0])
+	var end := wall_point(footprint.walls[SIDE][1])
+	var length := start.distance_to(end)
+	var along := (end - start).normalized()
+	var normal := along.cross(Vector3.UP)
+	var basis := Basis(along, Vector3.UP, normal)
+	var glazing_band := Color("#bbb6a7")
+	for i in range(1, 6):
+		var station := float(i) * 4.45 + .15
+		var at := start + along * station
+		store_window(at, along, 3.46, 2.28, glazing_band)
+		var eave := at + along * 1.73 + Vector3.UP * (canopy_level - .13)
+		detail_box(eave + normal * .30, Vector3(3.77, .145, .66), CREAM, basis)
+		detail_box(eave + normal * .62 - Vector3.UP * .036,
+			Vector3(3.77, .20, .082), FLASHING, basis)
+	detail_box(start + along * length * .5 + Vector3.UP * (canopy_level + .56) + normal * .055,
+		Vector3(length - .66, .13, .13), FLASHING, basis)
 
 
 func build_canopy(start: Vector3, along: Vector3, left: float, right: float,
