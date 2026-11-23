@@ -8,7 +8,8 @@ const Graphics = preload("res://river_graphics.gd")
 var game: Node3D
 var graphics: Graphics
 var preferences := {"volume": .8, "sensitivity": 1.0, "fov": 78.0,
-	"fullscreen": false, "vsync": true, "fps": false, "hand_motion": .65}
+	"fullscreen": false, "vsync": true, "fps": false, "hand_motion": .65,
+	"toggle_crouch": false}
 var name_field: LineEdit
 var status: Label
 var quit_dialog: ConfirmationDialog
@@ -179,6 +180,17 @@ func build_settings(settings: VBoxContainer) -> void:
 	slider(settings, "Mouse sensitivity", "sensitivity", .25, 2.5, .05)
 	slider(settings, "Field of view", "fov", 60, 100, 1)
 	slider(settings, "Hand motion", "hand_motion", 0, 1, .05)
+	var movement := HBoxContainer.new()
+	settings.add_child(movement)
+	text(movement, "Crouch mode", 16, MIST).size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var crouch_mode := OptionButton.new()
+	crouch_mode.add_item("Hold")
+	crouch_mode.add_item("Toggle")
+	crouch_mode.select(1 if preferences.toggle_crouch else 0)
+	crouch_mode.item_selected.connect(func(index: int):
+		preferences.toggle_crouch = index == 1
+		persist())
+	movement.add_child(crouch_mode)
 	var row := HBoxContainer.new()
 	settings.add_child(row)
 	text(row, "Graphics quality / distance", 16, MIST).size_flags_horizontal = Control.SIZE_EXPAND_FILL

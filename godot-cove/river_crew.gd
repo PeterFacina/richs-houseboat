@@ -281,6 +281,10 @@ func pose(position: Vector3, turn: float, onboard: bool, animation: Dictionary) 
 		if pose is String and pose in ["relaxed", "fist", "shaft", "carry", "hold", "pinch", "bottle", "can"]:
 			visual[key] = pose
 	var tool: Variant = animation.get("tool")
+	for key in ["sprint", "crouch", "eye_drop"]:
+		var weight: Variant = animation.get(key)
+		if weight is float and is_finite(weight):
+			visual[key] = clampf(weight, 0, 1)
 	if animation.get("seat", "") in ["", "bed", "toilet", "heli"]:
 		visual.seat = animation.get("seat", "")
 	if tool is String and tool in ["net", "cooler", "lamp", "helm", "fish"]:

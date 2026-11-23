@@ -29,6 +29,12 @@ var label: Label3D
 var joint_positions: Array[Vector3] = [Vector3.ZERO, Vector3.ZERO]
 var stride := 0.0
 var walking := 0.0
+var sprint_pose := 0.0
+var crouch_pose := 0.0
+var gait_stance := .54
+var gait_reach := .219
+var gait_lift := .115
+var eye_drop := 0.0
 var stride_axis := Vector3.FORWARD
 var action_phase := 0.0
 var last_stage := -1
@@ -178,12 +184,22 @@ func apply_sample(sample: Dictionary, vessel: Node3D, delta: float, clock: float
 	if animation.get("seat", "") == "bed":
 		global_basis = vessel.global_basis * Basis(Vector3.RIGHT, -PI * .5) * Basis(Vector3.UP, PI)
 	var movement: Vector3 = animation.get("move", Vector3.ZERO)
-	var pace := clampf(Vector2(movement.x, movement.z).length(), 0.0, 4.7)
-	walking = lerpf(walking, smoothstep(.1, 2.7, pace), 1.0 - exp(-delta * 13.0))
-	if pace > .15:
+	var pace := clampf(Vector2(movement.x, movement.z).length(), 0.0, 18.0)
+	var blend := 1.0 - exp(-delta * 18.0)
+	crouch_pose = lerpf(crouch_pose, float(animation.get("crouch", 0.0)), blend)
+	eye_drop = lerpf(eye_drop, float(animation.get("eye_drop", 0.0)), amount)
+	var sprint_target := float(animation.get("sprint", 0.0)) * smoothstep(.15, 2.4, pace)
+	sprint_pose = lerpf(sprint_pose, sprint_target * (1.0 - crouch_pose), blend)
+	walking = lerpf(walking, smoothstep(.08, lerpf(2.7, 1.0, crouch_pose), pace), blend)
+	if pace > .08:
 		var local_move := (global_basis.inverse() * movement).slide(Vector3.UP).normalized()
-		stride_axis = stride_axis.lerp(local_move, amount)
-	stride += delta * (3.8 + pace * 2.15) * walking
+		stride_axis = stride_axis.lerp(local_move, amount).normalized()
+	gait_stance = lerpf(lerpf(.54, Rig.SPRINT_FOOT_CONTACT, sprint_pose), .66, crouch_pose)
+	gait_reach = lerpf(lerpf(.219, Rig.SPRINT_FOOT_REACH, sprint_pose), .24, crouch_pose)
+	gait_lift = lerpf(lerpf(.115, .24, sprint_pose), .075, crouch_pose)
+	# Each planted foot travels back at the avatar's measured ground speed.
+	var cycle_distance := 2.0 * maxf(gait_reach * walking, .08) / gait_stance
+	stride = fposmod(stride + delta * pace * TAU / cycle_distance, TAU)
 	pointing = lerpf(pointing, float(animation.get("pitch", 0.0)), amount)
 	bend = lerpf(bend, float(animation.get("tension", 0.0)), amount)
 	var stage := int(animation.get("stage", 0))
@@ -193,9 +209,13 @@ func apply_sample(sample: Dictionary, vessel: Node3D, delta: float, clock: float
 	else:
 		action_phase = lerpf(action_phase + delta, phase, delta * 3.2)
 	last_stage = stage
-	body.position.y = .88 + absf(sin(stride)) * walking * .029 - bend * .029
+	var bob := absf(sin(stride)) * walking * lerpf(lerpf(.029, .054, sprint_pose), .012, crouch_pose)
+	var breathing := sin(clock * 2.2) * .008 * crouch_pose * (1.0 - walking)
+	body.position.y = .88 + bob + breathing - bend * .029 - crouch_pose * .49 - sprint_pose * .075
 	var dip: float = animation.get("scoop", .0)
-	body.rotation = Vector3(.06 * walking - .065 * bend - .18 * dip, sin(stride) * walking * .062, .032 * sin(stride) * walking)
+	var lean := .06 * walking - .065 * bend - .18 * dip - .30 * sprint_pose - .35 * crouch_pose
+	body.rotation = Vector3(lean, sin(stride) * walking * lerpf(.062, .11, sprint_pose),
+		.032 * sin(stride) * walking)
 	head.rotation.x = pointing * .54
 	update_limbs(animation, vessel, stage, clock)
 	update_shared_actions(animation, delta)
@@ -226,18 +246,26 @@ func update_limbs(animation: Dictionary, vessel: Node3D, stage: int, clock: floa
 	for index in 2:
 		var side := float(index * 2 - 1)
 		var cycle := stride + PI * index
-		var boot := Vector3(side * .104, .067 + maxf(0.0, sin(cycle)) * walking * .115, 0)
+		var phase := fposmod(cycle / TAU, 1.0)
+		var swing := clampf((phase - gait_stance) / (1.0 - gait_stance), 0, 1)
+		var travel := lerpf(1.0, -1.0, phase / gait_stance) if phase < gait_stance \
+			else lerpf(-1.0, 1.0, smoothstep(0.0, 1.0, swing))
+		var boot := Vector3(side * lerpf(.104, .125, crouch_pose), .067 + sin(swing * PI) * walking * gait_lift, 0)
+		boot += stride_axis * (travel * walking * gait_reach)
 		if animation.get("seat", "") in ["toilet", "heli"]:
 			boot = Vector3(side * .13, .43, -.46)
-		boot += stride_axis * (cos(cycle) * walking * .219)
 		var hip := body.position + Vector3(side * .088, -.006, .024)
 		var knee := elbow(hip, boot + Vector3.UP * .025, Vector3.FORWARD, .414, .388)
 		bind_segment(legs[index * 2], hip, knee)
 		bind_segment(legs[index * 2 + 1], knee, boot + Vector3.UP * .026)
 		boots[index].position = boot + Vector3.FORWARD * .061
-		boots[index].rotation.x = -sin(cycle) * walking * .16
+		boots[index].rotation.x = -sin(swing * TAU) * walking * lerpf(.19, .31, sprint_pose)
 		var shoulder := body.transform * Vector3(side * .222, .449, .025)
-		var hand := Vector3(side * .263, .889 + cos(clock * 1.5 + side) * .012, -.057 - cos(cycle) * walking * .154)
+		var hand_swing := lerpf(lerpf(.154, .33, sprint_pose), .078, crouch_pose)
+		var hand := Vector3(side * lerpf(.263, .292, crouch_pose),
+			.889 + cos(clock * 1.5 + side) * .012 + sprint_pose * .19 - crouch_pose * .33,
+			-.057 - crouch_pose * .16)
+		hand -= stride_axis * (travel * walking * hand_swing)
 		if show_rod:
 			var anchor := Vector3(0, 0, .020) if side > 0 else Vector3(-.069, -.067, -.032)
 			if side < 0.0:
@@ -264,7 +292,8 @@ func update_limbs(animation: Dictionary, vessel: Node3D, stage: int, clock: floa
 
 
 func update_shared_actions(animation: Dictionary, delta: float) -> void:
-	var view := Transform3D(Basis.from_euler(Vector3(pointing, 0, float(animation.get("view_roll", 0)))), Vector3(0, 1.58, 0))
+	var view := Transform3D(Basis.from_euler(Vector3(pointing, 0, float(animation.get("view_roll", 0)))),
+		Vector3(0, 1.58 - eye_drop, 0))
 	var blend := 1 - exp(-delta * 24)
 	if animation.has("tool_pose"):
 		var target: Transform3D = view * Transform3D(animation.tool_pose)

@@ -9,7 +9,12 @@ const START := Vector3(-5.30, 0.76, 12.98)
 const LINE_RANGE := 10.4
 
 var vessel: AnimatableBody3D
+const WALK_SPEED := 3.75
+const STANDING_HEIGHT := 1.68
+const STANDING_EYE := 1.58
+
 var player: CharacterBody3D
+var player_collision: CollisionShape3D
 var spawn_point := START
 var eye: Camera3D
 var crate: Node3D
@@ -99,16 +104,16 @@ func build_player() -> void:
 	player.position = spawn_point
 	var capsule := CapsuleShape3D.new()
 	capsule.radius = 0.245
-	capsule.height = 1.68
-	var body := CollisionShape3D.new()
-	body.position.y = 0.84
-	body.shape = capsule
-	player.add_child(body)
+	capsule.height = STANDING_HEIGHT
+	player_collision = CollisionShape3D.new()
+	player_collision.position.y = STANDING_HEIGHT * .5
+	player_collision.shape = capsule
+	player.add_child(player_collision)
 	eye = Camera3D.new()
 	eye.fov = 78
 	eye.near = 0.045
 	eye.far = 165
-	eye.position.y = 1.58
+	eye.position.y = STANDING_EYE
 	player.add_child(eye)
 	eye.make_current()
 	update_view()
@@ -256,8 +261,8 @@ func update_helm_throttle(delta: float) -> void:
 
 
 func move_on_foot(delta: float, walk: Vector3, jump: bool) -> void:
-	player.velocity.x = walk.x * 3.75 * walk_multiplier
-	player.velocity.z = walk.z * 3.75 * walk_multiplier
+	player.velocity.x = walk.x * WALK_SPEED * walk_multiplier
+	player.velocity.z = walk.z * WALK_SPEED * walk_multiplier
 	player.velocity.y -= delta * 13.0
 	if player.is_on_ceiling() and player.velocity.y > 0:
 		player.velocity.y = 0

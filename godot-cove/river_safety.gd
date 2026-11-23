@@ -21,12 +21,13 @@ func setup(scene: Node3D) -> void:
 	game.player.floor_stop_on_slope = true
 
 
-func clear_at(feet: Vector3) -> bool:
+func clear_at(feet: Vector3, height := 1.68) -> bool:
 	if not feet.is_finite():
 		return false
 	var query := PhysicsShapeQueryParameters3D.new()
+	capsule.height = height - .05
 	query.shape = capsule
-	query.transform = Transform3D(Basis.IDENTITY, feet + Vector3.UP * .855)
+	query.transform = Transform3D(Basis.IDENTITY, feet + Vector3.UP * (height * .5 + .015))
 	query.collision_mask = 1
 	query.exclude = [game.player.get_rid()]
 	query.margin = .002
@@ -63,7 +64,7 @@ func tick(delta: float) -> void:
 	if not at.is_finite():
 		rescue()
 		return
-	if not clear_at(at):
+	if not clear_at(at, game.player_collision.shape.height):
 		embedded_time += delta
 		if embedded_time > .4 and cooldown <= 0:
 			# Resolve small penetrations locally before returning to a checkpoint.
