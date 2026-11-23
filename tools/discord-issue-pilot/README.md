@@ -29,3 +29,16 @@ Set `DISCORD_ROLE_ID` to a team role to limit who can submit or claim. With it b
 4. Open a draft targeting `main` with `Fixes #<issue-number>` on its own line in the PR body. Within about a minute, the original bot reply should say **Draft PR open**. Mark the PR ready and watch it change to **Ready for review**. After the maintainer merges it, check for **Merged into main**.
 
 If GitHub issue creation times out, repeat the message action to look for the original issue by its Discord message marker. If no issue is found, confirm in GitHub that creation failed before using a fresh Discord message for the report. A fresh message starts a new pilot record.
+
+## GPU verification for Ethan
+
+Check out this draft PR's head in a separate local worktree on the GPU PC. Run from the checkout root with Node.js 24 and Ollama listening on `127.0.0.1:11434` with `qwen3:14b` installed.
+
+```powershell
+node tools/discord-issue-pilot/gpu-smoke.mjs
+ollama ps
+```
+
+The runner creates a temporary Studio on a free loopback port, indexes the game in the PR checkout, uses the same HTTP adapter as the Discord bot, and prints the export-checked brief. The test uses the Zero Turn report about the driver's hands jerking on a sharp left turn. Guest visibility is still untested. The existing Studio instance and its database can stay running. This test needs no Discord or GitHub token in the bot configuration.
+
+Post a comment on this PR with the tested commit, GPU, model, elapsed time, Ollama's PROCESSOR value, export result, and whether the brief cited `godot-cove/lawn_mower.gd` and kept guest visibility unverified. Include the brief in the comment. If the test fails, include the error and the last completed step. Keep credentials and machine-specific paths out of the comment.
