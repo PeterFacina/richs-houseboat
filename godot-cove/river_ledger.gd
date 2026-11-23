@@ -9,6 +9,7 @@ const Data = preload("res://river_campaign_data.gd")
 var state: Dictionary
 var error := ""
 var save_path := SAVE
+var recovered_primary := ""
 
 
 func _init() -> void:
@@ -27,19 +28,30 @@ func fresh() -> Dictionary:
 
 
 func load_file() -> void:
+	recovered_primary = ""
 	for path: String in [save_path, save_path + ".prev"]:
 		if not FileAccess.file_exists(path):
 			continue
-		var value: Variant = JSON.parse_string(FileAccess.get_file_as_string(path))
+		var json := JSON.new()
+		if json.parse(FileAccess.get_file_as_string(path)) != OK:
+			continue
+		var value: Variant = json.data
 		if value is Dictionary and value.get("format") == 1 and value.get("sites") is Dictionary:
 			state = fresh()
 			for key in state.keys():
 				var old: Variant = value.get(key, state[key])
-				if typeof(old) == typeof(state[key]) or (old is float and state[key] is int):
-					state[key] = int(old) if state[key] is int else old
-			for fish: Dictionary in state.held_fish.values():
-				state.ice_chest.append(fish)
+				if typeof(old) == typeof(state[key]):
+					state[key] = old
+				elif old is float and is_finite(old) and state[key] is int:
+					state[key] = int(old)
+				elif old is int and state[key] is float:
+					state[key] = float(old)
+			for fish: Variant in state.held_fish.values():
+				if fish is Dictionary:
+					state.ice_chest.append(fish)
 			state.held_fish.clear()
+			if path != save_path:
+				recovered_primary = save_path
 			return
 
 
@@ -50,15 +62,21 @@ func save_file() -> void:
 		error = "The river save could not be written."
 		return
 	file.store_string(JSON.stringify(state))
+	file.flush()
+	var write_error := file.get_error()
 	file.close()
+	if write_error != OK:
+		error = "The river save could not be written."
+		return
 	var main := ProjectSettings.globalize_path(save_path)
 	var backup := main + ".prev"
-	if FileAccess.file_exists(save_path) and DirAccess.rename_absolute(main, backup) != OK:
+	if recovered_primary != save_path and FileAccess.file_exists(save_path) and DirAccess.rename_absolute(main, backup) != OK:
 		error = "The river save could not be backed up."
 		return
 	if DirAccess.rename_absolute(ProjectSettings.globalize_path(stage), main) != OK:
 		error = "The river save could not be updated."
 		return
+	recovered_primary = ""
 	error = ""
 
 

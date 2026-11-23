@@ -957,11 +957,16 @@ func mowing_pay(amount: int) -> int:
 	return roundi(amount * (1.0 + skill_effect(crew.my_id(), "lawn_professional") / 100.0))
 
 
-func reward_mowing(amount := 5, commercial := false) -> int:
+func reward_mowing(day: int, amount: int, commercial: bool) -> int:
+	if crew.is_guest() or day < 0 or amount <= 0:
+		return 0
+	var completion_key := "last_commercial_day" if commercial else "last_mowing_day"
+	if day <= int(ledger.state[completion_key]):
+		return 0
 	var profile := progression_for(crew.my_id())
-	var day := int(ledger.state.last_commercial_day if commercial else ledger.state.last_mowing_day)
 	XP.award(profile, "commercial" if commercial else "route", "mow:%d:%d" % [day, int(commercial)])
 	var paid := mowing_pay(amount)
+	ledger.state[completion_key] = day
 	ledger.state.cash += paid
 	changed()
 	return paid

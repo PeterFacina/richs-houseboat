@@ -70,15 +70,62 @@ func exercise() -> void:
 	job.interact()
 	job.interact()
 	passed = passed and job.status == job.Status.CUTTING
+	var route: Dictionary = game.river.waterfront.mowing_routes[job.job_day % job.Routes.DAYS.size()]
+	var expected_tufts := {}
+	for zone: PackedVector2Array in route.zones:
+		var bounds: Rect2 = job.Routes.bounds(zone)
+		for index in job.mower.grass_transforms.size():
+			var at: Vector3 = job.mower.grass_point(index)
+			var point := Vector2(at.x, at.z)
+			if bounds.has_point(point) and Geometry2D.is_point_in_polygon(point, zone):
+				expected_tufts[index] = Vector2i(floori(at.x), floori(at.z))
+	passed = passed and expected_tufts == job.tuft_cells
+	var first_target: int = job.target_tuft
+	passed = passed and expected_tufts.has(first_target) and job.markers.get_child_count() == 1
+	if first_target >= 0:
+		var target_point: Vector3 = job.mower.grass_point(first_target)
+		var deck_pose := Transform3D(Basis.IDENTITY, target_point - job.mower.CUT_DECK)
+		passed = (int(job.mower.trim_at(deck_pose)) > 0) and passed
+		passed = (int(job.mower.trim_at(deck_pose)) == 0) and passed
+		job.update_navigation()
+		passed = passed and job.target_tuft >= 0 and job.target_tuft != first_target
+		if job.target_tuft >= 0:
+			passed = passed and not job.mower.grass_cut[job.target_tuft]
+	game.mower.rider = game.player
+	job.update_navigation()
+	var outbound: bool = job.road_guide.visible and job.road_guide.mesh != null
+	var lawn: Vector3 = job.mower.grass_point(job.target_tuft)
+	var trail: PackedVector2Array = job.road_guide.route(game.mower.global_position, lawn, game.public_works)
+	outbound = outbound and trail.size() > 100 and trail[-1].is_equal_approx(Vector2(lawn.x, lawn.z))
+	print("Mowing road to lawn: ", outbound)
+	passed = passed and outbound and job.waypoint.no_depth_test
+	game.mower.rider = null
 	for index in job.tuft_cells.keys():
 		var point: Vector3 = job.mower.grass_point(index)
 		job.mower.trim_at(Transform3D(Basis.IDENTITY, point - job.mower.CUT_DECK))
 	passed = passed and job.status == job.Status.RETURNING
+	var parked_pose: Transform3D = game.mower.global_transform
+	game.mower.global_position = job.mower.grass_point(first_target)
+	game.mower.rider = game.player
+	job.update_navigation()
+	var inbound: bool = job.road_guide.visible and job.waypoint.text.contains("Park zero-turn")
+	print("Mowing road to parking: ", inbound)
+	passed = passed and inbound
+	game.mower.global_transform = parked_pose
+	game.mower.rider = null
+	job.update_navigation()
+	passed = passed and not job.markers.visible and job.waypoint.text.contains("Return to Shannon") and not job.road_guide.visible
 	var before_turn_in := int(p.xp)
+	var cash_before_turn_in: int = campaign.ledger.state.cash
+	var earned_cash: int = campaign.mowing_pay(job.PAY)
 	job.interact()
 	passed = passed and p.xp - before_turn_in == roundi(250 * 1.05)
+	passed = passed and int(campaign.ledger.state.cash) == cash_before_turn_in + earned_cash
+	var paid_day: int = campaign.ledger.state.last_mowing_day
+	passed = passed and paid_day >= 0 and campaign.reward_mowing(paid_day, job.PAY, false) == 0
 	job.interact()
 	passed = passed and p.xp == before_turn_in + roundi(250 * 1.05)
+	passed = passed and int(campaign.ledger.state.cash) == cash_before_turn_in + earned_cash
 	game.catch_type = 0
 	game.catch_length = 21
 	game.record_catch()
