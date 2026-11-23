@@ -33,7 +33,7 @@ func handle(peer: int, action: String, value: Variant) -> void:
 	var profile := campaign.progression_for(peer)
 	if action == "connected":
 		XP.award(profile, "delivery", "test_delivery")
-	elif action == "purchase_skill":
+	elif action in ["purchase_skill", "helm"]:
 		campaign.perform(peer, action, value)
 		return
 	campaign.crew.share_state.rpc_id(peer, campaign.snapshot_for(peer), 0, 0, 1)
@@ -53,7 +53,10 @@ func exercise() -> void:
 	var original_crew := campaign.crew
 	var host := endpoint("Host")
 	campaign.crew = host
+	host.boat = game.vessel
 	host.requested.connect(handle)
+	host.member_left.connect(campaign.member_left)
+	host.command_received.connect(campaign.receive_helm)
 	host.host("Host")
 	host.start_session()
 	var one := endpoint("First")
@@ -69,14 +72,31 @@ func exercise() -> void:
 		passed = await until(func(): return snapshots.one.self.get("ranks", {}).get("hard_worker", 0) == 1)
 	if passed:
 		passed = snapshots.one.size() == 1 and snapshots.two.self.xp == 100 and not snapshots.two.self.has("ranks") and not snapshots.one.self.has("events")
+	if passed:
+		var first_id: int = one.my_id()
+		var second_id: int = two.my_id()
+		var helm: Vector3 = game.vessel.helm_anchor()
+		one.pose.rpc_id(1, helm, 0.0, true, {})
+		two.pose.rpc_id(1, helm, 0.0, true, {})
+		passed = await until(func(): return host.poses.has(first_id) and host.poses.has(second_id))
+		if passed:
+			one.order.rpc_id(1, "helm", null)
+			passed = await until(func(): return campaign.captain == first_id)
+		if passed:
+			one.steer.rpc_id(1, 0.5, 0.2)
+			passed = await until(func(): return is_equal_approx(campaign.remote_throttle, 0.5))
 		one.stop()
-		passed = passed and await until(func(): return host.people.size() == 2)
+		passed = passed and await until(func(): return host.people.size() == 2 and campaign.captain == 0)
+		passed = passed and is_zero_approx(campaign.remote_throttle)
+		if passed:
+			two.order.rpc_id(1, "helm", null)
+			passed = await until(func(): return campaign.captain == second_id)
 		snapshots.erase("one")
 		one.join("First", "127.0.0.1")
 		passed = passed and await until(func(): return snapshots.has("one"))
 		if passed:
 			passed = snapshots.one.self.xp == 100 and snapshots.one.self.ranks.hard_worker == 1
-	print("ENet host, two guests, purchase isolation and reconnect: ", passed)
+	print("ENet host, two guests, purchase isolation, helm handoff and reconnect: ", passed)
 	campaign.crew = original_crew
 	one.stop()
 	two.stop()

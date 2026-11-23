@@ -136,7 +136,7 @@
       "sharp_blades": 2
     },
     "cap": 1,
-    "effect": "Show current mowing route and completion overlay",
+    "effect": "Show the exact number of cuts left on your mowing route",
     "category": "Lawn Care",
     "enabled": true,
     "level": 3,

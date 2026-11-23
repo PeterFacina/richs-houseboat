@@ -206,7 +206,9 @@ func _process(_delta: float) -> void:
 	meter.max_value = 1.0
 	create_tween().tween_property(meter, "value", target, .3)
 	heading.text = "Level %d   •   %d skill points   [K]" % [stats.level, stats.points]
-	summary.text = "Level %d   ·   %d skill points     " % [stats.level, stats.points]
+	summary.text = "Level %d   ·   %d skill points" % [stats.level, stats.points]
+	if stats.level < XP.CAP:
+		summary.text += "   ·   %d XP to next level" % (XP.threshold(stats.level) - int(stats.rest))
 	if initialized and last_xp >= 0 and xp > last_xp:
 		toast.text = "+%d XP   •   %s" % [xp - last_xp, str(p.get("reason", "")).capitalize()]
 		if stats.level > last_level:

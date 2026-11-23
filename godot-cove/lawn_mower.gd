@@ -48,6 +48,8 @@ var grass_cells: Dictionary = {}
 var grass_cut := PackedByteArray()
 var grass_transforms: Array[Transform3D]
 var last_cut := Vector3.INF
+var last_cut_yaw := 0.0
+var blade_load := 0.0
 var shared_grass: AnimatableBody3D
 
 
@@ -326,10 +328,14 @@ func drive(delta: float, throttle: float, steering: float) -> float:
 		levers[index].rotation.x = -.27 * clampf(throttle + steering * (1.0 if index == 0 else -1.0), -1.0, 1.0)
 	pose_rider_arms()
 	var load := maxf(clampf(absf(speed) / top_speed, 0.0, 1.0), absf(steering) * .42)
-	motor.pitch_scale = lerpf(motor.pitch_scale, .82 + .44 * load + (.19 if blades else 0.0), minf(1.0, delta * 5.0))
-	motor.volume_db = -20.0 + 6.0 * load + (3.0 if blades else 0.0)
-	if blades and last_cut.distance_squared_to(to_global(CUT_DECK)) > .15 * .15:
-		cut_grass()
+	blade_load = move_toward(blade_load, 0.0, delta * 3.5)
+	if blades and (last_cut.distance_squared_to(to_global(CUT_DECK)) > .15 * .15 \
+			or absf(angle_difference(last_cut_yaw, yaw)) >= .12):
+		blade_load = maxf(blade_load, clampf(cut_grass() / 7.0, 0.0, 1.0))
+	var cutting_load := blade_load if blades else 0.0
+	motor.pitch_scale = lerpf(motor.pitch_scale, .82 + .44 * load + (.19 if blades else 0.0) \
+		- .10 * cutting_load, minf(1.0, delta * 5.0))
+	motor.volume_db = -20.0 + 6.0 * load + (3.0 if blades else 0.0) + 2.0 * cutting_load
 	position_rider()
 	return turned
 
@@ -374,21 +380,22 @@ func grass_point(index: int) -> Vector3:
 	return grass.to_global(grass_transforms[index].origin)
 
 
-func cut_grass() -> void:
+func cut_grass() -> int:
 	last_cut = to_global(CUT_DECK)
+	last_cut_yaw = yaw
 	if shared_grass == null:
-		trim_at(global_transform, cut_width)
-	else:
-		shared_grass.trim_at(global_transform, cut_width)
+		return trim_at(global_transform, cut_width)
+	return shared_grass.trim_at(global_transform, cut_width)
 
 
-func trim_at(pose: Transform3D, width := .71) -> void:
+func trim_at(pose: Transform3D, width := .71) -> int:
 	if not is_instance_valid(grass):
-		return
+		return 0
 	var deck := pose * CUT_DECK
 	var center := Vector2i(floori(deck.x), floori(deck.z))
 	var inverse := pose.affine_inverse()
 	var instances := grass.multimesh
+	var trimmed := 0
 	for z in range(center.y - 1, center.y + 2):
 		for x in range(center.x - 1, center.x + 2):
 			for index: int in grass_cells.get(Vector2i(x, z), []):
@@ -400,7 +407,9 @@ func trim_at(pose: Transform3D, width := .71) -> void:
 					tuft.basis.y *= CUT_HEIGHT
 					instances.set_instance_transform(index, tuft)
 					grass_cut[index] = 1
+					trimmed += 1
 					grass_trimmed.emit(index)
+	return trimmed
 
 
 func regrow_grass(indices: Array) -> void:

@@ -27,6 +27,7 @@ const Regions = preload("res://river_regions.gd")
 const Helicopter = preload("res://river_helicopter.gd")
 const JOURNAL := "user://ottawa_catches.json"
 const CREW_JOURNAL := "user://ottawa_multiplayer_catches.json"
+const BITE_WINDOW := 2.27
 const WINDUP := 0.19
 const SWIM_ENTRY_DEPTH := 1.16
 const SWIM_EXIT_DEPTH := .95
@@ -437,6 +438,8 @@ func _input(event: InputEvent) -> void:
 			interact_pressed = true
 		elif key == KEY_X and play_input():
 			mower.blades = not mower.blades
+			if mower.blades:
+				mower.last_cut = Vector3.INF
 		elif key == KEY_C and play_input():
 			mower.chase_view = not mower.chase_view
 		elif key in [KEY_Q, KEY_R] and play_input():
@@ -1261,7 +1264,7 @@ func tick_float(delta: float) -> void:
 	if fishing == Fishing.WAITING and clock >= bite_at:
 		change_state(Fishing.BITE)
 		effects.break_surface(effects.on_water(float_site, clock), .60, "bite")
-	elif fishing == Fishing.BITE and state_age >= 2.27:
+	elif fishing == Fishing.BITE and state_age >= BITE_WINDOW:
 		notify_angling("Missed the bite. Strike when the float goes under.", 3.8)
 		change_state(Fishing.WAITING)
 		bite_at = clock + random.randf_range(6.0, 12.0)
@@ -1848,7 +1851,7 @@ func update_hud() -> void:
 	elif fishing == Fishing.WAITING:
 		instruction.text = catch_note if clock < note_until else "Watch for the float to go under. R reels it in early."
 	elif fishing == Fishing.BITE:
-		objective.text = "Fish on the bait"
+		objective.text = "Fish on the bait  ·  %.1f s" % maxf(0.0, BITE_WINDOW - state_age)
 		instruction.text = "Tap R now to set the hook."
 	elif fishing == Fishing.FIGHT:
 		objective.text = "Trophy muskie" if trophy.hooked else "Fish on"
