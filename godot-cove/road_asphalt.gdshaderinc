@@ -12,7 +12,7 @@ float road_noise(vec2 p) {
 		mix(road_hash(cell + vec2(0, 1)), road_hash(cell + vec2(1, 1)), t.x), t.y);
 }
 
-vec3 weathered_asphalt(vec2 p, float scan_distance) {
+vec3 weathered_asphalt(vec2 p, float scan_distance, float patch_strength) {
 	vec3 scan = texture(road_scan, p / 2.5).rgb;
 	float stone = dot(scan, vec3(.23, .62, .15));
 	float weather = road_noise(p / 22.0) * .65 + road_noise(p / 5.5) * .35;
@@ -29,9 +29,13 @@ vec3 weathered_asphalt(vec2 p, float scan_distance) {
 			* (1.0 - smoothstep(.19, .37, abs(repair.y)));
 		float patch = step(.966, site) * (1.0 - smoothstep(.24, .29, abs(repair.x) + .024 * stone))
 			* (1.0 - smoothstep(.12, .16, abs(repair.y)));
-		color *= 1.0 - close * (.22 * sealed + .15 * patch);
+		color *= 1.0 - close * (.22 * sealed + .15 * patch * patch_strength);
 	}
 	return color;
+}
+
+vec3 weathered_asphalt(vec2 p, float scan_distance) {
+	return weathered_asphalt(p, scan_distance, 1.0);
 }
 
 vec3 road_relief(vec2 p, vec3 normal, vec3 world_x, float distance_to_eye) {

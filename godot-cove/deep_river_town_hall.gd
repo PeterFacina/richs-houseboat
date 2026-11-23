@@ -14,6 +14,9 @@ const ATRIUM_REAR := -8.7
 const ATRIUM_HALF := 4.25
 const EAVE := 8.3
 const PEAK := 12.55
+const POLICE_EAVE := 4.75
+const PLAZA_CANOPY_Z := 21.55
+const PLAZA_CANOPY_WIDTH := 33.0
 
 var ground: Callable
 var collision := StaticBody3D.new()
@@ -38,7 +41,7 @@ var crowns: Array[Transform3D] = []
 var stems: Array[Transform3D] = []
 
 
-func build(elevation: Callable, concrete_scan: Texture2D, asphalt_scan: Texture2D, canopy: Callable) -> void:
+func build(elevation: Callable, concrete_scan: Texture2D, canopy: Callable) -> void:
 	name = "DeepRiverTownHall"
 	ground = elevation
 	position = Vector3(ORIGIN.x, ground.call(ORIGIN.x, ORIGIN.y) + .08, ORIGIN.y)
@@ -48,22 +51,22 @@ func build(elevation: Callable, concrete_scan: Texture2D, asphalt_scan: Texture2
 	make_materials(concrete_scan)
 	block_roof(WEST, EAVE)
 	block_roof(CIVIC, EAVE)
-	block_roof(POLICE, 4.75)
+	block_roof(POLICE, POLICE_EAVE)
 
 	# Champlain Street wraps around the civic front and the west return.
 	ribbon_wall(Vector2(-10.35, 9), Vector2(10.35, 9), EAVE, true, true)
 	ribbon_wall(Vector2(10.35, 9), Vector2(31.3, 14.5), EAVE, true, true)
 	ribbon_wall(Vector2(-10.35, -9), Vector2(-10.35, 9), EAVE, true, false)
-	ribbon_wall(Vector2(6.2, -9), Vector2(-10.35, -9), EAVE, true, false)
-	ribbon_wall(Vector2(19, -8.5), Vector2(6.2, -9), EAVE, false, false)
-	ribbon_wall(Vector2(19, -8.5), Vector2(22.9, -21.2), 4.75, false, false)
-	ribbon_wall(Vector2(40.7, -15.8), Vector2(22.9, -21.2), 4.75, true, false)
+	ribbon_wall(WEST[1], WEST[0], EAVE, true, false)
+	ribbon_wall(CIVIC[1], CIVIC[0], EAVE, false, false)
+	close_roof_step(CIVIC[2], CIVIC[1])
+	ribbon_wall(POLICE[0], POLICE[1], POLICE_EAVE, false, false)
+	ribbon_wall(POLICE[2], POLICE[1], POLICE_EAVE, true, false)
 	service_wall(Vector2(31.3, 14.5), Vector2(36.8, -3), true)
 	service_wall(Vector2(36.8, -3), Vector2(40.7, -15.8), false)
 
 	build_atrium()
-	build_civic_plaza(asphalt_scan)
-	build_service_apron(asphalt_scan)
+	build_civic_plaza()
 	for mount in [Vector3(-6.0, EAVE + .11, -4.3), Vector3(26.0, EAVE + .11, 1.7)]:
 		roof_unit(mount)
 	antenna(Vector3(-8.7, EAVE + .15, -5.3), 1.85)
@@ -196,10 +199,29 @@ func block_roof(outline: Array, height: float) -> void:
 	Kit.mesh_at(self, surface.commit(), Vector3.ZERO, roof)
 
 
+func close_roof_step(a: Vector2, b: Vector2) -> void:
+	var frame := wall_frame(a, b)
+	var width := a.distance_to(b)
+	var height := EAVE - POLICE_EAVE + .23
+	var center := Vector3(0, EAVE - height * .5, -.18)
+	var size := Vector3(width + .06, height, .36)
+	box(center, size, masonry, frame)
+	var body := CollisionShape3D.new()
+	var shape := BoxShape3D.new()
+	shape.size = size
+	body.shape = shape
+	collision.add_child(body)
+	body.transform = frame.translated_local(center)
+	box(Vector3(0, EAVE - .22, -.18), Vector3(width + .08, .28, .45), sandstone, frame)
+	box(Vector3(0, EAVE - .04, -.18), Vector3(width + .13, .10, .53), roof, frame)
+	for x in [-4.5, 4.5]:
+		louver(frame, x, POLICE_EAVE + 1.33, .74, .45)
+
+
 func service_wall(a: Vector2, b: Vector2, fire: bool) -> void:
 	var frame := wall_frame(a, b)
 	var width := a.distance_to(b)
-	var height := EAVE if fire else 4.75
+	var height := EAVE if fire else POLICE_EAVE
 	solid_wall(frame, width, height)
 	if fire:
 		box(Vector3(0, 4.42, -.17), Vector3(width, .30, .46), sandstone, frame)
@@ -345,12 +367,10 @@ func rear_gable() -> void:
 	var frame := wall_frame(Vector2(ATRIUM_X + ATRIUM_HALF, z), Vector2(ATRIUM_X - ATRIUM_HALF, z))
 	draw_gable(PackedVector2Array([Vector2(-ATRIUM_HALF, EAVE), Vector2(ATRIUM_HALF, EAVE),
 		Vector2(0, PEAK), Vector2(-ATRIUM_HALF, EAVE)]), frame, copper)
-	box(Vector3(0, 6.4, .01), Vector3(ATRIUM_HALF * 2.0, 3.75, .25), copper, frame)
-	window_strip(frame, 0, 6.45, 3.0, 1.65, 1.5)
 	for i in 14:
 		var x := (i - 6.5) * .59
-		var height := gable_y(x) - 7.40
-		box(Vector3(x, 7.40 + height * .5, .080), Vector3(.035, height, .03), copper_seam, frame)
+		var height := gable_y(x) - EAVE
+		box(Vector3(x, EAVE + height * .5, .060), Vector3(.035, height, .03), copper_seam, frame)
 
 
 func clock_face(frame: Transform3D, at: Vector3) -> void:
@@ -388,47 +408,22 @@ func grade(x: float, z: float) -> float:
 	return float(ground.call(point.x, point.z)) - global_position.y
 
 
-func build_civic_plaza(asphalt_scan: Texture2D) -> void:
-	var asphalt := Kit.paint(Color("#ad9f92"))
-	asphalt.albedo_texture = asphalt_scan
-	asphalt.uv1_triplanar = true
-	asphalt.uv1_scale = Vector3.ONE * .3
-	paving(Rect2(-13.8, 21.3, 36.1, 6.6), concrete, .11)
+func build_civic_plaza() -> void:
+	paving(Rect2(ATRIUM_X - 17.75, 18.85, 35.5, 6.7), concrete, .11)
 	paving(Rect2(7.0, 13.1, 7.2, 27.4), concrete, .10)
-	paving(Rect2(-19.8, 26.6, 11.2, 2.35), concrete, .08)
-	paving(Rect2(-16.8, 10.3, 4.2, 14.2), asphalt, .043)
-	for stripe in 5:
-		var z := 11.7 + stripe * 2.6
-		box(Vector3(-15.0, grade(-15.0, z) + .074, z), Vector3(3.2, .013, .078), white)
 	for z in [15.5, 18.5, 30.0, 35.2, 38.5]:
 		box(Vector3(10.6, grade(10.6, z) + .112, z), Vector3(7.05, .009, .028), footing)
 
-	var center_y := grade(4.1, 23.9)
-	var canopy_y := center_y + 3.42
-	box(Vector3(4.1, canopy_y, 23.9), Vector3(36.35, .58, 4.25), concrete)
-	box(Vector3(4.1, canopy_y + .33, 23.9), Vector3(36.5, .10, 4.31), roof)
-	box(Vector3(4.1, canopy_y - .28, 25.98), Vector3(36.3, .10, .12), sandstone)
-	wordmark(Transform3D.IDENTITY, Vector3(4.1, canopy_y + .016, 26.062),
-		"THE CORPORATION OF THE TOWN OF DEEP RIVER", .27, Color("#4a453b"))
-	for x in [-13.45, -7.7, -.8, 6.1, 12.9, 19.81, 21.2]:
-		for z in [22.1, 25.59]:
-			var base := grade(x, z) + .09
-			var height := canopy_y - base
-			cylinder(Vector3(x, base + height * .5, z), .107, .124, height, mullion)
-			Kit.collider(collision, Vector3(x, base + height * .5, z), Vector3(.24, height, .24))
-			box(Vector3(x, base + .08, z), Vector3(.33, .16, .33), footing)
-	for x in [-10.0, -3.5, 3.0, 9.5, 16.0, 20.6]:
-		box(Vector3(x, canopy_y - .312, 23.83), Vector3(.86, .065, .21), lamp_glass)
-
+	build_plaza_canopy()
 	civic_memorial()
 	flagpole(-2.3, 17.9, false)
 	flagpole(21.0, 19.2, true)
-	for at in [Vector2(-17.5, 27.8), Vector2(16.4, 36.7), Vector2(25.3, 24.75)]:
+	for at in [Vector2(-8.4, 30.05), Vector2(16.4, 36.7), Vector2(29.1, 28.95)]:
 		street_lamp(at)
 	for at in [Vector2(-7.7, 28.9), Vector2(18.6, 31.5)]:
 		var bench := Bench.build_bench(self, Vector3(at.x, grade(at.x, at.y), at.y), Kit.paint(Color("#8b7963")))
 		bench.rotation.y = PI
-	for at in [Vector2(-6.9, 12.8), Vector2(27.3, 18.3), Vector2(-14.4, 30.7)]:
+	for at in [Vector2(-6.9, 12.8), Vector2(27.3, 18.3), Vector2(-2.9, 33.3)]:
 		garden_tree(at)
 	for bed in [Rect2(-8.4, 14.2, 10.1, 3.15), Rect2(14.55, 15.1, 9.8, 3.0)]:
 		garden_bed(bed)
@@ -442,6 +437,26 @@ func build_civic_plaza(asphalt_scan: Texture2D) -> void:
 			point.y = grade(point.x, point.z) + .43
 			var proportions := Vector3(1.53, 1.08, 1.1) * rng.randf_range(.69, 1.11)
 			crowns.append(Transform3D(Basis(Vector3.UP, rng.randf_range(0, TAU)).scaled_local(proportions), point))
+
+
+func build_plaza_canopy() -> void:
+	var at := Vector3(ATRIUM_X, grade(ATRIUM_X, PLAZA_CANOPY_Z) + 3.42, PLAZA_CANOPY_Z)
+	box(at, Vector3(PLAZA_CANOPY_WIDTH, .58, 4.25), concrete)
+	box(at + Vector3(0, .33, 0), Vector3(PLAZA_CANOPY_WIDTH + .15, .10, 4.31), roof)
+	box(at + Vector3(0, -.28, 2.08), Vector3(PLAZA_CANOPY_WIDTH - .05, .10, .12), sandstone)
+	wordmark(Transform3D.IDENTITY, at + Vector3(0, .016, 2.162),
+		"THE CORPORATION OF THE TOWN OF DEEP RIVER", .27, Color("#4a453b"))
+	for offset: float in [-15.5, -11.5, -4.25, 4.25, 11.5, 15.5]:
+		var x := at.x + offset
+		for z: float in [at.z - 1.8, at.z + 1.69]:
+			var base := grade(x, z) + .09
+			var height := at.y - base
+			var post := Vector3(x, base + height * .5, z)
+			cylinder(post, .107, .124, height, mullion)
+			Kit.collider(collision, post, Vector3(.24, height, .24))
+			box(Vector3(x, base + .08, z), Vector3(.33, .16, .33), footing)
+	for offset: float in [-13.5, -8.1, -2.7, 2.7, 8.1, 13.5]:
+		box(at + Vector3(offset, -.312, -.07), Vector3(.86, .065, .21), lamp_glass)
 
 
 func civic_memorial() -> void:
@@ -458,20 +473,6 @@ func civic_memorial() -> void:
 	for side in [-1.0, 1.0]:
 		cylinder(at + Vector3(side * 1.75, .50, .39), .23, .16, .36, masonry)
 		garden_bed(Rect2(at.x + side * 2.15 - .48, at.z + .56, .96, .77))
-
-
-func build_service_apron(asphalt_scan: Texture2D) -> void:
-	var asphalt := Kit.paint(Color("#b3a79c"))
-	asphalt.albedo_texture = asphalt_scan
-	asphalt.uv1_triplanar = true
-	asphalt.uv1_scale = Vector3.ONE * .31
-	var frame := wall_frame(Vector2(31.3, 14.5), Vector2(40.7, -15.8))
-	paving(Rect2(-16.2, -.18, 32.40, 15.1), asphalt, .057, frame)
-	paving(Rect2(-16.4, 13.65, 32.8, 1.52), concrete, .086, frame)
-	for i in 4:
-		var point := frame * Vector3(9.35 + i * 1.65, 0, 8.2)
-		point.y = grade(point.x, point.z) + .073
-		box(Vector3.ZERO, Vector3(.074, .012, 3.55), white, Transform3D(frame.basis, point))
 
 
 func paving(area: Rect2, material: Material, lift: float, frame := Transform3D.IDENTITY) -> void:

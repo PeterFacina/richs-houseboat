@@ -3,6 +3,8 @@ shader_type spatial;
 #include "res://river_surfaces.gdshaderinc"
 #include "res://road_asphalt.gdshaderinc"
 
+uniform vec2 champlain_access = vec2(0.0);
+uniform vec4 champlain_bays = vec4(24.0, 3.25, .59, 3.5);
 uniform bool parking_lot = false;
 uniform vec4 parking_bays = vec4(0.0);
 uniform vec2 parking_aisle = vec2(0.0);
@@ -20,7 +22,10 @@ float paint_line(float value, float half_width) {
 
 void fragment() {
 	float eye = length(VERTEX);
-	vec3 asphalt = weathered_asphalt(world_xz, eye);
+	vec2 blocks = abs(world_xz - vec2(18028., 13364.)) / vec2(67., 71.);
+	float civic = 1.0 - smoothstep(.92, 1.16, max(blocks.x, blocks.y));
+	vec3 asphalt = weathered_asphalt(world_xz, eye, mix(1.0, .04, civic));
+	asphalt = mix(asphalt, vec3(.265, .241, .213), civic * .20);
 	float yellow = 0.0;
 	float white = 0.0;
 	if (parking_lot) {
@@ -42,6 +47,33 @@ void fragment() {
 		float broken = 1.0 - smoothstep(1.43, 1.49 + fwidth(UV.y), dash);
 		yellow = paint_line(UV.x, .060) * step(.5, style) * mix(1.0, broken, step(1.5, style)) * UV2.x;
 		white = paint_line(abs(UV.x) - 3.13, .055) * COLOR.g * UV2.x;
+		if (style > 2.5) {
+			yellow = paint_line(abs(UV.x) - .135, .064) * UV2.x;
+			white = paint_line(abs(UV.x) - 5.11, .072) * COLOR.g * UV2.x;
+		}
+		if (COLOR.a < .5) {
+			float offset = abs(UV.x);
+			float east = 1.0 - step(0.0, UV.x);
+			yellow = paint_line(UV.x, .048) * UV2.x * .83;
+			// Angle each row in the direction of the adjoining travel lane.
+			float bay = (UV.y + sign(UV.x) * (offset - champlain_bays.w) * champlain_bays.z -
+				champlain_bays.x) / champlain_bays.y;
+			float divider = (fract(bay + .5) - .5) * champlain_bays.y;
+			float stripe = paint_line(divider, .055);
+			float inside_bay = step(champlain_bays.w, offset) * step(offset, 8.54);
+			float bay_start = champlain_bays.x + floor(bay + .5) * champlain_bays.y;
+			float block = step(champlain_bays.x - .01, bay_start) *
+				step(bay_start, mix(161.0, 103.0, east));
+			float civic_walk = step(50.0, bay_start) * step(bay_start, 57.0);
+			float driveway = step(abs(bay_start - champlain_access.x), champlain_access.y + 1.6);
+			float angled = stripe * inside_bay * block * (1.0 - max(civic_walk, driveway) * east);
+			// Use shorter parallel spaces where the plaza return narrows.
+			float parallel_end = abs(fract((UV.y - 126.0) / 7.05 + .5) - .5) * 7.05;
+			float parallel = step(125.94, UV.y) * step(UV.y, 147.22) * east *
+				max(paint_line(parallel_end, .054) * step(3.46, offset) * step(offset, 5.02),
+					paint_line(offset - 3.49, .054) * step(parallel_end, .54));
+			white = max(white, max(angled, parallel) * UV2.x);
+		}
 		float walk = max(paint_line(UV2.y - 6.35, .10), paint_line(UV2.y - 8.35, .10));
 		float stop = paint_line(UV2.y - 9.55, .14) * step(.14, UV.x);
 		white = max(white, max(walk, stop) * (1.0 - step(3.22, abs(UV.x))));

@@ -6,6 +6,8 @@ const WALLS = preload("res://deep_river_walls.gdshader")
 const YachtClub = preload("res://marina_yacht_club.gd")
 const Champlain = preload("res://deep_river_champlain.gd")
 const GiantTigerPlaza = preload("res://deep_river_plaza.gd")
+const Residential = preload("res://deep_river_residential.gd")
+const Driveways = preload("res://deep_river_driveways.gd")
 
 var roof: SurfaceTool
 var walls: SurfaceTool
@@ -16,11 +18,18 @@ var ground_height: Callable
 var metre: float
 var windows: ShaderMaterial
 var champlain := Champlain.new()
+var residential := Residential.new()
+var driveways := Driveways.new()
 
 
 func build(parent: Node3D, buildings: Array, texture: Texture2D, ground: Callable, scale: float,
-		brick: Texture2D, aggregate: Texture2D, wood: Texture2D, road_material: ShaderMaterial) -> void:
+		brick: Texture2D, aggregate: Texture2D, wood: Texture2D, road_material: ShaderMaterial, streets: Array,
+		regional_streets: Array, mapped_footprints: Array, concrete: Texture2D) -> void:
 	ground_height = ground
+	residential.catalogue(streets + regional_streets)
+	driveways.setup(streets, regional_streets, mapped_footprints, ground)
+	residential.ground = ground
+	residential.panel = panel
 	metre = scale
 	var district := Node3D.new()
 	district.name = "DeepRiverBuildings"
@@ -62,6 +71,10 @@ func build(parent: Node3D, buildings: Array, texture: Texture2D, ground: Callabl
 		for surface in [roof, walls, frames, glass]:
 			surface.begin(Mesh.PRIMITIVE_TRIANGLES)
 		champlain.setup(town, walls, frames, glass, ground_height, panel)
+		residential.frames = frames
+		residential.glass = glass
+		residential.steps = SurfaceTool.new()
+		residential.steps.begin(Mesh.PRIMITIVE_TRIANGLES)
 		for building: Dictionary in block:
 			build_one(building)
 		for detail in town.get_children():
@@ -74,6 +87,10 @@ func build(parent: Node3D, buildings: Array, texture: Texture2D, ground: Callabl
 			shell.create_trimesh_collision()
 		build_batch(frames, trim, "building_detail")
 		build_batch(glass, windows, "building_detail")
+		var house_steps := build_batch(residential.steps, trim, "building_detail")
+		if house_steps != null:
+			house_steps.name = "ResidentialSteps"
+			house_steps.create_trimesh_collision()
 		var panes := build_batch(champlain.plaza.panes, storefront_glass, "building_detail")
 		if panes != null:
 			panes.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
@@ -84,6 +101,7 @@ func build(parent: Node3D, buildings: Array, texture: Texture2D, ground: Callabl
 		if signboards != null:
 			signboards.add_to_group(Champlain.Plaza.SIGNS)
 
+	driveways.build(district, road_material.get_shader_parameter("road_scan"), concrete)
 	if not giant_tiger.is_empty():
 		GiantTigerPlaza.new().build(district, giant_tiger, ground_height, aggregate, windows, road_material)
 	if buildings.any(func(building: Dictionary) -> bool: return building.id == "hexagon"):
@@ -108,13 +126,18 @@ func build_one(building: Dictionary) -> void:
 	var grade: Array = profile.get("grade_anchor", building.center)
 	var base: float = ground_height.call(grade[0], grade[1])
 	var eave: float = base + profile.get("eave", building.eave)
-	if profile.is_empty():
-		build_mapped_roof(building, eave)
-	else:
-		champlain.build_roof(building, profile, eave)
-
 	var wall_color := Color(profile.get("wall", building.wall))
 	wall_color.a = 0.0 if building.finish == "brick" or not profile.is_empty() else 1.0
+	var residential_match := Residential.accepts(building, profile)
+	if residential_match:
+		wall_color = residential.prepare(building, eave - base)
+		if not residential.compact or residential.parking_outbuilding():
+			driveways.plan(building, residential.front, residential.compact, residential.seed,
+				residential.entry_fraction())
+	if profile.is_empty():
+		build_mapped_roof(building, eave, residential_match)
+	else:
+		champlain.build_roof(building, profile, eave)
 	var trim := Color(building.trim)
 	var toward_street := Vector3.ZERO
 	if building.front is Array:
@@ -170,6 +193,9 @@ func build_one(building: Dictionary) -> void:
 		if not profile.is_empty():
 			champlain.build_face(profile, index, facade, along, normal, width, eave - base)
 			continue
+		if residential_match:
+			residential.facade(index, facade, along, normal, width, top_a, top_b)
+			continue
 		if width < metre * 2.75 or building.windows == "utility":
 			continue
 		if building.windows == "school":
@@ -180,23 +206,38 @@ func build_one(building: Dictionary) -> void:
 		if index == main_front and building.detail != null:
 			add_landmark_detail(building, facade, along, normal, width, trim)
 
+	if residential_match:
+		residential.chimney(eave)
 
-func build_mapped_roof(building: Dictionary, eave: float) -> void:
+
+func build_mapped_roof(building: Dictionary, eave: float, house: bool) -> void:
+	roof.set_color(Color(1.0, residential.roof_tone, residential.roof_form) if house else Color.BLACK)
 	var roof_box := Rect2(building.box[0], building.box[1],
 		building.box[2] - building.box[0], building.box[3] - building.box[1])
 	var uv_box := Rect2(building.uv[0], building.uv[1],
 		building.uv[2] - building.uv[0], building.uv[3] - building.uv[1])
+	if house and not residential.roof_fill.is_empty():
+		var lift := Vector3.UP * eave
+		var roof_points := residential.roof_fill
+		for i in range(0, roof_points.size(), 3):
+			roof_triangle(roof_points[i] + lift, roof_points[i + 1] + lift, roof_points[i + 2] + lift,
+				roof_box, uv_box, house)
+		return
 	for index in range(0, building.roof.size(), 3):
-		var a := roof_point(building.roof[index], eave)
-		var b := roof_point(building.roof[index + 1], eave)
-		var c := roof_point(building.roof[index + 2], eave)
-		var normal := (c - a).cross(b - a).normalized()
-		var triangle := [a, b, c] if normal.y >= 0.0 else [a, c, b]
-		roof.set_normal(normal if normal.y >= 0.0 else -normal)
-		for p: Vector3 in triangle:
-			var locality := (Vector2(p.x, p.z) - roof_box.position) / roof_box.size
-			roof.set_uv(uv_box.position + locality.clamp(Vector2.ZERO, Vector2.ONE) * uv_box.size)
-			roof.add_vertex(p)
+		roof_triangle(roof_point(building.roof[index], eave), roof_point(building.roof[index + 1], eave),
+			roof_point(building.roof[index + 2], eave), roof_box, uv_box, house)
+
+
+func roof_triangle(a: Vector3, b: Vector3, c: Vector3, roof_box: Rect2, uv_box: Rect2, house: bool) -> void:
+	var normal := (c - a).cross(b - a).normalized()
+	var triangle := [a, b, c] if normal.y >= 0.0 else [a, c, b]
+	roof.set_normal(normal if normal.y >= 0.0 else -normal)
+	for p: Vector3 in triangle:
+		var locality := (Vector2(p.x, p.z) - roof_box.position) / roof_box.size
+		roof.set_uv(uv_box.position + locality.clamp(Vector2.ZERO, Vector2.ONE) * uv_box.size)
+		roof.set_uv2(residential.roof_coordinate(p) if house else Vector2.ZERO)
+		roof.add_vertex(p)
+
 
 func roof_point(point: Array, eave: float) -> Vector3:
 	return Vector3(point[0], eave + point[2], point[1])
@@ -209,7 +250,7 @@ func add_wall(a: Vector3, b: Vector3, top_a: Vector3, top_b: Vector3, normal: Ve
 	var low_right := Vector2(width, end)
 	var high_left := Vector2(0, (top_a.y - a.y) / metre)
 	var high_right := Vector2(width, (top_b.y - a.y) / metre)
-	if color.a > 0.25 and color.a < 0.4:
+	if (color.a > .25 and color.a < .4) or (color.a > .60 and color.a < .78):
 		var grade_a: float = ground_height.call(a.x, a.z)
 		var grade_b: float = ground_height.call(b.x, b.z)
 		low_left.y = a.y - grade_a

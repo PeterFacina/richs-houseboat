@@ -11,6 +11,7 @@ const RiverbankPark = preload("res://riverbank_park.gd")
 const BrockhouseWay = preload("res://brockhouse_way.gd")
 const Swisha = preload("res://swisha_dam.gd")
 const Town = preload("res://deep_river_buildings.gd")
+const BuildingsDriveways = preload("res://deep_river_driveways.gd")
 const TownHall = preload("res://deep_river_town_hall.gd")
 const PropertySites = preload("res://deep_river_properties.gd")
 const RoadNetwork = preload("res://deep_river_roads.gd")
@@ -59,6 +60,7 @@ class TerrainPatch:
 var town_hall := TownHall.new()
 var property_sites: Array[Node3D] = []
 var meta: Dictionary
+var highway_clearance: Array[Dictionary] = []
 var regional_streets: Array = preload("res://ottawa/regional_access.json").data.mcanulty_roads
 var elevation: PackedFloat32Array
 var shore: PackedByteArray
@@ -104,6 +106,12 @@ var lamure := LamureBeach.new()
 
 func build() -> void:
 	meta = JSON.parse_string(FileAccess.get_file_as_string(BASE + "river.json"))
+	for index: int in RoadNetwork.HIGHWAY:
+		var line: Array = meta.streets[index]
+		for i in range(1, line.size()):
+			var a := Vector2(line[i - 1][0], line[i - 1][1])
+			var b := Vector2(line[i][0], line[i][1])
+			highway_clearance.append({"a": a, "b": b, "area": Rect2(a, Vector2.ZERO).expand(b).grow(11.5)})
 	elevation = FileAccess.get_file_as_bytes(BASE + "height.bin").to_float32_array()
 	shore = FileAccess.get_file_as_bytes(BASE + "shore.bin")
 	columns = int(meta.columns)
@@ -217,7 +225,7 @@ func build() -> void:
 			for col in range(0, detail.grid.x - 1, TILE):
 				tile(col, row, ground, detail)
 	build_water()
-	build_town()
+	var residential_driveways := build_town()
 	property_sites = PropertySites.build(self, ground_height, concrete_scan, scanned_surface("brick"), wood_scan)
 	build_landmarks()
 	var park := RiverbankPark.new()
@@ -235,14 +243,22 @@ func build() -> void:
 	if lamure_patch != null:
 		build_lamure(ground)
 	var pines := LamurePines.new()
+	var champlain: Array = meta.streets[RoadNetwork.CHAMPLAIN]
+	var street_start := Vector2(champlain[0][0], champlain[0][1])
+	var street_axis := (Vector2(champlain[1][0], champlain[1][1]) - street_start).normalized()
 	waterfront.build_canopy(self, town_canopy, marina_patch.area, wet_clearance,
 		func(foot: Vector3, height: float) -> bool:
 			# This surveyed tree stands under the new corner portico.
-			if Vector2(foot.x, foot.z).distance_squared_to(PLAZA_PORTICO_TREE) < .25:
+			var point := Vector2(foot.x, foot.z)
+			if point.distance_squared_to(PLAZA_PORTICO_TREE) < .25:
 				return true
 			return PublicWorks.cleared_for_construction(foot) or park.owns_tree(foot) \
-				or PropertySites.clears_tree(Vector2(foot.x, foot.z)) \
-				or Vector2(foot.x, foot.z).distance_squared_to(RiverbankPark.GAZEBO_SITE) < 36.0 \
+				or residential_driveways.clears_tree(point) \
+				or RoadNetwork.clears_champlain_tree(point, street_start, street_axis) \
+				or RoadNetwork.CivicParking.covers(point) \
+				or PropertySites.clears_tree(point) \
+				or highway_has_tree_conflict(point, highway_clearance) \
+				or point.distance_squared_to(RiverbankPark.GAZEBO_SITE) < 36.0 \
 				or (lamure_patch != null and pines.place_from_survey(foot, height)))
 	if meta.has("riverbank"):
 		park.build(self, town_canopy, waterfront, pines, ground_height, wet_clearance, riverbed)
@@ -464,6 +480,8 @@ func trees_for_tile(col: int, row: int, rng: RandomNumberGenerator, tree: Mesh, 
 	var tile_center := Vector3((col + TILE * 0.5) * step, 0, (row + TILE * 0.5) * step)
 	var distance_from_city := Vector3(col * step, 0, row * step).distance_to(city)
 	var near_dam := tile_center.distance_to(dam_center) < 2150.0
+	var tile_area := Rect2(Vector2(col, row) * step, Vector2.ONE * TILE * step)
+	var near_highway := highway_clearance.filter(func(span: Dictionary): return span.area.intersects(tile_area))
 	var count := 1500 if near_dam or distance_from_city < 4300.0 else 550
 	for _i in count:
 		var x := rng.randf_range(col, mini(col + TILE, columns - 1)) * step
@@ -472,7 +490,8 @@ func trees_for_tile(col: int, row: int, rng: RandomNumberGenerator, tree: Mesh, 
 			continue
 		var location := Vector2(x, z)
 		if swisha_patch.area.has_point(location) or marina_patch.area.has_point(location) or canopy_area.has_point(location) \
-				or PublicWorks.road_clearance(location) or PropertySites.clears_tree(location):
+				or PublicWorks.road_clearance(location) or PropertySites.clears_tree(location) \
+				or highway_has_tree_conflict(location, near_highway):
 			continue
 		if wet_clearance(Vector3(x, 0, z)) > 0.0:
 			continue
@@ -639,7 +658,7 @@ func set_surface_slick(data: Vector4) -> void:
 	near_water.set_shader_parameter("surface_slick", data)
 
 
-func build_town() -> void:
+func build_town() -> BuildingsDriveways:
 	var tile_image := Image.load_from_file(BASE + "deep_river_roofs.png")
 	tile_image.generate_mipmaps()
 	var textures := ImageTexture.create_from_image(tile_image)
@@ -659,13 +678,23 @@ func build_town() -> void:
 	roads.build(self, meta, ground_height, marina_paving, detail_areas,
 		ROAD_SCAN, ROAD_NORMAL, concrete_scan, asphalt_scan)
 	buildings.build(self, footprints, textures, ground_height, meta.distance_scale,
-		scanned_surface("brick"), asphalt_scan, wood_scan, roads.paved)
+		scanned_surface("brick"), asphalt_scan, wood_scan, roads.paved, meta.streets,
+		regional_streets, meta.buildings, concrete_scan)
 	windows = buildings.windows
 	bind_day_sky(windows)
 	add_child(town_hall)
-	town_hall.build(ground_height, concrete_scan, asphalt_scan, waterfront.render_trees)
+	town_hall.build(ground_height, concrete_scan, waterfront.render_trees)
 	bind_day_sky(town_hall.glass)
 	bind_day_sky(town_hall.glass_alt)
+	return buildings.driveways
+
+
+static func highway_has_tree_conflict(point: Vector2, spans: Array) -> bool:
+	for span: Dictionary in spans:
+		if span.area.has_point(point) and point.distance_squared_to(
+				Geometry2D.get_closest_point_to_segment(point, span.a, span.b)) < 11.5 * 11.5:
+			return true
+	return false
 
 
 func roadside_sign_foot(foot: Vector3, half_span: float) -> Vector3:
@@ -706,18 +735,24 @@ func road_at_sign(point: Vector2, half_span: float) -> Dictionary:
 	if meta.has("brockhouse"):
 		var road: Array = meta.brockhouse.road_segment
 		lines.append([[road[0], road[1]], [road[2], road[3]]])
-	var clearance := 3.4 + half_span
-	var best := clearance * clearance
+	var best := INF
 	var found := {}
-	for line: Array in lines:
+	for index in lines.size():
+		var line: Array = lines[index]
+		var width := RoadNetwork.HIGHWAY_HALF_WIDTH if index in RoadNetwork.HIGHWAY else RoadNetwork.STREET_HALF_WIDTH
+		var search_width := RoadNetwork.PARKING_HALF_WIDTH if index == RoadNetwork.CHAMPLAIN else width
 		for i in range(1, line.size()):
 			var a := Vector2(line[i - 1][0], line[i - 1][1])
 			var b := Vector2(line[i][0], line[i][1])
-			if a.is_equal_approx(b) or not Rect2(a, Vector2.ZERO).expand(b).grow(clearance).has_point(point):
+			if a.is_equal_approx(b) or not Rect2(a, Vector2.ZERO).expand(b).grow(search_width + half_span).has_point(point):
 				continue
 			var center := Geometry2D.get_closest_point_to_segment(point, a, b)
+			var clearance := width + half_span
+			if index == RoadNetwork.CHAMPLAIN and i == 1:
+				var side := (point - center).dot((b - a).orthogonal())
+				clearance = RoadNetwork.champlain_half_width(a.distance_to(center), side) + half_span
 			var distance := point.distance_squared_to(center)
-			if distance < best:
+			if distance < best and distance < clearance * clearance:
 				best = distance
 				var normal := (b - a).orthogonal().normalized()
 				if (point - center).dot(normal) < -.015:

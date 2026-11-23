@@ -50,6 +50,10 @@ var travel_button: Button
 var status: Label
 var no_selection: Label
 var waypoints: Dictionary = {}
+var highway_layer: Node2D
+var highway_paths: Array[Line2D] = []
+var highway_points: Array = []
+var highway_label: Label
 var selected := -1
 var boat_id := -1
 
@@ -131,6 +135,8 @@ func make_map(parent: VBoxContainer, texture: Texture2D) -> void:
 	map.material = palette
 	map_frame.add_child(map)
 	map.resized.connect(layout_map)
+	highway_layer = Node2D.new()
+	map.add_child(highway_layer)
 	routes = Node2D.new()
 	routes.name = "SupplyRoutes"
 	map.add_child(routes)
@@ -320,6 +326,21 @@ func update_waypoint_visibility(id: int) -> void:
 	waypoint.leader.visible = waypoint.pin.visible
 
 
+func set_highway(streets: Array) -> void:
+	for index: int in preload("res://deep_river_roads.gd").HIGHWAY:
+		var ribbon := Line2D.new()
+		ribbon.default_color = Color("#d79e48")
+		ribbon.antialiased = true
+		highway_layer.add_child(ribbon)
+		highway_paths.append(ribbon)
+		highway_points.append(streets[index])
+	highway_label = MenuTheme.text("HIGHWAY 17", 13, MenuTheme.NAVY, true)
+	highway_label.add_theme_stylebox_override("normal", MenuTheme.box(MenuTheme.PAPER, Color("#d79e48"), 4, 5))
+	highway_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	highway_layer.add_child(highway_label)
+	layout_map()
+
+
 func layout_map() -> void:
 	if scale_bar == null:
 		return
@@ -327,6 +348,16 @@ func layout_map() -> void:
 	scale_frame.position = Vector2(12, map.size.y - 52)
 	for id: int in waypoints:
 		place_pin(id)
+	for i in highway_paths.size():
+		var points := PackedVector2Array()
+		for p: Array in highway_points[i]:
+			points.append(map_point(Vector3(p[0], 0, p[1])))
+		highway_paths[i].points = points
+		highway_paths[i].width = 3.0 if section == 0 else 4.0
+	if highway_label != null:
+		var anchor := Vector2(17030, 13565)
+		highway_label.visible = bounds.has_point(anchor)
+		highway_label.position = map_point(Vector3(anchor.x, 0, anchor.y)) + Vector2(-54, 13)
 	map_resized.emit()
 
 

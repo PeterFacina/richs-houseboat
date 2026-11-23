@@ -254,6 +254,7 @@ func _ready() -> void:
 	regions.setup(self)
 	make_waypoints()
 	chart.setup_sections(regions.NAMES, regions.section_bounds())
+	chart.set_highway(river.meta.streets)
 	graphics.apply(river, eye)
 	marina_cars = MarinaCars.new()
 	marina_cars.name = "MarinaCars"
