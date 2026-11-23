@@ -1,7 +1,7 @@
 extends RefCounted
 
 const Kit = preload("res://scenery.gd")
-const Plaza = preload("res://deep_river_plaza.gd")
+const Plaza = preload("res://deep_river_storefront_openings.gd")
 const Shops = preload("res://deep_river_champlain_shops.gd")
 
 # The footprints are the existing surveyed polygons, in Deep River Road to Forest Avenue order.

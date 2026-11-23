@@ -32,7 +32,7 @@ func prepare(definition: Dictionary) -> void:
 	for key in ["pier_approach", "promenade", "beach_link"]:
 		trails.append(points(layout[key]))
 	trails.append(PackedVector2Array([Vector2(17982.2319, 12637.6974), Vector2(17977.6, 12643.6),
-		Vector2(17976.0, 12653.8), Vector2(17979.0, 12659.0), Vector2(17985.0, 12661.0)]))
+		Vector2(17976.0, 12653.8)]))
 	trails.append(PackedVector2Array([Vector2(18215.1, 13120.4), Vector2(18217.9, 13119.7),
 		Vector2(18221.3, 13120.2), Vector2(18222.5, 13122.0)]))
 	for polygon: Array in layout.woodland:
@@ -300,6 +300,8 @@ func build_sign(park: Node3D, foot: Vector3, towards: Vector3, message: String, 
 	sign.name = "RiverbankTrailSign"
 	park.add_child(sign)
 	sign.global_position = park.get_parent().roadside_sign_foot(foot, .82)
+	sign.add_to_group(&"town_roadside_signs")
+	sign.set_meta(&"sign_span", .82)
 	sign.basis = Basis.looking_at(towards, Vector3.UP, true)
 	for x: float in [-.61, .61]:
 		Kit.box_at(sign, Vector3(x, .65, 0), Vector3(.105, 1.56, .105), timber)

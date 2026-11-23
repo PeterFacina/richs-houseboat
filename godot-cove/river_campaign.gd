@@ -14,6 +14,8 @@ const Rich = preload("res://rich_npc.gd")
 const Amenities = preload("res://boat_amenities.gd")
 
 var game: Node3D
+const XP = preload("res://progression.gd")
+
 var ledger := Ledger.new()
 var landings := Landings.new()
 var deck := Deck.new()
@@ -69,6 +71,7 @@ func setup(fishing_game: Node3D) -> void:
 	houseboat.set_modern_design(ledger.state.modern_houseboat)
 	crew.name = "Crew"
 	crew.local_profile = ledger.profile_id()
+	crew.progression_secret = ledger.profile_id("user://ottawa_progression_id.txt")
 	add_child(crew)
 	crew.boat = game.vessel
 	crew.requested.connect(remote_request)
@@ -106,9 +109,10 @@ func setup(fishing_game: Node3D) -> void:
 	info.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
 	info.offset_left = -482
 	info.offset_right = -26
-	info.offset_top = 53
-	info.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	info.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	info.offset_top = 108
+	info.add_theme_stylebox_override("normal", preload("res://river_menu_theme.gd").box(Color("#182f40d6"), Color("#dfb78499"), 8, 10))
+	info.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	ghost_paint = Kit.paint(Color(.46, .88, .69, .35))
 	ghost_paint.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	ghost_paint.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
@@ -545,10 +549,20 @@ func step_boat(delta: float, rudder: float) -> void:
 	vessel.throttle_cap = (.18 if limiting < .015 else 1.0) * lerpf(1.0, .52, smoothstep(.48, 1.0, ledger.state.bilge))
 	vessel.top_speed = (11.9 if vessel.foil else 8.4) if vessel.skiff else (4.5 if ledger.state.tow else 6.5)
 	var before := vessel.center
-	vessel.sail(delta, game.clock, captain != 0 or game.driving, rudder)
+	vessel.sail(delta, game.clock, captain != 0 or game.driving, rudder * (1.0 + skill_effect(captain, "experienced_captain") / 100.0))
+	if dock < 0 and absf(vessel.throttle) > .1 and absf(vessel.speed) > .3:
+		travel_progress(captain, "boat", before.distance_to(vessel.center), 20.0 * delta)
 	var active := ledger.active_job()
 	if not active.is_empty() and active.kind == "freight" and absf(vessel.throttle) > .21:
 		ledger.state.freight_run += before.distance_to(vessel.center)
+		if captain > 0 and before.distance_to(vessel.center) <= 20.0 * delta:
+			var sailor := progression_for(captain)
+			if int(sailor.get("freight_job", -1)) != ledger.state.job_serial:
+				sailor.freight_job = ledger.state.job_serial
+				sailor.freight_meters = 0.0
+			sailor.freight_meters += before.distance_to(vessel.center)
+			if sailor.freight_meters >= 25.0:
+				sailor.worked_job = ledger.state.job_serial
 	if dock >= 0 and vessel.skiff:
 		vessel.position.y += .09
 
@@ -566,11 +580,11 @@ func consume_power(delta: float) -> void:
 	elif vessel.skiff:
 		state.charge = maxf(0.0, state.charge - delta * load * (.014 + vessel.foil_lift * .010))
 	else:
-		state.fuel = maxf(0.0, state.fuel - delta * load * .040)
+		state.fuel = maxf(0.0, state.fuel - delta * load * .040 * (1.0 - skill_effect(captain, "fuel_conservation") / 100.0))
 		state.charge = minf(capacity(), state.charge + delta * load * .0035)
 	if load > .2:
 		var motion := absf(vessel.wave_pose.y) + absf(vessel.wave_pose.z)
-		state.bilge = minf(1.0, state.bilge + delta * load * (.002 + motion * .022))
+		state.bilge = minf(1.0, state.bilge + delta * load * (.002 + motion * .022 * (1.0 - skill_effect(captain, "smooth_sailing") / 100.0)))
 	if state.pump_on and ledger.has_upgrade("pump") and state.charge > .025 and state.bilge > 0:
 		state.bilge = maxf(0.0, state.bilge - delta * .087)
 		state.charge = maxf(0.0, state.charge - delta * .008)
@@ -635,7 +649,7 @@ func request(action: String, value: Variant) -> void:
 
 func remote_request(peer: int, action: String, value: Variant) -> void:
 	if action == "connected":
-		crew.share_state.rpc_id(peer, ledger.state, dock, captain, revision)
+		crew.share_state.rpc_id(peer, snapshot_for(peer), dock, captain, revision)
 		crewplay.welcome(peer)
 		amenities.welcome(peer)
 		game.helicopter.welcome(peer)
@@ -678,16 +692,79 @@ func changed(persist := true) -> void:
 	update_target()
 	update_route_map()
 	if crew.on_server() and crew.people.size() > 1:
-		crew.share_state.rpc(ledger.state, dock, captain, revision)
+		for peer: int in crew.people:
+			if peer != crew.my_id():
+				crew.share_state.rpc_id(peer, snapshot_for(peer), dock, captain, revision)
 	refresh_board()
 
 
-func reward_mowing(amount := 5) -> void:
-	ledger.state.cash += amount
+func progression_for(peer: int) -> Dictionary:
+	var id: String = "self" if crew.is_guest() else (crew.progression_secret.sha256_text() if peer == crew.my_id() else str(crew.progression_keys.get(peer, "")))
+	if id.is_empty():
+		return {}
+	if crew.is_guest():
+		return ledger.state.progression.get("self", {})
+	if not ledger.state.progression.has(id):
+		ledger.state.progression[id] = {"version": 1}
+	return ledger.state.progression[id]
+
+
+func skill_effect(peer: int, id: String) -> float:
+	return XP.effect(progression_for(peer), id) if peer > 0 else 0.0
+
+
+func rank_for(peer: int, skill: String) -> int:
+	if peer <= 0:
+		return 0
+	return int(progression_for(peer).get("ranks", {}).get(skill, 0))
+
+
+func travel_progress(peer: int, kind: String, distance: float, maximum: float) -> void:
+	if peer <= 0 or distance <= 0 or distance > maximum:
+		return
+	var profile := progression_for(peer)
+	var meter_key := kind + "_meters"
+	var serial_key := kind + "_serial"
+	var meters := float(profile.get(meter_key, 0)) + distance
+	if meters >= 500.0:
+		profile[serial_key] = int(profile.get(serial_key, 0)) + 1
+		XP.award(profile, kind, "%s:%d" % [kind, profile[serial_key]])
+		meters -= 500.0
+		profile[meter_key] = meters
+		changed()
+	else:
+		profile[meter_key] = meters
+
+
+func snapshot_for(peer: int) -> Dictionary:
+	var snapshot := ledger.state.duplicate(false)
+	var personal := progression_for(peer).duplicate(false)
+	personal.erase("events")
+	snapshot.progression = {"self": personal}
+	return snapshot
+
+
+func mowing_pay(amount: int) -> int:
+	return roundi(amount * (1.0 + skill_effect(crew.my_id(), "lawn_professional") / 100.0))
+
+
+func reward_mowing(amount := 5, commercial := false) -> int:
+	var profile := progression_for(crew.my_id())
+	var day := int(ledger.state.last_commercial_day if commercial else ledger.state.last_mowing_day)
+	XP.award(profile, "commercial" if commercial else "route", "mow:%d:%d" % [day, int(commercial)])
+	var paid := mowing_pay(amount)
+	ledger.state.cash += paid
 	changed()
+	return paid
 
 
 func perform(peer: int, action: String, value: Variant) -> void:
+	if action == "purchase_skill":
+		if value is Array and value.size() == 2 and value[0] is String and value[1] is int:
+			var profile := progression_for(peer)
+			if int(profile.get("ranks", {}).get(value[0], 0)) == value[1] and XP.buy(profile, value[0]):
+				changed()
+		return
 	if action.begins_with("aircraft_"):
 		game.helicopter.act(peer, action, value)
 		return
@@ -800,6 +877,8 @@ func perform(peer: int, action: String, value: Variant) -> void:
 				diver = 0
 				if value == true and not ledger.active_job().is_empty() and ledger.active_job().kind == "dive":
 					ledger.state.stage = "return"
+					if peer == crew.my_id():
+						progression_for(peer).worked_job = ledger.state.job_serial
 					changed()
 					tell(peer, "Recorder aboard. Bring it back to Chalk River.")
 				else:
@@ -834,6 +913,7 @@ func use_dock(peer: int, person: Dictionary, place: int) -> void:
 	if aboard_here and peer != crew.my_id():
 		keep_player_on_deck(boat, local)
 	revision += 1
+	XP.award(progression_for(peer), "discovery", "berth:%d" % berth)
 	save_berth(berth)
 	tell(peer, "Tied up at %s. L boards again." % Data.dock_name(berth), berth)
 
@@ -1106,9 +1186,13 @@ func accept_job(peer: int, place: int, index: int) -> void:
 	if not ledger.active_job().is_empty() or place != int(plan.home):
 		tell(peer, "Meet the job at its listed landing. The crew can run one job at a time.")
 		return
+	if plan.has("skill") and rank_for(peer, plan.skill) < 1:
+		return
 	if not Data.requirement(str(plan.get("needs", "")), ledger.state.equipment):
 		tell(peer, "Requires %s." % Data.UPGRADES[plan.needs].name)
 		return
+	ledger.state.verified_job_fish = 0
+	ledger.state.job_serial += 1
 	ledger.state.job = index
 	ledger.state.job_fish = []
 	ledger.state.freight_run = 0.0
@@ -1132,6 +1216,7 @@ func work_at_buoy(peer: int, person: Dictionary) -> void:
 			ledger.state.surveys[str(job.home)] = {"depth": snappedf(depth, .01 if ledger.has_upgrade("sonar") else .1),
 				"current": snappedf(current.length(), .01)}
 			ledger.state.stage = "return"
+			progression_for(peer).worked_job = ledger.state.job_serial
 			changed()
 			tell(peer, "Sounding logged. %.1f m deep, %.2f m/s current. Return to %s." % [depth, current.length(), Data.dock_name(job.home)])
 		"rescue":
@@ -1139,6 +1224,7 @@ func work_at_buoy(peer: int, person: Dictionary) -> void:
 				tell(peer, "Bring Rich's houseboat for the tow.")
 				return
 			ledger.state.stage = "return"
+			progression_for(peer).worked_job = ledger.state.job_serial
 			changed()
 			tell(peer, "Towline secured. Take the angler back to the marina.")
 		"salvage":
@@ -1167,6 +1253,7 @@ func tick_lift(delta: float) -> void:
 	ledger.state.charge = maxf(0.0, ledger.state.charge - delta * .014)
 	if lift_amount >= 1.0:
 		ledger.state.stage = "return"
+		progression_for(lifting_peer).worked_job = ledger.state.job_serial
 		var worker := lifting_peer
 		lifting_peer = 0
 		lift_amount = 0.0
@@ -1183,6 +1270,9 @@ func count_catch(peer: int, species: String, length: int, at: Vector3) -> void:
 	if not job.is_empty() and job.kind == "fish" and ledger.state.stage == "travel" \
 			and (job.home == 0 or Vector3(landings.sites[job.home].berth).distance_to(at) < 430.0):
 		if job.home == 0 or not ledger.state.job_fish.has(species):
+			if peer == crew.my_id():
+				ledger.state.verified_job_fish += 1
+				progression_for(peer).worked_job = ledger.state.job_serial
 			ledger.state.job_fish.append(species)
 			if ledger.state.job_fish.size() >= 2:
 				ledger.state.stage = "return"
@@ -1203,12 +1293,32 @@ func deliver(peer: int, place: int) -> void:
 	if job.kind == "freight":
 		var origin: Vector3 = landings.sites[job.home].berth
 		if ledger.state.freight_run >= origin.distance_to(landings.sites[place].berth) * .78:
-			reward[0] += 25
+			reward[0] += roundi(float(job.reward[0]) * .20)
 		var line: Dictionary = ledger.state.routes.get(ledger.route_key(job.home, place), {})
 		if not line.is_empty():
-			reward[0] += 20
+			reward[0] += roundi(float(job.reward[0]) * .12)
 			reward[2] += 2
 			line.shipments += 1
+	var profile := progression_for(peer)
+	var eligible: bool = job.kind != "fish" or int(ledger.state.get("verified_job_fish", 0)) >= 2
+	if job.kind == "freight":
+		var run_required: float = landings.sites[job.home].berth.distance_to(landings.sites[place].berth) * .78
+		eligible = ledger.state.freight_run >= run_required
+	var history: Dictionary = profile.get("contract_completions", {})
+	var completed := int(history.get(job.kind, 0))
+	var bonus := XP.effect(profile, "better_negotiator")
+	if eligible and int(profile.get("worked_job", -1)) == ledger.state.job_serial:
+		bonus += mini(3, completed / 4) * 5
+	if eligible:
+		for contributor: Dictionary in ledger.state.progression.values():
+			if int(contributor.get("worked_job", -1)) == ledger.state.job_serial:
+				XP.award(contributor, "fish_delivery" if job.kind == "fish" else "delivery", "job:%d" % ledger.state.job_serial)
+				var record: Dictionary = contributor.get("contract_completions", {})
+				record[job.kind] = int(record.get(job.kind, 0)) + 1
+				contributor.contract_completions = record
+	if job.kind == "freight":
+		bonus += XP.effect(profile, "delivery_specialist")
+	reward[0] = roundi(float(reward[0]) * (1.0 + bonus / 100.0))
 	ledger.award(member.profile, member.name, reward[0], reward[1], reward[2], place)
 	clear_job()
 	changed()
@@ -1366,7 +1476,7 @@ func button_selected(action: String, value: Variant) -> void:
 			game.open_chart(action == "catch_journal")
 		"fish_guide":
 			board.hide()
-			game.open_fish_guide()
+			game.open_fish_guide(board.active_page)
 		"leave":
 			var error: String = game.leave_trip()
 			if not error.is_empty():
@@ -1484,19 +1594,27 @@ func jobs_page(rows: Array[Dictionary], data: Dictionary, site: int) -> void:
 		if not complete and active.kind == "fish":
 			subtitle += "  %d of 2 logged." % ledger.state.job_fish.size()
 		elif active.kind == "freight":
-			subtitle += "  Earn an extra $25 if you run the trip under your own power."
+			subtitle += "  Earn a 20% cash bonus if you run the trip under your own power."
 		add(rows, active.name, subtitle, "Check in" if complete else "", "deliver", null, site != destination, true)
 		if active.has("offset") and not complete:
 			add(rows, "On the water", "Your buoy or skiff is marked in the world while this job is active.")
 		add(rows, "Put the job back on the board", "You can pick it up again at its original landing.",
 			"Drop job", "abandon", null, site < 0)
 		return
-	for index in Data.WORK.size():
+	var offers := range(Data.WORK.size())
+	offers.sort_custom(func(a: int, b: int) -> bool: return Data.WORK[a].reward[0] < Data.WORK[b].reward[0])
+	for index: int in offers:
 		var job: Dictionary = Data.WORK[index]
+		if job.has("skill") and rank_for(crew.my_id(), job.skill) < 1:
+			continue
 		var prize: Array = job.reward
 		var location: String = Data.dock_name(job.home)
 		var requirement := str(job.get("needs", ""))
-		var detail: String = "%s  •  %s\nPays $%d, %d timber, %d parts" % [location, job.detail, prize[0], prize[1], prize[2]]
+		var tier := "Local" if int(prize[0]) < 35 else ("Regional" if int(prize[0]) < 80 else "Specialist")
+		var detail: String = "%s contract · %s  •  %s\nPays $%d, %d timber, %d parts" % [tier, location, job.detail, prize[0], prize[1], prize[2]]
+		var history: Dictionary = progression_for(crew.my_id()).get("contract_completions", {})
+		var completed := int(history.get(job.kind, 0))
+		detail += "\n%s experience: %d finished · %d%% repeat-work bonus" % [str(job.kind).capitalize(), completed, mini(3, completed / 4) * 5]
 		var ready := Data.requirement(requirement, ledger.state.equipment)
 		if not ready:
 			detail += "  •  Needs %s" % Data.UPGRADES[requirement].name
@@ -1630,15 +1748,21 @@ func update_info() -> void:
 	if dive.active:
 		info.text = dive.status_text()
 		return
-	if job.is_empty():
-		info.text = ""
-	elif ledger.state.stage == "return":
-		info.text = "B  Check in at %s   •   %s" % [Data.dock_name(job.get("dest", job.home)), job.name]
-	elif job.kind == "fish":
-		info.text = "B  %s   •   %d of 2 fish logged" % [job.name, ledger.state.job_fish.size()]
-	else:
-		info.text = "B  %s   •   %d m to marker" % [job.name, roundi(game.vessel.center.distance_to(target_for_job()))]
-	if guiding:
+	info.text = ""
+	if not job.is_empty():
+		var destination := int(job.get("dest", job.home))
+		var landing: String = Data.dock_name(destination)
+		var ready: bool = ledger.state.stage == "return"
+		var action: String = {"survey":"Take a sounding at the buoy", "rescue":"Secure the towline", "salvage":"Lift the marked crate", "dive":"Retrieve the submerged recorder", "fish":"Log two fish", "freight":"Sail to " + landing}.get(job.kind, job.detail)
+		var distance: float = game.player.global_position.distance_to(landings.sites[destination].berth)
+		if job.kind == "fish" and not ready:
+			action += " (%d/2)" % ledger.state.job_fish.size()
+		elif job.has("offset") and not ready:
+			action += " · %d m" % roundi(game.vessel.center.distance_to(target_for_job()))
+		if job.kind == "freight":
+			ready = dock == destination
+		info.text = "%s\n✓  Contract accepted\n%s  %s\n%s  Check in at %s · %d m" % [job.name, "✓" if ready else "→", action, "→" if ready else "□", landing, roundi(distance)]
+	if guiding and job.is_empty():
 		var destination := "%s  ·  %.2f km" % [Data.dock_name(guide_site), game.player.global_position.distance_to(landings.sites[guide_site].berth) / 1000.0]
 		info.text = destination if job.is_empty() else "%s   /   %s" % [info.text, destination]
 
@@ -1649,12 +1773,25 @@ func mark_world() -> void:
 	var target := Vector3.INF
 	var hint := ""
 	var job := ledger.active_job()
-	if guide_site >= 0 and guide_site != dock:
+	if not job.is_empty() and ledger.state.stage == "return":
+		var destination := int(job.get("dest", job.home))
+		target = landings.sites[destination].berth + Vector3.UP * 2.5
+		hint = Data.dock_name(destination)
+	elif job.is_empty() and guide_site >= 0 and guide_site != dock:
 		target = landings.sites[guide_site].berth + Vector3.UP * 2.5
 		hint = Data.dock_name(guide_site)
 	elif not job.is_empty() and job.has("offset") and ledger.state.stage == "travel":
 		target = target_for_job() + Vector3.UP * 2.15
 		hint = job.name
+	elif dock < 0 and (rank_for(crew.my_id(), "marine_navigator") > 0 or rank_for(crew.my_id(), "local_knowledge") > 0):
+		var nearest: float = 1200 if rank_for(crew.my_id(), "marine_navigator") > 0 else 300
+		for i in landings.sites.size():
+			var berth: Vector3 = landings.sites[i].berth
+			var distance: float = game.player.global_position.distance_to(berth)
+			if distance < nearest:
+				nearest = distance
+				target = berth + Vector3.UP * 2.35
+				hint = Data.dock_name(i)
 	elif dock < 0 and game.vessel.center.distance_to(landings.sites[0].berth) < 230.0:
 		target = landings.sites[0].berth + Vector3.UP * 2.35
 		hint = "Marina Landing"

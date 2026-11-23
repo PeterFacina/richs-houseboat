@@ -14,6 +14,7 @@ const Waves = preload("res://swell.gd")
 const Landings = preload("res://river_campaign_data.gd")
 const BASE := "res://ottawa/"
 const TILE := 44
+const PLAZA_PORTICO_TREE := Vector2(18000.5215, 13239.9229)
 
 class TerrainPatch:
 	var area: Rect2
@@ -49,6 +50,7 @@ class TerrainPatch:
 			lerpf(mask[next.y * grid.x + cell.x], mask[next.y * grid.x + next.x], blend.x), blend.y)
 
 var meta: Dictionary
+var regional_streets: Array = preload("res://ottawa/regional_access.json").data.mcanulty_roads
 var elevation: PackedFloat32Array
 var shore: PackedByteArray
 var step: float
@@ -219,6 +221,9 @@ func build() -> void:
 	var pines := LamurePines.new()
 	waterfront.build_canopy(self, town_canopy, marina_patch.area, wet_clearance,
 		func(foot: Vector3, height: float) -> bool:
+			# This surveyed tree stands under the new corner portico.
+			if Vector2(foot.x, foot.z).distance_squared_to(PLAZA_PORTICO_TREE) < .25:
+				return true
 			return PublicWorks.cleared_for_construction(foot) or park.owns_tree(foot) \
 				or Vector2(foot.x, foot.z).distance_squared_to(RiverbankPark.GAZEBO_SITE) < 36.0 \
 				or (lamure_patch != null and pines.place_from_survey(foot, height)))
@@ -615,6 +620,13 @@ func roadside_sign_foot(foot: Vector3, half_span: float) -> Vector3:
 				or not road_at_sign(preferred, half_span).is_empty()):
 			preferred = alternate
 		point = preferred
+	if not road_at_sign(point, half_span).is_empty():
+		var origin := Vector2(foot.x, foot.z)
+		for radius in range(2, 42, 2):
+			for direction in 16:
+				var candidate := origin + Vector2.RIGHT.rotated(TAU * direction / 16.0) * radius
+				if roadside_safe(candidate) and road_at_sign(candidate, half_span).is_empty():
+					return Vector3(candidate.x, ground_height(candidate.x, candidate.y) + height_offset, candidate.y)
 	return Vector3(point.x, ground_height(point.x, point.y) + height_offset, point.y)
 
 
@@ -625,6 +637,7 @@ func roadside_safe(at: Vector2) -> bool:
 
 func road_at_sign(point: Vector2, half_span: float) -> Dictionary:
 	var lines: Array = meta.streets.duplicate()
+	lines.append_array(regional_streets)
 	lines.append(PublicWorks.CEDAR_ROAD)
 	lines.append(PublicWorks.YARD_DRIVE)
 	if meta.has("brockhouse"):

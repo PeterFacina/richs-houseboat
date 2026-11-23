@@ -274,7 +274,11 @@ func step(delta: float, throttle: float, steering: float, brake: bool, has_input
 					var remote: Vector4 = remote_input.get(driver, Vector4.ZERO)
 					command = remote if remote.w >= Time.get_ticks_msec() else Vector4(0, 0, 1, 1)
 			if driver != 0 or absf(cars[i].speed) > .005 or not is_zero_approx(cars[i].steer) or cars[i].engine.playing or cars[i].braking:
-				cars[i].drive(delta, command.x, command.y, command.z > .5, driver != 0)
+				var before := cars[i].global_position
+				var handling := 1.0 + float(game.campaign.skill_effect(driver, "smooth_driver")) / 100.0
+				cars[i].drive(delta, command.x, command.y * handling, command.z > .5, driver != 0, float(game.campaign.skill_effect(driver, "road_veteran")) / 100.0)
+				if absf(command.x) > .1:
+					game.campaign.travel_progress(driver, "road", before.distance_to(cars[i].global_position), 60.0 * delta)
 			elif cars[i].model.running_lights[0].visible != cars[i].lamps_on:
 				cars[i].present(delta, false, 0)
 		if send and crew.on_server() and crew.people.size() > 1:

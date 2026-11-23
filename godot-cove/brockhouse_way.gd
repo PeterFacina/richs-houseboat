@@ -51,7 +51,10 @@ func signpost(parent: Node3D, foot: Vector3, face: Vector3, size: Vector3, cente
 		material: Material) -> Node3D:
 	var root := Node3D.new()
 	parent.add_child(root)
-	root.position = foot
+	root.global_position = parent.get_parent().roadside_sign_foot(parent.to_global(foot), size.x * .5 + .12)
+	root.add_to_group(&"town_roadside_signs")
+	root.set_meta(&"sign_span", size.x * .5 + .12)
+	foot = root.position
 	root.basis = Basis.looking_at(face, Vector3.UP, true)
 	for side: float in [-1.0, 1.0]:
 		var base := root.to_global(Vector3(side * (size.x * .5 + .027), 0, 0))
