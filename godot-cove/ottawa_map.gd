@@ -11,10 +11,13 @@ const RiverbankPark = preload("res://riverbank_park.gd")
 const BrockhouseWay = preload("res://brockhouse_way.gd")
 const Swisha = preload("res://swisha_dam.gd")
 const Town = preload("res://deep_river_buildings.gd")
+const RoadNetwork = preload("res://deep_river_roads.gd")
 const PublicWorks = preload("res://public_works.gd")
 const Waves = preload("res://swell.gd")
 const Landings = preload("res://river_campaign_data.gd")
 const BASE := "res://ottawa/"
+const ROAD_SCAN = preload("res://ottawa/materials/road_asphalt033_color.jpg")
+const ROAD_NORMAL = preload("res://ottawa/materials/road_asphalt033_normal.jpg")
 const TILE := 44
 const PLAZA_PORTICO_TREE := Vector2(18000.5215, 13239.9229)
 
@@ -155,6 +158,7 @@ func build() -> void:
 	concrete_scan = scanned_surface("concrete")
 	wood_scan = scanned_surface("wood")
 	ground.set_shader_parameter("asphalt_scan", asphalt_scan)
+	ground.set_shader_parameter("road_scan", ROAD_SCAN)
 	ground.set_shader_parameter("concrete_scan", concrete_scan)
 	ground.set_shader_parameter("grass_scan", scanned_surface("grass"))
 	ground.set_shader_parameter("grass_normal", scanned_surface("grass_normal", true))
@@ -388,6 +392,15 @@ func ground_height(x: float, z: float) -> float:
 	if u + v <= 1.0:
 		return a + (b - a) * u + (c - a) * v
 	return d + (c - d) * (1 - u) + (b - d) * (1 - v)
+
+
+func driving_height(x: float, z: float) -> float:
+	var land := ground_height(x, z)
+	var at := Vector3(x, land, z)
+	var query := PhysicsRayQueryParameters3D.create(at + Vector3.UP, at - Vector3.UP * .10,
+		RoadNetwork.ROAD_LAYER)
+	var hit := get_world_3d().direct_space_state.intersect_ray(query)
+	return maxf(land, hit.position.y) if not hit.is_empty() else land
 
 
 func sample_grid(col: int, row: int, detail: TerrainPatch) -> float:
@@ -631,26 +644,16 @@ func build_town() -> void:
 		footprints = footprints.filter(func(building: Dictionary):
 			var box: Array = building.box
 			return not Rect2(box[0], box[1], box[2] - box[0], box[3] - box[1]).has_point(shelter))
+	var detail_areas: Array[Rect2] = [marina_patch.area]
+	if lamure_patch != null:
+		detail_areas.append(lamure_patch.area)
+	var roads := RoadNetwork.new()
+	roads.build(self, meta, ground_height, marina_paving, detail_areas,
+		ROAD_SCAN, ROAD_NORMAL, concrete_scan, asphalt_scan)
 	buildings.build(self, footprints, textures, ground_height, meta.distance_scale,
-		scanned_surface("brick"), asphalt_scan, wood_scan)
+		scanned_surface("brick"), asphalt_scan, wood_scan, roads.paved)
 	windows = buildings.windows
 	bind_day_sky(windows)
-	var road := SurfaceTool.new()
-	road.begin(Mesh.PRIMITIVE_TRIANGLES)
-	road.set_normal(Vector3.UP)
-	for line: Array in meta.streets:
-		add_street(road, line)
-	add_street(road, PublicWorks.CEDAR_ROAD)
-	add_street(road, PublicWorks.YARD_DRIVE, 2.85)
-	var material := ShaderMaterial.new()
-	material.shader = preload("res://town_street.gdshader")
-	material.set_shader_parameter("asphalt_scan", asphalt_scan)
-	material.set_shader_parameter("concrete_scan", concrete_scan)
-	if meta.has("brockhouse"):
-		var segment: Array = meta.brockhouse.road_segment
-		material.set_shader_parameter("brockhouse_road", Vector4(segment[0], segment[1], segment[2], segment[3]))
-	bind_marina_paving(material)
-	Kit.mesh_at(self, road.commit(), Vector3.ZERO, material)
 
 
 func roadside_sign_foot(foot: Vector3, half_span: float) -> Vector3:
@@ -709,47 +712,6 @@ func road_at_sign(point: Vector2, half_span: float) -> Dictionary:
 					normal = -normal
 				found = {"center": center, "edge": normal * (clearance + .85)}
 	return found
-
-
-func add_street(surface: SurfaceTool, line: Array, half_width := 3.4) -> void:
-	var centers := PackedVector2Array()
-	for pair: Array in line:
-		var at := Vector2(pair[0], pair[1])
-		if centers.is_empty() or at.distance_squared_to(centers[-1]) > .01:
-			centers.append(at)
-	if centers.size() < 2:
-		return
-	var edges := PackedVector2Array()
-	for i in centers.size():
-		var incoming := (centers[i] - centers[maxi(0, i - 1)]).orthogonal().normalized()
-		var outgoing := (centers[mini(i + 1, centers.size() - 1)] - centers[i]).orthogonal().normalized()
-		var across := (incoming + outgoing).normalized()
-		var alignment := maxf(absf(across.dot(incoming + outgoing)) * .5, .72)
-		edges.append(across * (half_width / alignment) if i > 0 and i < centers.size() - 1 else across * half_width)
-	for i in range(1, centers.size()):
-		var a := centers[i - 1]
-		var b := centers[i]
-		var bounds := Rect2(a, Vector2.ZERO).expand(b).grow(4.5)
-		var detailed := marina_patch.area.intersects(bounds) or (lamure_patch != null and lamure_patch.area.intersects(bounds))
-		var spacing := .92 if detailed else 6.0
-		var cross_sections := 5 if detailed else 2
-		var sections := maxi(1, ceili(a.distance_to(b) / spacing))
-		for section in sections:
-			var start := float(section) / sections
-			var finish := float(section + 1) / sections
-			var left := a.lerp(b, start) - edges[i - 1].lerp(edges[i], start)
-			var right := a.lerp(b, start) + edges[i - 1].lerp(edges[i], start)
-			var end_left := a.lerp(b, finish) - edges[i - 1].lerp(edges[i], finish)
-			var end_right := a.lerp(b, finish) + edges[i - 1].lerp(edges[i], finish)
-			for across in cross_sections:
-				var x0 := float(across) / cross_sections
-				var x1 := float(across + 1) / cross_sections
-				var corners := [left.lerp(right, x0), left.lerp(right, x1),
-					end_left.lerp(end_right, x0), end_left.lerp(end_right, x1)]
-				for corner: int in [0, 1, 2, 1, 3, 2]:
-					var p: Vector2 = corners[corner]
-					surface.set_uv(Vector2(2.0 * (x0 if corner % 2 == 0 else x1) - 1.0, 0.0))
-					surface.add_vertex(Vector3(p.x, ground_height(p.x, p.y) + .045, p.y))
 
 
 func build_landmarks() -> void:

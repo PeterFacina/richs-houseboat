@@ -1,40 +1,57 @@
 shader_type spatial;
-render_mode cull_disabled;
 
 #include "res://river_surfaces.gdshaderinc"
+#include "res://road_asphalt.gdshaderinc"
 
-varying vec2 coordinates;
-uniform vec4 brockhouse_road = vec4(0.0);
+uniform bool parking_lot = false;
+uniform vec4 parking_bays = vec4(0.0);
+uniform vec2 parking_aisle = vec2(0.0);
+varying vec2 world_xz;
 
 void vertex() {
-	coordinates = VERTEX.xz;
+	world_xz = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xz;
+}
+
+float paint_line(float value, float half_width) {
+	float blur = max(.003, fwidth(value) * .65);
+	return (1.0 - smoothstep(max(0.0, half_width - blur), half_width + blur, abs(value)))
+		* min(1.0, half_width / blur);
 }
 
 void fragment() {
-	float verge = smoothstep(0.84, 1.0, abs(UV.x));
-	vec3 dust = concrete_color(coordinates) * vec3(0.85, 0.82, 0.72);
-	ALBEDO = mix(asphalt_color(coordinates), dust, verge * 0.44);
-	if (brockhouse_road.z > 0.0) {
-		vec2 axis = brockhouse_road.zw - brockhouse_road.xy;
-		float along = dot(coordinates - brockhouse_road.xy, axis) / dot(axis, axis);
-		float shoulder_distance = length(coordinates - brockhouse_road.xy - axis * clamp(along, 0.0, 1.0));
-		float local = 1.0 - smoothstep(3.0, 6.0, shoulder_distance);
-		if (local > .001) {
-			float grain = material_luminance(texture(asphalt_scan, coordinates / .51).rgb);
-			float edge_dust = smoothstep(.60, 1.0, abs(UV.x)) * mix(.14, .53, grain);
-			float seam = abs(UV.x + sin(coordinates.y * .45) * .018);
-			float worn_join = (1.0 - smoothstep(.010, .038, seam)) * (1.0 - smoothstep(22.0, 85.0, length(VERTEX)));
-			vec3 wear = mix(ALBEDO * (0.90 + grain * .17), dust, edge_dust);
-			ALBEDO = mix(ALBEDO, wear * (1.0 - worn_join * .20), local);
-		}
+	float eye = length(VERTEX);
+	vec3 asphalt = weathered_asphalt(world_xz, eye);
+	float yellow = 0.0;
+	float white = 0.0;
+	if (parking_lot) {
+		// UV is measured from the frontage in metres.
+		float bay = (UV.x - parking_bays.x) / parking_bays.y;
+		float spaces = step(-.03, bay) * step(bay, parking_bays.z + .03);
+		float stripes = step(parking_bays.w + .23, UV.y) * step(UV.y, parking_aisle.y);
+		float divider = (fract(bay + .5) - .5) * parking_bays.y;
+		float crossing = step(parking_aisle.x + .30, UV.x)
+			* step(UV.x, parking_aisle.x + parking_bays.y - .30)
+			* step(parking_bays.w + .28, UV.y) * step(UV.y, parking_aisle.y);
+		float bar = mod(UV.y - parking_bays.w - .33, .68) - .08;
+		white = max(spaces * stripes * paint_line(divider, .055), crossing * paint_line(bar, .08));
+	} else {
+		float gravel = marina_gravel_mask(world_xz);
+		asphalt = mix(asphalt, marina_gravel(world_xz), gravel);
+		float style = round(COLOR.r * 3.0);
+		float dash = abs(mod(UV.y + 1.2, 9.0) - 4.5);
+		float broken = 1.0 - smoothstep(1.43, 1.49 + fwidth(UV.y), dash);
+		yellow = paint_line(UV.x, .060) * step(.5, style) * mix(1.0, broken, step(1.5, style)) * UV2.x;
+		white = paint_line(abs(UV.x) - 3.13, .055) * COLOR.g * UV2.x;
+		float walk = max(paint_line(UV2.y - 6.35, .10), paint_line(UV2.y - 8.35, .10));
+		float stop = paint_line(UV2.y - 9.55, .14) * step(.14, UV.x);
+		white = max(white, max(walk, stop) * (1.0 - step(3.22, abs(UV.x))));
+		yellow *= 1.0 - gravel;
+		white *= 1.0 - gravel;
 	}
-	float apron = marina_gravel_mask(coordinates);
-	if (apron > .97) {
-		discard;
-	}
-	if (apron > .001) {
-		ALBEDO = mix(ALBEDO, marina_gravel(coordinates), apron);
-	}
-	ROUGHNESS = 0.95;
-	SPECULAR = 0.19;
+	float wear = worn_road_paint(world_xz);
+	ALBEDO = mix(asphalt, vec3(.76, .54, .18), yellow * wear);
+	ALBEDO = mix(ALBEDO, vec3(.87, .86, .81), white * wear);
+	NORMAL = road_relief(world_xz, NORMAL, VIEW_MATRIX[0].xyz, eye);
+	ROUGHNESS = mix(.93, .99, road_noise(world_xz * .48));
+	SPECULAR = .17;
 }

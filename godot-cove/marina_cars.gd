@@ -39,7 +39,7 @@ func setup(fishing_game: Node3D, map: Map, river_crew: Node) -> void:
 		var car := RoadCar.new()
 		car.name = "Car%d" % i
 		add_child(car)
-		car.setup(Model.MODELS[i], bay(i * BAY_WIDTH, 0), LOT_ANGLE, river.ground_height, sound)
+		car.setup(Model.MODELS[i], bay(i * BAY_WIDTH, 0), LOT_ANGLE, river.driving_height, sound)
 		cars.append(car)
 		drivers.append(0)
 	crew.changed.connect(crew_changed)

@@ -19,7 +19,7 @@ var champlain := Champlain.new()
 
 
 func build(parent: Node3D, buildings: Array, texture: Texture2D, ground: Callable, scale: float,
-		brick: Texture2D, aggregate: Texture2D, wood: Texture2D) -> void:
+		brick: Texture2D, aggregate: Texture2D, wood: Texture2D, road_material: ShaderMaterial) -> void:
 	ground_height = ground
 	metre = scale
 	var district := Node3D.new()
@@ -85,7 +85,7 @@ func build(parent: Node3D, buildings: Array, texture: Texture2D, ground: Callabl
 			signboards.add_to_group(Champlain.Plaza.SIGNS)
 
 	if not giant_tiger.is_empty():
-		GiantTigerPlaza.new().build(district, giant_tiger, ground_height, aggregate, windows)
+		GiantTigerPlaza.new().build(district, giant_tiger, ground_height, aggregate, windows, road_material)
 	if buildings.any(func(building: Dictionary) -> bool: return building.id == "hexagon"):
 		var club_root := Node3D.new()
 		district.add_child(club_root)

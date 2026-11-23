@@ -1,6 +1,7 @@
 shader_type spatial;
 
 #include "res://river_surfaces.gdshaderinc"
+#include "res://road_asphalt.gdshaderinc"
 #include "res://lamure_surface.gdshaderinc"
 
 uniform sampler2D town_ground : source_color, filter_linear_mipmap_anisotropic, repeat_disable;
@@ -89,7 +90,9 @@ void fragment() {
 		vec2 uv = (p - paving_bounds.xy) / paving_bounds.zw;
 		if (all(greaterThanEqual(uv, vec2(0.0))) && all(lessThan(uv, vec2(1.0)))) {
 			vec2 paving = texture(town_paving, uv).rg;
-			ALBEDO = mix(ALBEDO, asphalt_color(p), paving.r);
+			if (paving.r > .001) {
+				ALBEDO = mix(ALBEDO, weathered_asphalt(p, length(VERTEX)), paving.r);
+			}
 			ALBEDO = mix(ALBEDO, concrete_color(p), paving.g);
 			grass *= 1.0 - max(paving.r, paving.g);
 		}
@@ -108,10 +111,11 @@ void fragment() {
 		if (all(greaterThanEqual(uv, vec2(0.0))) && all(lessThan(uv, vec2(1.0)))) {
 			vec3 campus = texture(brockhouse_surface, uv).rgb;
 			vec3 grit_shoulder = mix(concrete_color(p), grit, .57) * vec3(.86, .82, .73);
-			vec3 driveway = asphalt_color(p) * vec3(1.12, 1.10, 1.06) * mix(.92, 1.07, mottling);
 			vec3 sidewalk = concrete_color(p) * mix(.78, .94, mottling);
 			ALBEDO = mix(ALBEDO, grit_shoulder, campus.b);
-			ALBEDO = mix(ALBEDO, driveway, campus.r);
+			if (campus.r > .001) {
+				ALBEDO = mix(ALBEDO, weathered_asphalt(p, length(VERTEX)), campus.r);
+			}
 			ALBEDO = mix(ALBEDO, sidewalk, campus.g);
 			grass *= 1.0 - max(max(campus.r, campus.g), campus.b);
 		}
