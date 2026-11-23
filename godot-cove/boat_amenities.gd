@@ -1,6 +1,7 @@
 extends Node3D
 
 const Kit = preload("res://scenery.gd")
+const AudioTexture = preload("res://audio_texture.gd")
 const Tools = preload("res://crew_tools.gd")
 const BED := Vector3(-.84, 1.35, 5.88)
 const TOILET := Vector3(.96, .35, 5.69)
@@ -170,8 +171,7 @@ func build_tv() -> void:
 	television_audio.volume_db = -15
 	if ResourceLoader.exists(CLIP_AUDIO):
 		television_audio.stream = load(CLIP_AUDIO)
-	else:
-		television_audio.stream = make_sound(21)
+	# The licensed-media placeholder is intentionally silent.
 	television_audio.finished.connect(func():
 		if tv_on: television_audio.play())
 
@@ -322,7 +322,7 @@ func tick(_delta: float) -> void:
 	var elapsed := fposmod(game.clock - tv_epoch, LOOP_SECONDS)
 	television_label.text = "RIVER NEWS\n\nLICENSED MEDIA PLACEHOLDER\n\nRequested news clip pending\n90-second synchronized loop" if tv_on else "TELEVISION OFF\n\nE  Power"
 	television_progress.size.x = 592 * elapsed / LOOP_SECONDS if tv_on else 0
-	if tv_on and not television_audio.playing: television_audio.play(elapsed if ResourceLoader.exists(CLIP_AUDIO) else 0)
+	if tv_on and television_audio.stream != null and not television_audio.playing: television_audio.play(elapsed)
 	elif not tv_on: television_audio.stop()
 	if video.stream != null:
 		if tv_on and not video.is_playing(): video.play()
@@ -349,28 +349,17 @@ func play_flush(serial: int, variant: int) -> void:
 func make_sound(index: int) -> AudioStreamWAV:
 	# Original procedural assets: no third-party media or unclear rights.
 	var rate := 12000
-	var length := 2.6 if index < 20 else 2.0
+	var length := 2.6
 	var count := int(length * rate)
-	var bytes := PackedByteArray()
-	bytes.resize(count * 2)
+	var frames := PackedFloat32Array()
+	frames.resize(count)
 	var random := RandomNumberGenerator.new()
 	random.seed = 4319 + index * 71
 	var filtered := 0.0
 	for frame in count:
 		var t := float(frame) / rate
 		filtered = lerpf(filtered, random.randf_range(-1, 1), .17)
-		var signal_value := 0.0
-		if index < 20:
-			var comic := sin(TAU * (47 + index * 3.7) * t + 5 * sin(t * (9 + index)))
-			comic *= pow(maxf(0, 1 - t / 1.0), 2) * (.35 + .20 * sin(t * (31 + index)))
-			var flush_noise := filtered * smoothstep(.8, 1.1, t) * (1 - smoothstep(1.8, 2.6, t))
-			signal_value = (comic * .42 + flush_noise * .75) * minf(1, t * 40)
-		else:
-			signal_value = (sin(TAU * 196 * t) + sin(TAU * 293 * t) * .4) * .025
-		var value := clampi(int(signal_value * 32767), -32768, 32767)
-		bytes.encode_s16(frame * 2, value)
-	var stream := AudioStreamWAV.new()
-	stream.format = AudioStreamWAV.FORMAT_16_BITS
-	stream.mix_rate = rate
-	stream.data = bytes
-	return stream
+		var swirl := .72 + .28 * sin(t * (9 + index * .15))
+		var flush_noise := filtered * smoothstep(.05, .3, t) * (1 - smoothstep(1.5, 2.6, t))
+		frames[frame] = flush_noise * swirl * .55
+	return AudioTexture.sample(frames, rate)

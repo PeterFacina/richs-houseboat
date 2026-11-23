@@ -1,7 +1,7 @@
 OPTIONAL LICENSED TELEVISION MEDIA
 
-The game currently displays an original labeled River News placeholder and
-plays a quiet procedural spatial tone. No political footage is bundled.
+The game currently displays an original labeled River News placeholder.
+The placeholder is silent. No political footage is bundled.
 
 To supply the requested news/humorous clip, use media you are authorized to
 redistribute, edit and play in the game. Keep its license/permission here.

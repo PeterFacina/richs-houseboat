@@ -1,6 +1,7 @@
 extends Node3D
 
 const Kit = preload("res://scenery.gd")
+const AudioTexture = preload("res://audio_texture.gd")
 const Tools = preload("res://crew_tools.gd")
 const SEATS := [Vector3(.40, .08, -.62), Vector3(-.40, .08, -.62), Vector3(.40, .08, .45), Vector3(-.40, .08, .45)]
 var game: Node3D
@@ -136,19 +137,7 @@ func build_model() -> void:
 	sound.max_distance = 220
 	sound.unit_size = 8
 	sound.volume_db = -15
-	var wave := AudioStreamWAV.new()
-	wave.format = AudioStreamWAV.FORMAT_16_BITS
-	wave.mix_rate = 12000
-	var samples := PackedByteArray()
-	samples.resize(24000)
-	for frame in 12000:
-		var t := float(frame)/12000
-		var value := (sin(t*TAU*96)*.5+sin(t*TAU*192)*.18)*( .35+.65*pow(.5+.5*sin(t*TAU*24),3))
-		samples.encode_s16(frame*2,int(value*12000))
-	wave.data = samples
-	wave.loop_mode = AudioStreamWAV.LOOP_FORWARD
-	wave.loop_end = 12000
-	sound.stream = wave
+	sound.stream = AudioTexture.loop_texture(7304, 24.0, .10, .45)
 
 
 func my_seat() -> int:

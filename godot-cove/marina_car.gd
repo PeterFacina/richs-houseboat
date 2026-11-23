@@ -1,6 +1,7 @@
 extends CharacterBody3D
 
 const Kit = preload("res://scenery.gd")
+const AudioTexture = preload("res://audio_texture.gd")
 const Model = preload("res://marina_car_model.gd")
 
 var details: Dictionary
@@ -130,23 +131,4 @@ func present(delta: float, occupied: bool, load: float) -> void:
 
 
 static func engine_sample() -> AudioStreamWAV:
-	const RATE := 22050
-	var noise := RandomNumberGenerator.new()
-	noise.seed = 3522
-	var data := PackedByteArray()
-	data.resize(RATE * 2)
-	var hiss := 0.0
-	for i in RATE:
-		var t := float(i) / RATE * TAU
-		hiss = lerpf(hiss, noise.randf_range(-1.0, 1.0), .17)
-		var pulse := pow(.5 + .5 * cos(t * 38.0), 5)
-		var sample := sin(t * 19.0) * .18 + sin(t * 38.0) * .19 + pulse * sin(t * 95.0) * .16
-		sample += sin(t * 57.0) * .08 + hiss * (.12 + pulse * .18)
-		data.encode_s16(i * 2, roundi(sample * 24500.0))
-	var stream := AudioStreamWAV.new()
-	stream.format = AudioStreamWAV.FORMAT_16_BITS
-	stream.mix_rate = RATE
-	stream.data = data
-	stream.loop_mode = AudioStreamWAV.LOOP_FORWARD
-	stream.loop_end = RATE
-	return stream
+	return AudioTexture.loop_texture(7303, 38.0, .12, .55)

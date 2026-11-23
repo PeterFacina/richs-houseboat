@@ -73,6 +73,6 @@ The extended houseboat has an aft bedroom and bathroom. Aim at the bed or toilet
 
 Open the chart with **Tab** and choose the entire river or an 18 × 18 km Deep River, Swisha, or Chalk River section. Use the destination list to fast travel. McAnulty Road, the cemetery footprint, and ski club and Grouse Park markers use data from [OpenStreetMap contributors under ODbL 1.0](https://www.openstreetmap.org/copyright). The helipad, generic grave markers, ski trail connection, and raised Swisha approach are gameplay adaptations.
 
-At the McAnulty helipad, **E** boards the four-seat survey helicopter. The first rider pilots with **WASD**, turns with **Q/Z**, and climbs or descends with **Space/Ctrl**. Land and slow down before using **E** to exit. Use **Esc > Unstuck** for emergency recovery. The helicopter model, rotor sound, TV tone, and 20 flush sounds are original procedural assets.
+At the McAnulty helipad, **E** boards the four-seat survey helicopter. The first rider pilots with **WASD**, turns with **Q/Z**, and climbs or descends with **Space/Ctrl**. Land and slow down before using **E** to exit. Use **Esc > Unstuck** for emergency recovery. The helicopter model, rotor sound, and 20 flush sounds are original procedural assets. The TV placeholder is silent until licensed audio is supplied.
 
 Use **F4** or **Esc > Settings > Graphics quality / distance** to choose Performance, Balanced, or Scenic. The presets vary scenery and shadows, water detail, and 2×/4×/8× MSAA.

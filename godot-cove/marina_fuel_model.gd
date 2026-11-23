@@ -1,9 +1,9 @@
 extends StaticBody3D
 
 const Kit = preload("res://scenery.gd")
+const AudioTexture = preload("res://audio_texture.gd")
 const Tools = preload("res://crew_tools.gd")
 const Hand = preload("res://river_hand_instance.gd")
-const FLOW = preload("res://ottawa/marina_fuel/flow.wav")
 const CLICK = preload("res://ottawa/marina_fuel/click.wav")
 const DING = preload("res://ottawa/marina_fuel/ding.wav")
 const PRICE_CENTS := 180
@@ -68,13 +68,11 @@ func build(number: int) -> void:
 	local_hand.position = Vector3(0, -.058, .036)
 	local_hand.rotation.z = -.8
 	local_hand.initialize(1.0, true, "shaft", true)
-	var loop := FLOW.duplicate() as AudioStreamWAV
-	loop.loop_mode = AudioStreamWAV.LOOP_FORWARD
-	loop.loop_end = roundi(loop.get_length() * loop.mix_rate)
+	var loop := AudioTexture.loop_texture(7305, 0.0, .16, .40)
 	flow_sound = sound_at(self, loop, Vector3(0, .94, .11), -13.0)
 	nozzle_sound = sound_at(nozzle, loop, SPOUT, -20.0)
-	meter_sound = sound_at(self, CLICK, Vector3(0, 1.04, .25), -7.0)
-	stop_sound = sound_at(self, DING, Vector3(0, 1.05, .27), -6.0)
+	meter_sound = sound_at(self, CLICK, Vector3(0, 1.04, .25), -13.0)
+	stop_sound = sound_at(self, DING, Vector3(0, 1.05, .27), -14.0)
 	render_station(rack_pose(), false, false, false, 0.0, 0, 0)
 
 

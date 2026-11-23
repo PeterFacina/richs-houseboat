@@ -1,6 +1,7 @@
 extends Node3D
 
 const Kit = preload("res://scenery.gd")
+const AudioTexture = preload("res://audio_texture.gd")
 const Swell = preload("res://swell.gd")
 const RATE := 22050
 const SOUNDS := {"cast": .38, "splash": .55, "bite": .19, "snap": .13, "reel": .6, "drag": .48,
@@ -222,8 +223,8 @@ func crank_sounds(retrieve: float, payout: float) -> void:
 func synthesise(tag: String) -> AudioStreamWAV:
 	var seconds: float = SOUNDS[tag]
 	var count := int(seconds * RATE)
-	var pcm := PackedByteArray()
-	pcm.resize(count * 2)
+	var frames := PackedFloat32Array()
+	frames.resize(count)
 	var slow := 0.0
 	var wash := 0.0
 	for index in count:
@@ -238,32 +239,25 @@ func synthesise(tag: String) -> AudioStreamWAV:
 				level = (wash * .73 + (white - wash) * .14) * flick * flick
 			"splash", "bite":
 				var bump := smoothstep(0.0, .009, t) * exp(-t * (11.5 if tag == "splash" else 22.0))
-				level = bump * (wash * .64 + slow * .48 + sin(TAU * (142.0 * t - 107.0 * t * t)) * .22)
+				level = bump * (wash * .80 + slow * .60)
 			"snap":
-				level = exp(-t * 79.0) * (white * .43 + sin(TAU * (1300.0 * t - 5100.0 * t * t)) * .29)
+				level = exp(-t * 79.0) * (white * .35 + wash * .30)
 			"reel", "drag":
 				var pulse := fmod(t * (25.0 if tag == "reel" else 43.75), 1.0)
 				var teeth := exp(-pulse * 14.0) * smoothstep(0.0, .043, pulse)
-				level = teeth * (.34 * sin(t * TAU * 890.0) + .22 * white) + slow * .11
+				level = teeth * (.48 * wash + .12 * white) + slow * .05
 			"door_latch", "can_open", "lighter":
-				var pop := exp(-t * 79.0) * (.51 * white + .27 * sin(t * TAU * (555.0 if tag == "door_latch" else 2190.0)))
+				var pop := exp(-t * 79.0) * (.40 * white + .25 * wash)
 				var friction := wash * .46 * smoothstep(.014, .044, t) * exp(-maxf(0.0, t - .035) * 18.0)
 				level = pop + friction * (1.0 if tag == "can_open" else .59)
 			"sip", "bubble", "spill", "retch":
 				var rate := 15.8 if tag == "bubble" else (7.2 if tag == "retch" else 10.8)
 				var pulse := pow(maxf(0.0, sin(TAU * (t * rate + t * t * 1.6))), 2.0)
-				var body := sin(t * TAU * (134.0 if tag == "bubble" else 92.0) + slow * 4.5)
+				var body := slow * 2.4
 				var swell := sin(clampf(t / seconds, 0.0, 1.0) * PI)
 				level = (wash * .59 + body * .32 + slow * .39) * swell * (.27 + pulse * .72)
 			"draw", "exhale", "wipe":
 				var breath := sin(clampf(t / seconds, 0.0, 1.0) * PI)
 				level = (wash * .75 + (white - wash) * (.19 if tag == "wipe" else .10)) * breath * breath
-		pcm.encode_s16(index * 2, roundi(clampf(level, -.97, .97) * 26600))
-	var stream := AudioStreamWAV.new()
-	stream.format = AudioStreamWAV.FORMAT_16_BITS
-	stream.mix_rate = RATE
-	stream.data = pcm
-	if tag == "reel" or tag == "drag":
-		stream.loop_mode = AudioStreamWAV.LOOP_FORWARD
-		stream.loop_end = count
-	return stream
+		frames[index] = level * .65
+	return AudioTexture.sample(frames, RATE, tag == "reel" or tag == "drag")

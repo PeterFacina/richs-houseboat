@@ -1,6 +1,7 @@
 extends Node3D
 
 const Kit = preload("res://scenery.gd")
+const AudioTexture = preload("res://audio_texture.gd")
 const IDLE_RPM := 760.0
 const WIDE_OPEN_RPM := 5700.0
 
@@ -185,23 +186,4 @@ func tube(parent: Node3D, start: Vector3, end: Vector3, r0: float, r1: float, ma
 
 
 func engine_loop() -> AudioStreamWAV:
-	const RATE := 22050
-	var pcm := PackedByteArray()
-	pcm.resize(RATE * 2)
-	for frame in RATE:
-		var t := float(frame) / RATE
-		var pulse := sin(44.0 * TAU * t)
-		var compression := pow(maxf(0.0, pulse), 4.0)
-		var valve := sin(TAU * (132.0 * t + .088 * sin(6.0 * TAU * t)))
-		var exhaust := .50 * pulse + .14 * sin(TAU * 88.0 * t + .9) + .15 * (compression - .18)
-		var value := exhaust + valve * (.062 + .050 * compression) + .023 * sin(265.0 * TAU * t)
-		if electric:
-			value = .38 * sin(TAU * 120.0 * t) + .16 * sin(TAU * 240.0 * t) + .04 * sin(TAU * 360.0 * t)
-		pcm.encode_s16(frame * 2, roundi(value * 24500.0))
-	var stream := AudioStreamWAV.new()
-	stream.format = AudioStreamWAV.FORMAT_16_BITS
-	stream.mix_rate = RATE
-	stream.data = pcm
-	stream.loop_mode = AudioStreamWAV.LOOP_FORWARD
-	stream.loop_end = RATE
-	return stream
+	return AudioTexture.loop_texture(7301, 60.0, .08, .30) if electric else AudioTexture.loop_texture(7300, 44.0, .15, .65)

@@ -3,6 +3,7 @@ extends AnimatableBody3D
 signal grass_trimmed(index: int)
 
 const Kit = preload("res://scenery.gd")
+const AudioTexture = preload("res://audio_texture.gd")
 const Tools = preload("res://crew_tools.gd")
 const VehicleExit = preload("res://vehicle_exit.gd")
 const Driver = preload("res://vehicle_driver.gd")
@@ -422,20 +423,4 @@ func regrow_grass(indices: Array) -> void:
 
 
 func engine_loop() -> AudioStreamWAV:
-	const RATE := 22050
-	var pcm := PackedByteArray()
-	pcm.resize(RATE * 2)
-	for frame in RATE:
-		var t := float(frame) / RATE
-		var phase := TAU * 53.0 * t
-		var firing := sin(phase + .19 * sin(phase * 2.0))
-		var value := .44 * firing + .20 * sin(phase * 2.0) + .14 * pow(maxf(0, firing), 5.0)
-		value += .062 * sin(phase * 6.0) + .043 * sin(TAU * 367.0 * t)
-		pcm.encode_s16(frame * 2, roundi(value * 24500.0))
-	var stream := AudioStreamWAV.new()
-	stream.format = AudioStreamWAV.FORMAT_16_BITS
-	stream.mix_rate = RATE
-	stream.loop_mode = AudioStreamWAV.LOOP_FORWARD
-	stream.loop_end = RATE
-	stream.data = pcm
-	return stream
+	return AudioTexture.loop_texture(7302, 53.0, .18, .65)
