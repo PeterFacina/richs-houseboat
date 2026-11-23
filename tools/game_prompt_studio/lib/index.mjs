@@ -158,34 +158,58 @@ function searchQuery(terms) {
   return terms.map(word => '"' + word + '"*').join(' OR ');
 }
 
-function focusExcerpt(row, terms, limit) {
-  const lines = row.excerpt.split('\n');
-  const matches = lines.map(line => {
-    const words = line.toLowerCase().split(/[\W_]+/u);
-    return terms.filter(term => words.some(word => word.startsWith(term)));
-  });
-  let best = { excerpt: '', distinct: -1, hits: -1, line: row.line };
-  for (let start = 0; start < lines.length; start++) {
-    let excerpt = '';
-    const distinct = new Set();
-    let hits = 0;
-    for (let end = start; end < lines.length; end++) {
-      if (excerpt.length + lines[end].length + 1 > limit) break;
-      excerpt += lines[end] + '\n';
-      for (const term of matches[end]) distinct.add(term);
-      hits += matches[end].length;
-    }
-    if (distinct.size > best.distinct || (distinct.size === best.distinct && hits > best.hits)) {
-      best = { excerpt, distinct: distinct.size, hits, line: row.line + start };
-    }
+function evidenceTerms(note) {
+  const terms = new Map(searchTerms(note).map(term => [term, 1]));
+  const concepts = [
+    [/\b(?:disappear\w*|vanish\w*|flicker\w*|visib\w*|hidden|hide\w*|see)\b/i, ['visib', 'show', 'hide']],
+    [/\b(?:equip\w*|hold\w*|held)\b/i, ['equip', 'held']],
+    [/\b(?:host|guest|remote|multiplayer|replicat\w*)\b/i, ['remote', 'multiplayer', 'animation']],
+    [/\b(?:steer\w*|turn\w*)\b/i, ['steer', 'lever']],
+    [/\b(?:shore\w*|terrain|gap)\b/i, ['shore', 'terrain', 'patch', 'mesh']],
+  ];
+  for (const [pattern, aliases] of concepts) {
+    if (pattern.test(note)) for (const alias of aliases) terms.set(alias, 2);
   }
-  return { ...row, line: best.line, excerpt: best.excerpt };
+  return terms;
+}
+
+function sourceExcerpt(chunks, terms, limit) {
+  const lines = new Map();
+  for (const chunk of chunks) {
+    chunk.excerpt.split('\n').forEach((text, offset) => {
+      const number = chunk.line + offset;
+      if (text.length > (lines.get(number)?.length ?? -1)) lines.set(number, text);
+    });
+  }
+  const entries = [...lines].sort(([a], [b]) => a - b);
+  const weights = entries.map(([, text]) => {
+    const words = text.toLowerCase().split(/[\W_]+/u);
+    return [...terms].filter(([term]) => words.some(word => word.startsWith(term)));
+  });
+  const declaration = /^(?:static\s+)?func\s+\w+/;
+  let best;
+  for (let start = 0; start < entries.length; start++) {
+    const matched = new Map();
+    let excerpt = '';
+    let proximity = 0;
+    for (let end = start; end < entries.length; end++) {
+      const [line, text] = entries[end];
+      if (end > start && (line !== entries[end - 1][0] + 1 || declaration.test(text))) break;
+      if (excerpt.length + text.length + 1 > limit) break;
+      excerpt += text + '\n';
+      for (const [term, weight] of weights[end]) matched.set(term, weight);
+      if (weights[end].length > 1) proximity += weights[end].length - 1;
+    }
+    if (!excerpt.trim()) continue;
+    const score = [...matched.values()].reduce((sum, weight) => sum + weight, 0) * 3 + proximity;
+    if (!best || score > best.score) best = { line: entries[start][0], excerpt, score };
+  }
+  return best;
 }
 
 export function findEvidence(db, note, focus, budget) {
   const query = searchQuery(searchTerms(note + ' ' + focus.join(' ')));
-  const reportTerms = searchTerms(note);
-  const reportQuery = searchQuery(reportTerms);
+  const terms = evidenceTerms(note);
   const rows = query ? db.prepare(
     'SELECT path,line,excerpt,bm25(chunks,3,0,1) AS score FROM chunks WHERE chunks MATCH ? ORDER BY score,path,line LIMIT 80'
   ).all(query) : [];
@@ -197,13 +221,13 @@ export function findEvidence(db, note, focus, budget) {
     result.push({ ...item, id: 'S' + (result.length + 1), excerpt });
     used += excerpt.length;
   }
+  const chunksForPath = db.prepare('SELECT line,excerpt FROM chunks WHERE path=? ORDER BY line');
+  function addSource(path, reason, limit) {
+    const passage = sourceExcerpt(chunksForPath.all(path), terms, limit);
+    if (passage) add({ path, ...passage, kind: 'source', reason }, limit);
+  }
   for (const path of focus.slice(0, 4)) {
-    const match = reportQuery && db.prepare(
-      'SELECT path,line,excerpt FROM chunks WHERE chunks MATCH ? AND path=? ORDER BY bm25(chunks,0,0,1),line LIMIT 1'
-    ).get(reportQuery, path);
-    const row = match ||
-      db.prepare('SELECT path,line,excerpt FROM chunks WHERE path=? ORDER BY line LIMIT 1').get(path);
-    if (row) add({ ...focusExcerpt(row, reportTerms, 900), kind: 'source', reason: 'Selected file' }, 900);
+    addSource(path, 'Selected file', 900);
   }
   const sourceCount = () => result.filter(item => item.kind === 'source').length;
   const areas = [
@@ -218,17 +242,13 @@ export function findEvidence(db, note, focus, budget) {
     for (const name of names) {
       const path = 'godot-cove/' + name;
       if (sourceCount() >= 5 || result.some(item => item.path === path)) continue;
-      const match = query && db.prepare(
-        'SELECT path,line,excerpt,bm25(chunks,3,0,1) AS score FROM chunks WHERE chunks MATCH ? AND path=? ORDER BY score,line LIMIT 1'
-      ).get(query, path);
-      const row = match || db.prepare('SELECT path,line,excerpt FROM chunks WHERE path=? ORDER BY line LIMIT 1').get(path);
-      if (row) add({ ...row, kind: 'source', reason: 'Relevant game system' }, 830);
+      addSource(path, 'Relevant game system', 830);
     }
   }
   for (const row of rows) {
     if (sourceCount() >= 5) break;
     if (result.some(item => item.path === row.path) || dirname(row.path) === '.') continue;
-    add({ ...row, kind: 'source', reason: 'Keyword match' }, 730);
+    addSource(row.path, 'Keyword match', 730);
   }
   if (query) {
     for (const row of db.prepare('SELECT title,body,kind,ref,bm25(memory) AS score FROM memory WHERE memory MATCH ? ORDER BY score LIMIT 12').all(query)) {

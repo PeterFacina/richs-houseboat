@@ -31,3 +31,5 @@ Post one comment with the tested commit, GPU, Ollama version, `ollama ps` proces
 - **Shoreline** checks whether the brief includes a useful `ottawa_map.gd` excerpt for the reported gap.
 
 Flag irrelevant sources, lost details, or invented findings. On failure include the exact error and last successful step. Leave credentials and machine-specific paths out of the comment. Keep this to benchmarking without game changes or fine-tuning.
+
+For the function-ranking follow-up, compare against the results in PR #26. In both fishing runs, inspect the actual excerpts in the JSON for the rod flag in `river_crew.gd` and the `show_rod` / `rod.visible` gate in `crew_avatar.gd`. Check whether the model uses that evidence and proposes a host/guest verification. For the mower and shoreline, call out any useful evidence the new ranking drops. Record the commits on both sides since the game checkout may have changed since PR #26.
