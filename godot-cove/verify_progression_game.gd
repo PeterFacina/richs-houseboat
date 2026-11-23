@@ -22,20 +22,26 @@ func exercise() -> void:
 	var campaign = game.campaign
 	var p: Dictionary = campaign.progression_for(campaign.crew.my_id())
 	XP.award(p, "route", "test-route")
-	screen.toggle()
+	var shortcut := InputEventKey.new()
+	shortcut.physical_keycode = KEY_K
+	shortcut.pressed = true
+	game._input(shortcut)
 	var passed: bool = screen.panel.visible and campaign.ledger.state.cash == 71
 	for category in screen.COLORS:
 		screen.show_branch(category)
-		passed = passed and screen.graph.get_connection_list().size() > 0
+		passed = passed and screen.graph.buttons.size() == 7 and not campaign.board.visible
 	screen.show_branch("Business")
 	screen.select_skill("hard_worker")
 	screen.purchase.pressed.emit()
 	passed = passed and int(p.get("ranks", {}).get("hard_worker", 0)) == 1
-	screen.toggle()
+	game._input(shortcut)
+	passed = passed and not screen.panel.visible
 	campaign.open_board("River")
-	campaign.board.page_buttons["Skill Tree"].pressed.emit()
-	passed = passed and screen.panel.is_visible_in_tree() and campaign.board.skill_page.is_ancestor_of(screen.panel)
-	campaign.board.select_page("Crew")
+	passed = passed and not campaign.board.page_buttons.has("Skill Tree")
+	game._input(shortcut)
+	passed = passed and screen.panel.visible and not campaign.board.visible
+	game._input(shortcut)
+	campaign.open_board("Crew")
 	passed = passed and not screen.panel.is_visible_in_tree()
 	campaign.button_selected("fish_guide", null)
 	var guide = game.fish_guide

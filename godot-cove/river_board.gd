@@ -8,7 +8,7 @@ const GROUPS := {
 	"Trip": [["River", "river"], ["Jobs", "jobs"]],
 	"Boat": [["Build", "build"], ["Workshop", "tools"]],
 	"Fishing": [["Fish Index", "fish", "fish_guide"], ["Catch Journal", "journal", "catch_journal"]],
-	"": [["Crew", "crew"], ["Skill Tree", "chart"]],
+	"": [["Crew", "crew"]],
 }
 
 var active_page := "River"
@@ -16,7 +16,6 @@ var body: VBoxContainer
 var location_line: Label
 var inventory_line: Label
 var message_line: Label
-var skill_page: MarginContainer
 var scroller: ScrollContainer
 var page_buttons: Dictionary = {}
 
@@ -85,9 +84,6 @@ func _ready() -> void:
 	scroller.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	scroller.follow_focus = true
 	reading_area.add_child(scroller)
-	skill_page = MarginContainer.new()
-	reading_area.add_child(skill_page)
-	skill_page.hide()
 	body = VBoxContainer.new()
 	body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	body.add_theme_constant_override("separation", 9)
@@ -116,10 +112,6 @@ func show_data(data: Dictionary) -> void:
 	location_line.text = str(data.heading)
 	inventory_line.text = str(data.inventory)
 	set_message(str(data.get("message", "")))
-	skill_page.visible = active_page == "Skill Tree"
-	scroller.visible = not skill_page.visible
-	if skill_page.visible:
-		return
 	var focus := get_viewport().gui_get_focus_owner()
 	var focus_path := body.get_path_to(focus) if focus != null and body.is_ancestor_of(focus) else NodePath()
 	for item in body.get_children():

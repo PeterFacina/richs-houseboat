@@ -350,6 +350,11 @@ func _input(event: InputEvent) -> void:
 			get_viewport().set_input_as_handled()
 		return
 	if skill_screen.is_inside_tree() and not get_tree().paused:
+		if campaign.board.visible and event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_K:
+			campaign.close_board()
+			skill_screen.toggle()
+			get_viewport().set_input_as_handled()
+			return
 		if event is InputEventJoypadButton and event.pressed and ((event.button_index == JOY_BUTTON_BACK and (skill_screen.panel.visible or not menu_blocks_play())) or (event.button_index == JOY_BUTTON_B and skill_screen.panel.visible)):
 			skill_screen.toggle()
 			get_viewport().set_input_as_handled()

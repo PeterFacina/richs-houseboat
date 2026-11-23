@@ -8,7 +8,11 @@ var meter := ProgressBar.new()
 var heading := Label.new()
 var toast := Label.new()
 var panel := PanelContainer.new()
-var graph := GraphEdit.new()
+var graph := preload("res://sounding_chart.gd").new()
+var title := Label.new()
+var skill_title := Label.new()
+var bonus := Label.new()
+var mouse_before := Input.MOUSE_MODE_CAPTURED
 var details := Label.new()
 var purchase := Button.new()
 var summary := Label.new()
@@ -17,9 +21,6 @@ var banner := Label.new()
 var promotion_tween: Tween
 var category := "Fishing"
 var selected := ""
-var dragging := false
-var graph_layout_pending := false
-var graph_revision := 0
 var last_xp := -1
 var last_level := 1
 var initialized := false
@@ -56,182 +57,134 @@ func setup(owner_game: Node) -> void:
 	banner.add_theme_stylebox_override("normal", Atlas.box(Color("#182f40dc"), Color("#dfb784bb"), 10, 18))
 	banner.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	banner.hide()
-	var surface := StyleBoxFlat.new()
-	surface.bg_color = Atlas.CREAM
-	surface.set_border_width_all(2)
-	surface.border_color = Atlas.SAND
-	surface.set_corner_radius_all(14)
-	panel.theme = Atlas.get_theme()
-	surface.content_margin_left = 20
-	surface.content_margin_right = 20
+	panel.name = "SoundingChart"
+	add_child(panel)
+	panel.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	var surface := Atlas.box(Color("#0b252d"), Color("#0b252d"), 0, 24)
 	surface.content_margin_top = 16
-	surface.content_margin_bottom = 16
+	surface.content_margin_bottom = 14
 	panel.add_theme_stylebox_override("panel", surface)
-	game.campaign.board.skill_page.add_child(panel)
-	game.campaign.board.skill_page.visibility_changed.connect(sync_book_page)
 	panel.hide()
 	var layout := VBoxContainer.new()
 	panel.add_child(layout)
-	layout.add_child(Atlas.text("Crew skill journal", 30, Atlas.NAVY, true))
-	layout.add_child(summary)
+	layout.add_theme_constant_override("separation", 12)
+	var header := HBoxContainer.new()
+	layout.add_child(header)
+	var names := VBoxContainer.new()
+	names.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	header.add_child(names)
+	names.add_child(Atlas.text("SKILLS   /   SOUNDING CHART", 15, graph.MINT, true))
+	names.add_child(title)
+	title.add_theme_font_size_override("font_size", 36)
+	header.add_child(summary)
+	summary.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	var close := Atlas.button("Close  [K]", &"Button", "", 38)
+	header.add_child(close)
+	close.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	close.pressed.connect(toggle)
 	layout.add_child(tabs)
 	for branch: String in COLORS:
-		var tab := Atlas.button(branch, &"QuietAction", {"Fishing":"fish", "Lawn Care":"tools", "Boating":"river", "Driving":"chart", "Business":"jobs", "Exploration":"journal"}[branch], 40)
-		tab.toggle_mode = true
+		var tab := Button.new()
 		tab.text = branch
+		tab.toggle_mode = true
+		tab.custom_minimum_size = Vector2(124, 38)
+		tab.add_theme_stylebox_override("normal", Atlas.box(Color("#173c46"), Color("#28525a"), 5))
+		tab.add_theme_stylebox_override("pressed", Atlas.box(Color("#684f2e"), graph.GOLD, 5))
 		tabs.add_child(tab)
 		tab.pressed.connect(show_branch.bind(branch))
-	graph.mouse_default_cursor_shape = Control.CURSOR_DRAG
-	var columns := HSplitContainer.new()
-	layout.add_child(columns)
-	columns.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	columns.add_child(graph)
-	graph.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	var sidebar := VBoxContainer.new()
-	columns.add_child(sidebar)
-	sidebar.custom_minimum_size.x = 200
-	sidebar.add_child(Atlas.text("Skill details", 23, Atlas.BLUE, true))
-	sidebar.add_theme_constant_override("separation", 15)
-	purchase.theme_type_variation = &"MainAction"
+	layout.add_child(graph)
 	graph.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	graph.minimap_enabled = false
-	graph.zoom = .85
-	graph.add_theme_stylebox_override("panel", Atlas.box(Atlas.MIST, Atlas.SAND, 10))
-	graph.show_grid = true
-	graph.add_theme_color_override("grid_minor", Color("#1c567315"))
-	graph.add_theme_color_override("grid_major", Color("#1c567332"))
-	graph.show_arrange_button = false
-	graph.show_grid_buttons = false
-	sidebar.add_child(details)
+	graph.inspected.connect(select_skill)
+	var detail_panel := PanelContainer.new()
+	detail_panel.add_theme_stylebox_override("panel", Atlas.box(Color("#163d46"), Color("#315663"), 8, 20))
+	layout.add_child(detail_panel)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 24)
+	detail_panel.add_child(row)
+	var info := VBoxContainer.new()
+	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(info)
+	info.add_child(Atlas.text("SELECTED SKILL", 13, graph.GOLD, true))
+	info.add_child(skill_title)
+	skill_title.add_theme_font_size_override("font_size", 25)
+	info.add_child(details)
 	details.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	sidebar.add_child(purchase)
+	row.add_child(bonus)
+	bonus.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	bonus.add_theme_font_size_override("font_size", 24)
+	bonus.add_theme_color_override("font_color", graph.GOLD)
+	row.add_child(purchase)
+	purchase.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	purchase.custom_minimum_size = Vector2(210, 48)
+	for state in ["normal", "pressed", "hover"]:
+		purchase.add_theme_stylebox_override(state, Atlas.box(graph.GOLD.lightened(.12) if state == "hover" else graph.GOLD, graph.GOLD, 5))
+		purchase.add_theme_color_override("font_color" if state == "normal" else "font_" + state + "_color", graph.SEA)
 	purchase.pressed.connect(func():
 		var rank := int(profile().get("ranks", {}).get(selected, 0))
 		game.campaign.request("purchase_skill", [selected, rank]))
+	layout.add_child(Atlas.text("Drag chart to pan     ·     Tab to focus     ·     Enter to select", 15, graph.MINT))
 
 func toggle() -> void:
-	if panel.is_visible_in_tree():
-		game.campaign.close_board()
-	else:
-		game.campaign.open_board("Skill Tree")
-
-func sync_book_page() -> void:
-	panel.visible = game.campaign.board.skill_page.is_visible_in_tree()
-	dragging = false
 	if panel.visible:
-		show_branch(category)
-
-func _input(event: InputEvent) -> void:
-	if not panel.is_visible_in_tree():
+		panel.hide()
+		graph.dragging = false
+		Input.mouse_mode = mouse_before
 		return
-	if event is InputEventMouseMotion and dragging:
-		if event.button_mask & MOUSE_BUTTON_MASK_LEFT:
-			graph.scroll_offset -= event.relative
-			get_viewport().set_input_as_handled()
-		else:
-			dragging = false
-	elif event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
-		if not event.pressed:
-			if dragging:
-				dragging = false
-				get_viewport().set_input_as_handled()
-			return
-		var hovered := get_viewport().gui_get_hovered_control()
-		while hovered != null and hovered != graph:
-			if hovered is GraphNode or hovered is BaseButton or hovered is ScrollBar:
-				return
-			hovered = hovered.get_parent_control()
-		if hovered == graph:
-			dragging = true
-			get_viewport().set_input_as_handled()
+	mouse_before = Input.mouse_mode
+	game.release_line()
+	game.sonar_overlay.hide()
+	panel.show()
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	show_branch(category)
+	graph.buttons[selected].grab_focus()
 
 func show_branch(branch: String, preserve_view := false) -> void:
-	var offset := graph.scroll_offset if preserve_view and not graph_layout_pending else Vector2.ZERO
-	graph_layout_pending = true
-	graph_revision += 1
-	var revision := graph_revision
+	var focused := get_viewport().gui_get_focus_owner()
+	var restore_focus := focused != null and graph.is_ancestor_of(focused)
 	category = branch
-	for tab in tabs.get_children():
-		if tab is Button and tab.toggle_mode:
-			tab.set_pressed_no_signal(tab.text == branch)
-	graph.clear_connections()
-	for child in graph.get_children():
-		if child is GraphNode:
-			graph.remove_child(child)
-			child.queue_free()
-	var depths := {}
-	var catalog := XP.CATALOG.skills()
-	var first := ""
-	for id: String in catalog:
-		var skill: Dictionary = catalog[id]
-		if skill.category != category:
-			continue
-		if first.is_empty():
-			first = id
-		var depth := int(skill.column)
-		depths[id] = depth
-		var row := int(skill.row)
-		var node := GraphNode.new()
-		node.name = id
-		node.draggable = false
-		node.title = skill.name
-		var card := StyleBoxFlat.new()
-		card.bg_color = Atlas.PAPER
-		card.content_margin_left = 10
-		card.content_margin_right = 10
-		card.set_corner_radius_all(6)
-		node.add_theme_stylebox_override("panel", card)
-		var title_box := card.duplicate() as StyleBoxFlat
-		title_box.bg_color = Atlas.BLUE
-		node.get_titlebar_hbox().get_child(0).add_theme_color_override("font_color", Atlas.PAPER)
-		node.add_theme_stylebox_override("titlebar", title_box)
-		node.position_offset = Vector2(40 + depth * 214, 92 + row * 148 + (depth % 2) * 45)
-		graph.add_child(node)
-		var button := preload("res://skill_hex.gd").new()
-		button.flat = true
-		button.custom_minimum_size = Vector2(125, 40)
-		node.add_child(button)
-		var rank := int(profile().get("ranks", {}).get(id, 0))
-		button.text = "%d / %d" % [rank, skill.cap]
-		button.tint = Color.GOLD if rank >= int(skill.cap) else (Color.AQUAMARINE if rank > 0 else (COLORS[branch] if XP.can_buy(profile(), id) else Color.GRAY))
-		button.pressed.connect(select_skill.bind(id))
-		node.set_slot(0, true, 0, Atlas.BLUE, true, 0, Atlas.BLUE)
-	for id: String in depths:
-		for dep: String in catalog[id].requires:
-			graph.connect_node(dep, 0, id, 0)
-	select_skill(selected if depths.has(selected) else first)
-	await get_tree().process_frame
-	await get_tree().process_frame
-	if revision == graph_revision:
-		graph.scroll_offset = offset
-		graph_layout_pending = false
+	title.text = branch
+	for tab: Button in tabs.get_children():
+		tab.set_pressed_no_signal(tab.text == branch)
+	graph.populate(branch, profile(), not preserve_view)
+	select_skill(selected if graph.buttons.has(selected) else graph.buttons.keys()[0])
+	if restore_focus:
+		graph.buttons[selected].grab_focus()
 
 func profile() -> Dictionary:
 	return game.campaign.progression_for(game.campaign.crew.my_id())
 
 func select_skill(id: String) -> void:
 	selected = id
-	for node in graph.get_children():
-		if node is GraphNode:
-			var hex = node.get_child(0)
-			hex.chosen = str(node.name) == id
-			hex.queue_redraw()
+	graph.highlight(id)
 	var skill: Dictionary = XP.CATALOG.skills()[id]
 	var available := XP.can_buy(profile(), id)
 	var prerequisites := PackedStringArray()
 	for dep: String in skill.requires:
 		prerequisites.append("%s rank %d" % [XP.CATALOG.skills()[dep].name, skill.requires[dep]])
-	details.text = "%s   •   %s\n%s" % [skill.name, skill.effect, "Requires " + ", ".join(prerequisites) if prerequisites.size() else "Entry skill"]
-	details.text += "   •   Level %d   •   Rank %d/%d" % [skill.level, profile().get("ranks", {}).get(id, 0), skill.cap]
-	purchase.text = "Purchase rank · 1 point" if skill.enabled else "Unavailable in this build"
+	var rank := int(profile().get("ranks", {}).get(id, 0))
+	skill_title.text = "%s   ·   %d/%d" % [skill.name, rank, skill.cap]
+	details.text = str(skill.effect) + "\nRequires level %d" % skill.level
+	if not prerequisites.is_empty():
+		details.text += " and " + ", ".join(prerequisites)
+	bonus.text = ""
 	if skill.has("per_rank"):
-		var rank := int(profile().get("ranks", {}).get(id, 0))
-		var unit := " beam width" if id == "fish_finder" else "%"
-		details.text += "\nCurrent bonus   %s%s" % [str(rank * float(skill.per_rank)), unit]
+		var unit := " beam" if id == "fish_finder" else (" pp" if id == "precision_cutting" else "%")
+		var step := float(skill.per_rank)
+		if str(skill.effect).contains("-"):
+			step = -absf(step)
+		bonus.text = "%s%s" % [str(rank * step).trim_suffix(".0"), unit]
 		if rank < skill.cap:
-			details.text += "\nNext rank   %s%s" % [str((rank + 1) * float(skill.per_rank)), unit]
+			bonus.text += " → %s%s" % [str((rank + 1) * step).trim_suffix(".0"), unit]
+	purchase.text = "Upgrade · 1 point" if rank > 0 else "Unlock · 1 point"
 	if not skill.enabled:
+		purchase.text = "Unavailable"
 		details.text += "\n" + str(skill.unavailable)
+	elif rank >= skill.cap:
+		purchase.text = "Fully ranked"
+	elif not graph.accessible(skill):
+		purchase.text = "Requirements unmet"
+	elif not available:
+		purchase.text = "1 point needed"
 	purchase.disabled = not available
 
 func _process(_delta: float) -> void:
@@ -253,7 +206,7 @@ func _process(_delta: float) -> void:
 	meter.max_value = 1.0
 	create_tween().tween_property(meter, "value", target, .3)
 	heading.text = "Level %d   •   %d skill points   [K]" % [stats.level, stats.points]
-	summary.text = "%s   •   %d / %d XP" % [heading.text, stats.rest, XP.threshold(stats.level)]
+	summary.text = "Level %d   ·   %d skill points     " % [stats.level, stats.points]
 	if initialized and last_xp >= 0 and xp > last_xp:
 		toast.text = "+%d XP   •   %s" % [xp - last_xp, str(p.get("reason", "")).capitalize()]
 		if stats.level > last_level:
