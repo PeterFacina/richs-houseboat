@@ -5,6 +5,7 @@ const Boat = preload("res://houseboat.gd")
 const Rich = preload("res://rich_model.gd")
 const MenuTheme = preload("res://river_menu_theme.gd")
 const Settings = preload("res://river_pause.gd")
+const SoloSlots = preload("res://solo_slot_menu.gd")
 const PLAY_SCENE := "res://fishing.tscn"
 
 @onready var shore = $Shore
@@ -24,6 +25,8 @@ var settings: Settings
 var loading := false
 var open_lobby := false
 var arrival_message := ""
+var slots: SoloSlots
+var solo_slot := 0
 
 
 func _ready() -> void:
@@ -167,7 +170,16 @@ func build_menu() -> void:
 	actions.add_theme_constant_override("separation", MenuTheme.GAP)
 	actions.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	menu.add_child(actions)
-	start = add_action(actions, "Play Solo", true, func(): launch(false))
+	start = add_action(actions, "Play Solo", true, open_slots)
+	slots = SoloSlots.new()
+	menu_layer.add_child(slots)
+	slots.selected.connect(func(slot: int):
+		slots.hide()
+		menu.show()
+		launch(false, slot))
+	slots.closed.connect(func():
+		menu.show()
+		start.grab_focus())
 	var has_multiplayer := ClassDB.class_exists("ENetMultiplayerPeer")
 	var crew_text := "Multiplayer" if has_multiplayer else "Multiplayer  ·  Coming Soon"
 	multiplayer_button = add_action(actions, crew_text, false, func(): launch(true))
@@ -197,7 +209,12 @@ func add_action(parent: VBoxContainer, caption: String, primary: bool, action: C
 	return button
 
 
-func launch(multiplayer_trip: bool) -> void:
+func open_slots() -> void:
+	menu.hide()
+	slots.open()
+
+
+func launch(multiplayer_trip: bool, slot := 0) -> void:
 	if start.disabled:
 		return
 	var error := ResourceLoader.load_threaded_request(PLAY_SCENE, "PackedScene")
@@ -205,6 +222,7 @@ func launch(multiplayer_trip: bool) -> void:
 		launch_failed(error)
 		return
 	open_lobby = multiplayer_trip
+	solo_slot = slot
 	status.text = "Opening lobby…" if open_lobby else "Launching…"
 	status.show()
 	start.disabled = true
@@ -227,6 +245,7 @@ func finish_loading() -> void:
 	var packed := ResourceLoader.load_threaded_get(PLAY_SCENE) as PackedScene
 	var game := packed.instantiate()
 	game.multiplayer_trip = open_lobby
+	game.solo_slot = solo_slot
 	var error := get_tree().change_scene_to_node(game)
 	if error != OK:
 		game.free()

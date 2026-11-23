@@ -25,7 +25,7 @@ const MenuTheme = preload("res://river_menu_theme.gd")
 const Lobby = preload("res://river_lobby.gd")
 const Regions = preload("res://river_regions.gd")
 const Helicopter = preload("res://river_helicopter.gd")
-const JOURNAL := "user://ottawa_catches.json"
+const SoloSaves = preload("res://solo_saves.gd")
 const CREW_JOURNAL := "user://ottawa_multiplayer_catches.json"
 const BITE_WINDOW := 2.27
 const WINDUP := 0.19
@@ -153,6 +153,7 @@ var pause_menu := PauseMenu.new()
 var safety := Safety.new()
 var jump_was_held := false
 var multiplayer_trip := false
+var solo_slot := 0
 var lobby: Lobby
 var leaving_trip := false
 @export var launch_boat_scene: PackedScene = preload("res://launch_houseboat.tscn")
@@ -1566,7 +1567,7 @@ func accept_crew_scoop(serial: int, helper: int, display_name: String) -> void:
 
 
 func read_journal() -> void:
-	var path := CREW_JOURNAL if multiplayer_trip else JOURNAL
+	var path: String = CREW_JOURNAL if multiplayer_trip else SoloSaves.JOURNALS[solo_slot]
 	var saved: Variant = JSON.parse_string(FileAccess.get_file_as_string(path)) if FileAccess.file_exists(path) else null
 	if saved is Dictionary:
 		var collection: Variant = saved.get("species", [])
@@ -1599,7 +1600,7 @@ func record_catch() -> void:
 	journal.push_front(catch_note)
 	if journal.size() > 25:
 		journal.resize(25)
-	var file := FileAccess.open(CREW_JOURNAL if multiplayer_trip else JOURNAL, FileAccess.WRITE)
+	var file := FileAccess.open(CREW_JOURNAL if multiplayer_trip else SoloSaves.JOURNALS[solo_slot], FileAccess.WRITE)
 	if file:
 		file.store_string(JSON.stringify({"format": 2, "species": discovered_species.keys(), "journal": journal}))
 	refresh_journal()
