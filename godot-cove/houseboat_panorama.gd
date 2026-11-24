@@ -3,7 +3,7 @@ extends RefCounted
 const Kit = preload("res://scenery.gd")
 
 
-static func build(parent: Node3D, hull_name: String, timber: Material, siding: Material) -> void:
+static func build(parent: Node3D, hull_name: String, timber: ShaderMaterial, siding: Material) -> void:
 	var graphite := Kit.paint(Color("#293439"), .43, .24)
 	var ivory := Kit.paint(Color("#d8ddd8"), .41, .16)
 	var steel := Kit.paint(Color("#bbc7ca"), .29, .58)
@@ -15,7 +15,7 @@ static func build(parent: Node3D, hull_name: String, timber: Material, siding: M
 	build_roof(parent, timber, graphite, ivory, steel)
 
 
-static func build_deck(parent: Node3D, hull_name: String, timber: Material,
+static func build_deck(parent: Node3D, hull_name: String, timber: ShaderMaterial,
 		graphite: Material, steel: Material) -> void:
 	var float_body := CylinderMesh.new()
 	float_body.top_radius = .35
@@ -58,10 +58,16 @@ static func build_deck(parent: Node3D, hull_name: String, timber: Material,
 	Kit.box_at(parent, Vector3(0, .665, 0), Vector3(2.82, .137, 5.30), timber)
 	Kit.box_at(parent, Vector3(0, .665, -3.04), Vector3(1.50, .137, .78), timber)
 	Kit.box_at(parent, Vector3(0, .665, 2.975), Vector3(2.18, .137, .65), timber)
+	var plank_finishes: Array[ShaderMaterial] = [timber]
+	for grain_offset in [1.0, 2.0, 3.0]:
+		var finish := timber.duplicate() as ShaderMaterial
+		finish.set_shader_parameter("grain_offset", grain_offset)
+		plank_finishes.append(finish)
 	for index in 33:
 		var z := -3.33 + index * .201
 		var width := 1.49 if z < -2.65 else (2.17 if z > 2.65 else 2.81)
-		Kit.box_at(parent, Vector3(0, .737, z), Vector3(width, .026, .196), timber)
+		Kit.box_at(parent, Vector3(0, .737, z), Vector3(width, .026, .196),
+			plank_finishes[index % plank_finishes.size()])
 	Kit.box_at(parent, Vector3(0, .667, -3.429), Vector3(1.49, .13, .045), graphite)
 	for x in [-.54, .54]:
 		rod(parent, Vector3(x, .54, -3.44), Vector3(x, .71, -3.44), .016, graphite)

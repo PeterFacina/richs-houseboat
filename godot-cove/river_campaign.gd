@@ -157,6 +157,9 @@ func setup(fishing_game: Node3D) -> void:
 		select_craft("princecraft", 0)
 		princecraft.berth_at(houseboat.center, houseboat.heading)
 		keep_player_on_deck(princecraft, princecraft.board_anchor())
+	if dock < 0:
+		# The campaign spawn is already in open water.
+		game.vessel.departed = true
 	update_target()
 	update_route_map()
 
