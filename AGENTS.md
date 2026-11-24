@@ -21,3 +21,9 @@
 - At task start query current GitHub issues and PRs (including drafts); never rely on issue numbers or open/closed status copied into guides. Check relevant PR diffs for overlap. See [living knowledge](docs/LIVING-KNOWLEDGE.md) for portable commands and offline fallback.
 - Use the on-demand source index to find symbols and direct resource dependencies when helpful; it reads the task checkout, not a remote snapshot. Do not put the full generated index in model context. On main, CI produces a fresh commit-tagged index; it is a navigation aid, not an automatic synchronization mechanism.
 - Review any documentation freshness advisory on your PR. Update affected guides or explain why the change does not alter their documented contract. Never invent facts to satisfy a check.
+
+## Progressive retrieval and reporting
+
+- For unfamiliar code, use bounded lookup before broad reads. Prefer the exact-function tool in [Living knowledge](docs/LIVING-KNOWLEDGE.md) when a symbol is known; use lexical caller hints and verify actual wiring. Begin with one relevant function or about 60–100 lines, not whole large files. Expand when needed for correctness, with a brief reason. Do not repeat unchanged reads.
+- Prefer compact live issue/PR summaries and changed-file lists; inspect relevant diff sections before concluding overlap. A title or keyword match alone is not proof. Use full diffs only when justified. If a tool is unavailable or output truncated, use targeted fallback and disclose gaps.
+- Record actual verification, implementation results, limitations, deployment status and actionable follow-ups in the PR or linked GitHub documentation/issues, not only chat. Do not publish secrets, private training records or unsanitized logs.

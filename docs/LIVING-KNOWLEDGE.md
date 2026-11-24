@@ -42,4 +42,20 @@ The local GPU worker has its own source indexing and provenance. This CI artifac
 
 ## Verification and metrics
 
-Run `python -m unittest discover -s tools/knowledge -p "test_*.py"`. Compare identical tasks with and without targeted retrieval, recording actual input/output tokens, context bytes, acceptance rounds and regressions. There is no measured token saving yet.
+Run `python -m unittest discover -s tools/knowledge -p "test_*.py"`. Compare identical tasks with and without targeted retrieval, recording actual input/output tokens, context bytes, acceptance rounds and regressions. See [retrieval benchmark](RETRIEVAL-BENCHMARK.md) for exploratory measurements and the controlled test protocol.
+
+## Bounded function and GitHub retrieval
+
+From the repository root:
+
+```sh
+python tools/knowledge/retrieve.py passive_water_velocity --lines 60 --budget 8000
+python tools/knowledge/retrieve.py sail_river --path godot-cove/houseboat.gd
+python tools/knowledge/github_context.py --query "boat drift helm"
+python tools/knowledge/github_context.py --pr NUMBER
+python tools/knowledge/github_context.py --pr NUMBER --path godot-cove/houseboat.gd
+```
+
+Replace NUMBER with the actual PR number. The local tool returns exact-name GDScript function excerpts and lexical call-site hints, including enclosing function where recognizable. It uses indentation heuristics, not a parser; strings, multiline syntax, inherited methods, dynamic dispatch and comments can affect results. Verify callers, ownership and omitted ranges in current source. Partial/truncated output is explicitly marked. The byte budget is not a token budget. Continue with targeted reads if a definition or relevant caller is omitted. Use the existing index for direct literal resource references.
+
+The GitHub tool uses public read-only REST endpoints, optionally with existing GH_TOKEN/GITHUB_TOKEN in the environment. It does not print credentials. It filters title/body/labels locally and returns compact metadata; keyword matching can miss related work. PR file lists are compact by default; exact path selection returns available patch text subject to budget. GitHub patches may be incomplete or omitted; inspect the actual diff if needed. Network/rate/pagination errors are failures, not proof that no work exists. Do not send untrusted issue text to shell commands.
