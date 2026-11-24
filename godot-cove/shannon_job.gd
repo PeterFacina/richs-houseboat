@@ -86,6 +86,7 @@ func setup(fishing_game: Node3D, grass_owner: AnimatableBody3D, station: Vector3
 	calendar.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var top_right_hud := game.hud.get_node("top_right_hud") as Control
 	top_right_hud.add_child(calendar)
+	top_right_hud.move_child(calendar, 0)
 	mower.grass_trimmed.connect(grass_trimmed)
 	update_clock(0.0)
 

@@ -129,7 +129,7 @@ func build_hud() -> void:
 	ui.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	ui.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var framing := VBoxContainer.new()
-	framing.position = Vector2(25, 23)
+	framing.position = Vector2(25, 21)
 	ui.add_child(framing)
 	framing.anchor_right = .49
 	framing.offset_right = -12
