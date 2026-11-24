@@ -1,0 +1,287 @@
+{
+  "rubric": "Single author audit of model-authored fields retained by the formatter. Misses are one-based indices into the frozen requirement list. A requirement must be covered concretely without contradicting it elsewhere in the draft. Unsupported items are distinct factual assertions or factual presuppositions about current implementation or the report that the pinned evidence cannot support. Omit genuine questions and proposed changes. Score attempted outputs even if the export guard rejected them.",
+  "cases": {
+    "fishing-motion": {
+      "requirementCount": 4,
+      "production": {
+        "missed": [],
+        "unsupported": []
+      },
+      "pr71": {
+        "missed": [],
+        "unsupported": []
+      },
+      "catalog": {
+        "missed": [],
+        "unsupported": [
+          "Names the rod rig receiver trig.pose_rod."
+        ]
+      },
+      "multistage": {
+        "missed": [],
+        "unsupported": [
+          "Attributes slack_seconds to strain in addition to the reach test.",
+          "Misattributes the every-tick reel/payout reset specifically to rod release.",
+          "Names the rod-rig receiver trig.pose_rod."
+        ]
+      }
+    },
+    "vehicle-audio": {
+      "requirementCount": 5,
+      "production": {
+        "missed": [
+          3,
+          5
+        ],
+        "unsupported": []
+      },
+      "pr71": {
+        "missed": [
+          5
+        ],
+        "unsupported": []
+      },
+      "catalog": {
+        "missed": [],
+        "unsupported": []
+      },
+      "multistage": {
+        "missed": [
+          5
+        ],
+        "unsupported": []
+      }
+    },
+    "first-person-props": {
+      "requirementCount": 4,
+      "production": {
+        "missed": [],
+        "unsupported": [
+          "Presumes the current report includes a remote-observer animation defect."
+        ]
+      },
+      "pr71": {
+        "missed": [],
+        "unsupported": [
+          "Attributes a use function to crew_avatar.gd.",
+          "Presumes a current remote hand visibility defect."
+        ]
+      },
+      "catalog": {
+        "missed": [],
+        "unsupported": []
+      },
+      "multistage": {
+        "missed": [],
+        "unsupported": []
+      }
+    },
+    "progression-reconnect": {
+      "requirementCount": 4,
+      "production": {
+        "missed": [
+          4
+        ],
+        "unsupported": []
+      },
+      "pr71": {
+        "missed": [
+          4
+        ],
+        "unsupported": []
+      },
+      "catalog": {
+        "missed": [],
+        "unsupported": []
+      },
+      "multistage": {
+        "missed": [],
+        "unsupported": [
+          "Assigns per-guest reward events to host-only reward_mowing.",
+          "Assigns profile initialization to joined_server, which sends registration."
+        ]
+      }
+    },
+    "town-driveways": {
+      "requirementCount": 4,
+      "production": {
+        "missed": [
+          3
+        ],
+        "unsupported": [
+          "Makes the property listing radius a 43-unit driveway exclusion.",
+          "Attributes terrain-aligned mesh construction to highway_line, which assembles the line."
+        ]
+      },
+      "pr71": {
+        "missed": [
+          3,
+          4
+        ],
+        "unsupported": [
+          "Attributes driveway overlap prevention to near_property.",
+          "Attributes driveway terrain alignment to the Champlain furniture helper.",
+          "Attributes highway mesh construction to highway_line."
+        ]
+      },
+      "catalog": {
+        "missed": [],
+        "unsupported": []
+      },
+      "multistage": {
+        "missed": [
+          3
+        ],
+        "unsupported": [
+          "Attributes driveway generation to the roads build function."
+        ]
+      }
+    },
+    "cabin-tv-sync": {
+      "requirementCount": 5,
+      "production": {
+        "missed": [
+          5
+        ],
+        "unsupported": []
+      },
+      "pr71": {
+        "missed": [
+          5
+        ],
+        "unsupported": []
+      },
+      "catalog": {
+        "missed": [
+          5
+        ],
+        "unsupported": []
+      },
+      "multistage": {
+        "missed": [
+          5
+        ],
+        "unsupported": [
+          "Treats the television label as the mechanism that switches to actual media playback."
+        ]
+      }
+    },
+    "fuel-nozzle-sale": {
+      "requirementCount": 5,
+      "production": {
+        "missed": [
+          1,
+          2
+        ],
+        "unsupported": [
+          "Presupposes a dedicated host agreement trigger for a nearly full tank."
+        ]
+      },
+      "pr71": {
+        "missed": [
+          1,
+          2
+        ],
+        "unsupported": []
+      },
+      "catalog": {
+        "missed": [
+          1
+        ],
+        "unsupported": []
+      },
+      "multistage": {
+        "missed": [
+          1
+        ],
+        "unsupported": []
+      }
+    },
+    "solo-slot-reset": {
+      "requirementCount": 5,
+      "production": {
+        "missed": [],
+        "unsupported": []
+      },
+      "pr71": {
+        "missed": [],
+        "unsupported": [
+          "Presupposes an ordinary new trip restores reset data from the backup."
+        ]
+      },
+      "catalog": {
+        "missed": [],
+        "unsupported": [
+          "Assumes a successful reset creates exactly one backed-up file, even though a slot can have several."
+        ]
+      },
+      "multistage": {
+        "missed": [],
+        "unsupported": [
+          "Presupposes the selected slot's state is preserved after a successful reset."
+        ]
+      }
+    },
+    "warehouse-rack-placement": {
+      "requirementCount": 5,
+      "production": {
+        "missed": [
+          2
+        ],
+        "unsupported": []
+      },
+      "pr71": {
+        "missed": [
+          2
+        ],
+        "unsupported": []
+      },
+      "catalog": {
+        "missed": [
+          2
+        ],
+        "unsupported": []
+      },
+      "multistage": {
+        "missed": [
+          2
+        ],
+        "unsupported": []
+      }
+    },
+    "helicopter-door-exit": {
+      "requirementCount": 5,
+      "production": {
+        "missed": [
+          3,
+          4
+        ],
+        "unsupported": [
+          "Attributes the helicopter movement check to exit_by_door."
+        ]
+      },
+      "pr71": {
+        "missed": [
+          3,
+          4
+        ],
+        "unsupported": [
+          "Says the current exit logic does not reference Unstuck."
+        ]
+      },
+      "catalog": {
+        "missed": [
+          3,
+          4
+        ],
+        "unsupported": []
+      },
+      "multistage": {
+        "missed": [
+          3
+        ],
+        "unsupported": []
+      }
+    }
+  }
+}

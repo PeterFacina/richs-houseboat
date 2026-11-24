@@ -1,0 +1,331 @@
+{
+  "through": "2026-11-24T18:01:57Z",
+  "records": [
+    {
+      "type": "issue",
+      "number": 29,
+      "title": "Workflow pilot: Test the Houseboat issue workflow by adding one sentence to my team notes confirming that Discord can open a task in Codex.",
+      "completed": "2026-11-23T20:06:29Z"
+    },
+    {
+      "type": "issue",
+      "number": 32,
+      "title": "Workflow pilot: Add one sentence to my team notes explaining that Ethan\u2019s GPU generated the brief for this Discord report. This is a notes-only test.",
+      "completed": "2026-11-23T22:33:08Z"
+    },
+    {
+      "type": "issue",
+      "number": 39,
+      "title": "Workflow pilot: When I use the bong or pen, the hands look rotated the wrong way, possibly upside down. I expect the wrists and fingers to look like they\u2019re holding e",
+      "completed": "2026-11-23T23:45:09Z"
+    },
+    {
+      "type": "issue",
+      "number": 42,
+      "title": "Workflow pilot: When I use the bong or pen, the hands look rotated the wrong way, possibly upside down. I expect the wrists and fingers to look like they\u2019re holding e",
+      "completed": "2026-11-23T23:44:47Z"
+    },
+    {
+      "type": "issue",
+      "number": 44,
+      "title": "Game report: When I use the bong or pen, the hands look rotated the wrong way, possibly upside down. I expect the wrists and fingers to look like they\u2019re holding e",
+      "completed": "2026-11-23T23:25:05Z"
+    },
+    {
+      "type": "issue",
+      "number": 47,
+      "title": "Game report: we want a start up and shut down sound for the helicoper. we also want to add a distance based sound mechanism for the helicoper where other players c",
+      "completed": "2026-11-24T01:34:30Z"
+    },
+    {
+      "type": "issue",
+      "number": 51,
+      "title": "Game report: I need a realistic cyclic and collective movement that moves in correspondence with the keyboard inputs",
+      "completed": "2026-11-24T16:51:35Z"
+    },
+    {
+      "type": "issue",
+      "number": 52,
+      "title": "Game report: i would like to fix the POV of when you rip a toke or take a pen hit. right now the first person pov is decent but it doesn\u2019t really feel like first p",
+      "completed": "2026-11-24T03:48:14Z"
+    },
+    {
+      "type": "issue",
+      "number": 54,
+      "title": "Game report: would we be able to change the base game font, we will change all the text to this font and then keep the same colour for what its supposed to be and",
+      "completed": "2026-11-24T04:10:08Z"
+    },
+    {
+      "type": "issue",
+      "number": 66,
+      "title": "Workflow pilot: Workflow verification: Investigate the multiplayer houseboat helm controls and identify the relevant source functions, documentation and overlapping G",
+      "completed": "2026-11-24T16:28:13Z"
+    },
+    {
+      "type": "pull",
+      "number": 3,
+      "title": "Set up the team task queue and PR handoffs",
+      "completed": "2026-11-22T20:06:31Z",
+      "issues": []
+    },
+    {
+      "type": "pull",
+      "number": 4,
+      "title": "Add the Discord handbook and automatic main updates",
+      "completed": "2026-11-22T19:00:21Z",
+      "issues": []
+    },
+    {
+      "type": "pull",
+      "number": 5,
+      "title": "Link the Discord updates channel from the handbook",
+      "completed": "2026-11-22T19:06:44Z",
+      "issues": []
+    },
+    {
+      "type": "pull",
+      "number": 6,
+      "title": "Add Godot startup checks and Discord alerts",
+      "completed": "2026-11-22T19:33:21Z",
+      "issues": []
+    },
+    {
+      "type": "pull",
+      "number": 8,
+      "title": "Add the first playable Ottawa River baseline",
+      "completed": "2026-11-22T19:55:36Z",
+      "issues": []
+    },
+    {
+      "type": "pull",
+      "number": 9,
+      "title": "Update the shared game to the final build with Zero Turn controls",
+      "completed": "2026-11-22T21:01:35Z",
+      "issues": []
+    },
+    {
+      "type": "pull",
+      "number": 11,
+      "title": "Restore Public Works and mowing jobs in the newest game",
+      "completed": "2026-11-22T21:21:48Z",
+      "issues": []
+    },
+    {
+      "type": "pull",
+      "number": 12,
+      "title": "Integrate Kolby's houseboat playtest updates",
+      "completed": "2026-11-22T21:36:42Z",
+      "issues": []
+    },
+    {
+      "type": "pull",
+      "number": 13,
+      "title": "Revamp the Deep River storefront plaza",
+      "completed": "2026-11-22T22:07:30Z",
+      "issues": []
+    },
+    {
+      "type": "pull",
+      "number": 14,
+      "title": "Integrate universal XP and the multiplayer skill tree",
+      "completed": "2026-11-22T23:13:02Z",
+      "issues": []
+    },
+    {
+      "type": "pull",
+      "number": 15,
+      "title": "Update skill journal, contract economy and waterfront paths",
+      "completed": "2026-11-23T01:24:21Z",
+      "issues": []
+    },
+    {
+      "type": "pull",
+      "number": 16,
+      "title": "Revamp Champlain Street storefronts",
+      "completed": "2026-11-23T01:47:35Z",
+      "issues": []
+    },
+    {
+      "type": "pull",
+      "number": 17,
+      "title": "Add shared boat helms and Visitor Dock fuel service",
+      "completed": "2026-11-23T02:39:24Z",
+      "issues": []
+    },
+    {
+      "type": "pull",
+      "number": 18,
+      "title": "Add standalone Sounding Chart Skills screen",
+      "completed": "2026-11-23T03:16:36Z",
+      "issues": []
+    },
+    {
+      "type": "pull",
+      "number": 19,
+      "title": "Add Jakob onboarding setup note",
+      "completed": "2026-11-23T16:38:26Z",
+      "issues": []
+    },
+    {
+      "type": "pull",
+      "number": 20,
+      "title": "Add sprinting and configurable crouching",
+      "completed": "2026-11-23T03:48:54Z",
+      "issues": []
+    },
+    {
+      "type": "pull",
+      "number": 21,
+      "title": "Upgrade the Deep River road network",
+      "completed": "2026-11-23T03:59:01Z",
+      "issues": []
+    },
+    {
+      "type": "pull",
+      "number": 22,
+      "title": "Add boat coasting and idle water drift",
+      "completed": "2026-11-23T05:26:26Z",
+      "issues": []
+    },
+    {
+      "type": "pull",
+      "number": 23,
+      "title": "Rebuild Deep River Town Hall and prepare property systems",
+      "completed": "2026-11-23T04:41:34Z",
+      "issues": []
+    },
+    {
+      "type": "pull",
+      "number": 24,
+      "title": "Add mid-game properties and first-person Build Mode",
+      "completed": "2026-11-23T05:20:33Z",
+      "issues": []
+    },
+    {
+      "type": "pull",
+      "number": 27,
+      "title": "Finish Deep River streets, Town Hall parking, and residential exteriors",
+      "completed": "2026-11-23T17:44:19Z",
+      "issues": []
+    },
+    {
+      "type": "pull",
+      "number": 30,
+      "title": "Record the Discord-to-Codex workflow pilot",
+      "completed": "2026-11-23T20:06:27Z",
+      "issues": [
+        29
+      ]
+    },
+    {
+      "type": "pull",
+      "number": 33,
+      "title": "Improve mowing navigation and campaign reliability",
+      "completed": "2026-11-23T21:29:53Z",
+      "issues": []
+    },
+    {
+      "type": "pull",
+      "number": 34,
+      "title": "Add two solo save slots and a reset menu",
+      "completed": "2026-11-23T22:02:13Z",
+      "issues": []
+    },
+    {
+      "type": "pull",
+      "number": 35,
+      "title": "Record GPU brief provenance in Peter\u2019s notes",
+      "completed": "2026-11-23T22:33:06Z",
+      "issues": [
+        32
+      ]
+    },
+    {
+      "type": "pull",
+      "number": 37,
+      "title": "Polish the mowing quest GPS",
+      "completed": "2026-11-23T22:51:06Z",
+      "issues": []
+    },
+    {
+      "type": "pull",
+      "number": 45,
+      "title": "Correct bong and dab pen grip orientation",
+      "completed": "2026-11-23T23:25:03Z",
+      "issues": [
+        44
+      ]
+    },
+    {
+      "type": "pull",
+      "number": 50,
+      "title": "Add spatial helicopter startup and shutdown audio",
+      "completed": "2026-11-24T01:34:28Z",
+      "issues": [
+        47
+      ]
+    },
+    {
+      "type": "pull",
+      "number": 53,
+      "title": "Align bong and dab pen first-person use poses",
+      "completed": "2026-11-24T03:48:13Z",
+      "issues": [
+        52
+      ]
+    },
+    {
+      "type": "pull",
+      "number": 55,
+      "title": "Use Playfull Rocket as the game font",
+      "completed": "2026-11-24T04:10:07Z",
+      "issues": [
+        54
+      ]
+    },
+    {
+      "type": "pull",
+      "number": 58,
+      "title": "Add AI-friendly architecture and subsystem documentation",
+      "completed": "2026-11-24T14:07:15Z",
+      "issues": []
+    },
+    {
+      "type": "pull",
+      "number": 59,
+      "title": "Refresh AI source knowledge automatically and flag stale guides",
+      "completed": "2026-11-24T14:16:48Z",
+      "issues": []
+    },
+    {
+      "type": "pull",
+      "number": 60,
+      "title": "Reduce coding-agent context with bounded source and GitHub retrieval",
+      "completed": "2026-11-24T15:27:45Z",
+      "issues": []
+    },
+    {
+      "type": "pull",
+      "number": 61,
+      "title": "Require task startup and add one-command agent bootstrap",
+      "completed": "2026-11-24T15:41:04Z",
+      "issues": []
+    },
+    {
+      "type": "pull",
+      "number": 63,
+      "title": "Refresh GPU brief knowledge from GitHub main",
+      "completed": "2026-11-24T18:01:57Z",
+      "issues": []
+    },
+    {
+      "type": "pull",
+      "number": 67,
+      "title": "Document multiplayer helm GPU workflow pilot (#66)",
+      "completed": "2026-11-24T16:28:12Z",
+      "issues": [
+        66
+      ]
+    }
+  ]
+}
