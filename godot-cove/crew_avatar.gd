@@ -7,6 +7,7 @@ const Species = preload("res://fish_species.gd")
 const Rig = preload("res://fishing_rig.gd")
 const Hands = preload("res://river_hands.gd")
 const Props = preload("res://cabin_props.gd")
+const Actions = preload("res://river_hand_actions.gd")
 
 var body: Node3D
 var head: Node3D
@@ -343,7 +344,7 @@ func update_shared_actions(animation: Dictionary, delta: float) -> void:
 	var age := float(animation.get("use_age", 0))
 	if kind == Props.Item.BONG:
 		prop.get_node("BowlFill").visible = age >= 1.25
-		prop.get_node("BowlFill").material_override.emission_energy_multiplier = .84 if age >= 2.19 and age < 2.91 else 0
+		prop.get_node("BowlFill").material_override.emission_energy_multiplier = .84 if Actions.bong_lit(age) else 0
 	elif kind == Props.Item.PEN:
 		prop.get_node("Indicator").visible = age >= .9 and age < 1.85
 	else:
@@ -351,7 +352,7 @@ func update_shared_actions(animation: Dictionary, delta: float) -> void:
 	if use_lighter.visible:
 		var lighter_target: Transform3D = view * Transform3D(animation.use_lighter)
 		use_lighter.transform = lighter_target if changed_item else use_lighter.transform.interpolate_with(lighter_target, blend)
-		use_lighter.get_node("Flame").visible = age >= 2.19 and age < 2.91
+		use_lighter.get_node("Flame").visible = Actions.bong_lit(age)
 	var serial := int(animation.get("use_serial", -1))
 	var exhale_at := 4.02 if kind == Props.Item.BONG else 2.34
 	if kind in [Props.Item.BONG, Props.Item.PEN] and age >= exhale_at and serial != smoke_serial:

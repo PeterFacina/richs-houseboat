@@ -357,29 +357,9 @@ func update_action(delta: float) -> void:
 
 
 func animate_bong(item: Node3D, previous: float) -> void:
-	var inhale := smoothstep(2.17, 2.67, action_age) * (1.0 - smoothstep(3.36, 3.82, action_age))
-	item.position += Vector3(-.068, .069, .083) * inhale
-	item.rotation.x = -.12 - .16 * inhale
-	var packing := smoothstep(.59, .89, action_age) * (1.0 - smoothstep(1.53, 1.82, action_age))
-	var lighting := smoothstep(1.72, 2.14, action_age) * (1.0 - smoothstep(3.12, 3.48, action_age))
-	var bowl: Vector3 = item.transform * Vector3(-.108, .151, .005)
-	var pin := bowl + Vector3(-.037, .029 + absf(sin(action_age * 14.5)) * .013, .019)
-	var light_at := bowl + Vector3(-.009, -.033, .007)
-	var left_rest := Vector3(-.34, -.58, -.40)
-	if packing > .0:
-		left_hand.position = left_rest.lerp(pin, packing)
-		left_hand.rotation = Vector3(-.54, -.34, .13 + .39 * packing)
-		left_hand.show()
-		bud.visible = action_age < 1.25
-		bud.position = left_hand.position + Vector3(.018, .016, -.008)
-	if lighting > .0:
-		lighter.position = left_rest.lerp(light_at, lighting)
-		lighter.rotation = Vector3(.80, .12, -.18)
-		lighter.show()
-		left_hand.position = lighter.position + Vector3(-.032, -.005, .032)
-		left_hand.rotation = Vector3(-.12, .29, .21)
-		left_hand.show()
-	var lit := action_age >= 2.19 and action_age < 2.91
+	var lit := Actions.bong_lit(action_age)
+	var drawing := lit or (action_age >= Actions.BONG_LIGHT_OFF and action_age < 3.36)
+	bud.visible = action_age >= .59 and action_age < 1.25
 	var flame: MeshInstance3D = lighter.get_node("Flame")
 	flame.visible = lit
 	flame.scale = Vector3(1.0, .86 + .14 * sin(action_age * 21.0), 1.0)
@@ -388,20 +368,18 @@ func animate_bong(item: Node3D, previous: float) -> void:
 	charge.material_override.emission_energy_multiplier = .84 if lit else 0.0
 	for i in 3:
 		var bubble: MeshInstance3D = item.get_node("Bubble%d" % i)
-		bubble.visible = inhale > .19
+		bubble.visible = drawing
 		bubble.position.y = .047 + fposmod(action_age * .26 + i * .032, .052)
-	if crossed(previous, 2.14):
+	if crossed(previous, Actions.BONG_LIGHT_ON):
 		sound_at_mouth("lighter", -5.0)
-	if crossed(previous, 2.51):
+	if crossed(previous, 2.58):
 		sound_at_mouth("bubble", -2.5)
 	if crossed(previous, 4.02):
 		exhale(1.0)
 
 
 func animate_pen(item: Node3D, previous: float) -> void:
-	var drawn := smoothstep(.52, .91, action_age) * (1.0 - smoothstep(1.80, 2.23, action_age))
-	item.position += Vector3(-.103, .175, .145) * drawn
-	item.rotation.x = -.28 - drawn * .46
+	var drawn := Actions.inhale(Props.Item.PEN, action_age)
 	item.get_node("Indicator").visible = drawn > .56
 	if crossed(previous, .95):
 		sound_at_mouth("draw", -7.0)
@@ -733,28 +711,40 @@ func pose_action(age: float) -> void:
 		return
 	var item := hand_items[active]
 	item.transform = Actions.prop_pose(active, age, reach)
-	if active in [Props.Item.BONG, Props.Item.PEN]:
+	right_hand.show()
+	left_hand.hide()
+	if active == Props.Item.BONG:
+		pose_bong_hands(item.transform, age)
+	elif active == Props.Item.PEN:
 		Actions.attach_smoking_grip(right_hand, item.transform, Actions.right_grip(active), Actions.right_pose(active), 1.0)
 	else:
 		Actions.attach(right_hand, item.transform, Actions.right_grip(active), Actions.right_pose(active))
-	left_hand.hide()
-	if active == Props.Item.BONG:
-		var packing := age >= .59 and age < 1.82
-		var lighting := age >= 1.72 and age < 3.48
-		var bowl: Vector3 = item.transform * Vector3(-.108, .151, .005)
-		if packing and not lighting:
-			Hands.align(left_hand, bowl + Vector3.UP * .035, Basis.from_euler(Vector3(.3, -.2, -.2)), "pinch")
+		if age >= .58 and age < 1.23:
+			Actions.attach(left_hand, item.transform, Vector3(0, .125, -.004), "pinch")
 			left_hand.show()
-			bud.position = bowl + Vector3.UP * .025
-		if lighting:
-			lighter.basis = Basis.from_euler(Vector3(.08, .0, -.15))
-			lighter.position = bowl + Vector3.UP * .008 - lighter.basis * Vector3(.003, .076, 0)
-			Actions.attach_smoking_grip(left_hand, lighter.transform, Vector3(0, .025, 0), "pinch", -1.0)
-			left_hand.show()
-	elif active in [Props.Item.MOLSON, Props.Item.MILLER] and age >= .58 and age < 1.23:
-		Actions.attach(left_hand, item.transform, Vector3(0, .125, -.004), "pinch")
-		left_hand.show()
 	update_sleeves()
+
+
+func pose_bong_hands(item: Transform3D, age: float) -> void:
+	Actions.attach_bong_grip(left_hand, item)
+	left_hand.show()
+	right_hand.hide()
+	var bowl := item * Actions.BONG_BOWL
+	var right_rest := Vector3(.34, -.52, -.38)
+	var packing := smoothstep(.59, .89, age) * (1.0 - smoothstep(1.30, 1.52, age))
+	if packing > 0.0:
+		var pinch := right_rest.lerp(bowl + Vector3(.018, .035, 0), packing)
+		Hands.align(right_hand, pinch, Basis.from_euler(Vector3(.3, .2, .2)), "pinch")
+		right_hand.show()
+		bud.position = pinch + Vector3(-.018, -.010, 0)
+	var lighting := smoothstep(2.04, 2.40, age) * (1.0 - smoothstep(Actions.BONG_LIGHT_OFF, 3.44, age))
+	lighter.visible = lighting > 0.0
+	if lighter.visible:
+		lighter.basis = Basis.from_euler(Vector3(.20, 0, .55))
+		var flame_tip := lighter.basis * Vector3(.003, .076, 0)
+		lighter.position = right_rest.lerp(bowl + Vector3.UP * .008 - flame_tip, lighting)
+		Actions.attach_smoking_grip(right_hand, lighter.transform, Vector3(0, .025, 0), "pinch", 1.0)
+		right_hand.show()
 
 
 func _process(_delta: float) -> void:
