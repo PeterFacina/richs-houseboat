@@ -15,6 +15,10 @@ window/size/resizable=true
 window/stretch/mode="canvas_items"
 window/stretch/aspect="expand"
 
+[gui]
+
+theme/custom_font="res://fonts/playfull_rocket.ttf"
+
 [input]
 
 sprint={
