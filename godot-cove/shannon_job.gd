@@ -84,11 +84,9 @@ func setup(fishing_game: Node3D, grass_owner: AnimatableBody3D, station: Vector3
 	calendar = game.label("", 17, Color("#fff2c5"))
 	calendar.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	calendar.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	game.hud.add_child(calendar)
-	calendar.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
-	calendar.offset_left = -250
-	calendar.offset_right = -26
-	calendar.offset_top = 77
+	var top_right_hud := game.hud.get_node("top_right_hud") as Control
+	top_right_hud.add_child(calendar)
+	top_right_hud.move_child(calendar, 0)
 	mower.grass_trimmed.connect(grass_trimmed)
 	update_clock(0.0)
 

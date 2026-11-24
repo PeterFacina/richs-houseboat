@@ -216,8 +216,6 @@ func _ready() -> void:
 	fish.hide()
 	build_hud()
 	build_ignition_prompt()
-	fps.offset_left = -228
-	fps.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	build_tension_display()
 	backpack = Backpack.new()
 	hud.add_child(backpack)
@@ -360,7 +358,6 @@ func update_menu_hud() -> void:
 	marker.self_modulate.a = 1.0 if show_hud else 0.0
 	campaign.info.self_modulate.a = marker.self_modulate.a
 	var ambient_alpha := 0.0 if piloting else 1.0
-	regions.region_label.self_modulate.a = ambient_alpha
 	shannon_job.calendar.self_modulate.a = ambient_alpha
 	fps.self_modulate.a = ambient_alpha
 	(skill_screen.heading.get_parent() as Control).visible = not piloting
@@ -1813,16 +1810,8 @@ func update_hud() -> void:
 	backpack.update_throttle(mower.throttle_index if mower.rider != null and play_input() else -1, mower.throttle_label())
 	backpack.hud_available = not piloting and not campaign.crewplay.hands_busy() and not cabin.hands_in_use() and not chart.visible and not fish_guide.visible and not cheats.visible \
 		and not campaign.controls_blocked() and not cabin.busy() and not campaign.marina_fuel.is_local_holder()
-	var location := "Ottawa River"
+	objective.text = ""
 	var at: Vector3 = vessel.center if aboard() else player.global_position
-	if river.meta.has("lamure") and at.distance_squared_to(river.point(3)) < 175.0 * 175.0:
-		location = "Lamure Beach"
-	else:
-		for index in 3:
-			if at.distance_squared_to(river.point(index)) < 650.0 * 650.0:
-				location = river.meta.places[index].name
-				break
-	objective.text = location
 	instruction.text = ""
 	var on_line := fishing == Fishing.FIGHT
 	progress.visible = on_line
@@ -1847,6 +1836,7 @@ func update_hud() -> void:
 		else:
 			instruction.text += "\nE  Exit when stopped    C  Camera    H  Headlights    F4  Draw distance"
 		campaign.info.hide()
+		objective.visible = not objective.text.is_empty()
 		return
 	if chart.visible:
 		chart.update_boat(vessel.center)
@@ -1943,6 +1933,7 @@ func update_hud() -> void:
 			marker.text = waypoint_text
 			marker.position = Vector2(clampf(projected.x - 68, 20, 1080), clampf(projected.y - 25, 128, 585))
 			marker.show()
+	objective.visible = not objective.text.is_empty()
 
 
 func update_flight_mode(enabled: bool) -> void:
