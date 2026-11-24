@@ -8,6 +8,7 @@ const DECK_HEIGHT := 1.02
 const LAUNCH_WIDTH := 2.72
 
 var deck: PackedVector2Array
+var wharf_cleats: Array[Transform3D] = []
 var launch_mark := Vector3.INF
 var boarding_step := Vector3.INF
 var launch_forward := Vector3.FORWARD
@@ -52,10 +53,11 @@ func build_launch_dock(path: PackedVector2Array, docks: Docks) -> void:
 	launch_heading = atan2(-launch_forward.x, -launch_forward.z)
 	docks.gangway("LaunchGangway", docks.bank(entry), hinge + launch_forward * .10, LAUNCH_WIDTH)
 	docks.span("LaunchFloat", hinge, end, LAUNCH_WIDTH, true)
+	var cleat_basis := Basis(launch_forward, Vector3.UP, launch_side).scaled_local(Vector3.ONE * .83)
 	for offset: float in [1.85, 7.5, 14.6, 22.1, 27.1]:
 		for side: float in [-1.0, 1.0]:
 			var anchor := hinge + launch_forward * offset + launch_side * side * 1.07
-			docks.cleats.append(Transform3D(Basis.looking_at(launch_forward).scaled_local(Vector3.ONE * .83), anchor))
+			docks.cleats.append(Transform3D(cleat_basis, anchor))
 	docks.ladder(end - launch_forward * .86, launch_forward, LAUNCH_WIDTH, -1.0)
 	docks.ladder(hinge + launch_forward * 10.7, launch_forward, LAUNCH_WIDTH, 1.0)
 	boarding_step = end - launch_forward * 4.6 + launch_side * .62
@@ -154,14 +156,13 @@ func build_deck(parent: Node3D, cement: Material) -> void:
 	pavement.name = "ConcreteDeck"
 	pavement.create_trimesh_collision()
 
-	var wharf_hardware: Array[Transform3D] = []
-	add_cleats(wharf_hardware, at(deck[6], DECK_HEIGHT), at(deck[7], DECK_HEIGHT),
+	add_cleats(wharf_cleats, at(deck[6], DECK_HEIGHT), at(deck[7], DECK_HEIGHT),
 		.48, [.12, .31, .57, .82], 1.25)
-	add_cleats(wharf_hardware, at(deck[0], DECK_HEIGHT), at(deck[1], DECK_HEIGHT),
+	add_cleats(wharf_cleats, at(deck[0], DECK_HEIGHT), at(deck[1], DECK_HEIGHT),
 		.43, [.32, .69, .90], 1.12)
-	add_cleats(wharf_hardware, at(deck[3], DECK_HEIGHT), at(deck[4], DECK_HEIGHT),
+	add_cleats(wharf_cleats, at(deck[3], DECK_HEIGHT), at(deck[4], DECK_HEIGHT),
 		.57, [.21, .61], 1.22)
-	Cleat.place(parent, wharf_hardware).name = "WharfCleats"
+	Cleat.place(parent, wharf_cleats).name = "WharfCleats"
 
 
 func add_cleats(transforms: Array[Transform3D], a: Vector3, b: Vector3, setback: float,

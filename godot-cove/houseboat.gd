@@ -7,6 +7,7 @@ const Panorama = preload("res://houseboat_panorama.gd")
 const FuelTank = preload("res://boat_fuel_tank.gd")
 const HelmConsole = preload("res://boat_helm_console.gd")
 const Tools = preload("res://crew_tools.gd")
+const Mooring = preload("res://boat_mooring.gd")
 const STARTER = preload("res://ottawa/princecraft/starter.wav")
 const CATCH = preload("res://ottawa/princecraft/catch.wav")
 const START_TIME := .75
@@ -29,6 +30,7 @@ var heading := 0.0
 var speed := 0.0
 var throttle := 0.0
 var departed := false
+var mooring := Mooring.new()
 var top_speed := 5.2
 var water_check: Callable
 var marina_check: Callable
@@ -172,6 +174,7 @@ func launch_half_beam() -> float:
 
 
 func berth_at(at: Vector3, yaw: float) -> void:
+	mooring.clear()
 	center = at
 	heading = yaw
 	speed = 0.0
@@ -376,13 +379,16 @@ func sail_river(delta: float, clock: float) -> void:
 	speed = lerpf(speed, wanted, 1.0 - exp(-delta * (drive_response if motor.gear != 0 else coast_response)))
 	var steer_force := minf(1.0, absf(speed) * .19 + motor.thrust * .48)
 	var reverse := -1.0 if (speed < -.18 or (absf(speed) <= .18 and throttle < 0.0)) else 1.0
-	var turn := wrapf(heading - motor.steering * steer_force * yaw_rate * delta * reverse, -PI, PI)
+	var turn := heading if mooring.secured() else \
+		wrapf(heading - motor.steering * steer_force * yaw_rate * delta * reverse, -PI, PI)
 	var length := .65 if skiff else 1.0
 	var beam := .68 if skiff else 1.0
 	if departed:
 		var current := passive_water_velocity(delta, clock, power != 0.0)
 		var course := Vector3(-sin(turn), 0, -cos(turn))
 		var next := center + (course * speed + current) * delta
+		if mooring.secured():
+			next = mooring.constrain(next, turn, skiff)
 		if can_place(next, turn):
 			center = next
 			heading = turn

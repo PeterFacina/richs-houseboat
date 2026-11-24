@@ -1,6 +1,7 @@
 extends Node3D
 
 const Kit = preload("res://scenery.gd")
+const Cleat = preload("res://mooring_cleat.gd")
 const Data = preload("res://river_campaign_data.gd")
 const Ledger = preload("res://river_ledger.gd")
 const Ottawa = preload("res://ottawa_map.gd")
@@ -119,6 +120,11 @@ func make_landing(index: int) -> void:
 	var transfer := end + Vector3.UP * .035 - forward * 1.7
 	var deck_entry := end + right * 1.13 - forward * 1.7
 	walkway(root, transfer, deck_entry, 1.1, false)
+	var cleats: Array[Transform3D] = []
+	var cleat_basis := Basis(forward, Vector3.UP, right).scaled_local(Vector3.ONE * .78)
+	for offset: float in [.95, -1.70, -4.75]:
+		cleats.append(Transform3D(cleat_basis, end + forward * offset + right * .96))
+	Cleat.place(root, cleats)
 	var stand := lead - forward * .94
 	stand.y = land_height(stand) + .04
 	var notice_origin := stand + right * 1.66
@@ -144,7 +150,7 @@ func make_landing(index: int) -> void:
 		make_chalk_lookout(root, plot, frame, heading, data.color)
 	sites.append({"plot": plot, "heading": heading, "forward": forward, "right": right,
 		"dock": dock_end, "berth": berth, "stand": stand, "transfer": transfer,
-		"sign": notice_origin, "parcel": parcel, "root": root})
+		"sign": notice_origin, "parcel": parcel, "root": root, "cleats": cleats})
 
 
 func dress_bank(parent: Node3D, plot: Vector3, frame: Basis, index: int) -> void:

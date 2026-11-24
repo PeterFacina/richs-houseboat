@@ -16,6 +16,7 @@ var boards: Array[Transform3D] = []
 var floats: Array[Transform3D] = []
 var bumpers: Array[Transform3D] = []
 var cleats: Array[Transform3D] = []
+var ladders: Array[Dictionary] = []
 var obstacles: Array[Dictionary] = []
 var bounds := Rect2()
 
@@ -62,20 +63,23 @@ func build_row(title: String, a: Vector3, b: Vector3, count: int, reach: float, 
 	span(title, a - (b - a).normalized() * .58, b + (b - a).normalized() * .58, SPINE_WIDTH, true)
 	var forward := (b - a).normalized()
 	var lateral := forward.cross(Vector3.UP)
-	var basis := Basis.looking_at(forward)
 	for side: float in sides:
 		var outward := lateral * side
 		for index in count:
 			var joint := a.lerp(b, float(index) / (count - 1))
 			var tip := joint + outward * reach
 			span("SlipFinger", joint + outward * (SPINE_WIDTH * .5 - .045), tip, FINGER_WIDTH, true)
-			cleats.append(Transform3D(basis.scaled_local(Vector3.ONE * .65), tip - outward * .34))
-			cleats.append(Transform3D(basis.scaled_local(Vector3.ONE * .55), joint + outward * 1.62))
+			# The cleat model's long axis is X, parallel to the finger edge.
+			var basis := Basis(outward, Vector3.UP, outward.cross(Vector3.UP))
+			for edge: float in [-1.0, 1.0]:
+				var inset := forward * edge * (FINGER_WIDTH * .5 - .17)
+				cleats.append(Transform3D(basis.scaled_local(Vector3.ONE * .65), tip - outward * .40 + inset))
+				cleats.append(Transform3D(basis.scaled_local(Vector3.ONE * .55), joint + outward * 1.66 + inset))
 			if index < count - 1:
 				var next := a.lerp(b, float(index + 1) / (count - 1))
 				berths.append({"row": title, "slot": index, "side": side, "edge": (joint + next) * .5,
 					"outward": outward, "along": forward, "width": joint.distance_to(next) - FINGER_WIDTH})
-	ladder(b - forward * .38, forward, SPINE_WIDTH, 1.0)
+	ladder(b - forward * 1.15, forward, SPINE_WIDTH, 1.0)
 
 
 func gangway(title: String, a: Vector3, b: Vector3, width: float) -> void:
@@ -122,6 +126,7 @@ func span(title: String, a: Vector3, b: Vector3, width: float, floating: bool) -
 func ladder(at: Vector3, forward: Vector3, width: float, side: float) -> void:
 	var outward := forward.cross(Vector3.UP) * side
 	var edge := at + outward * (width * .5 + .07)
+	ladders.append({"edge": edge, "outward": outward, "top": edge - outward * .72 + Vector3.UP * .10})
 	for offset: float in [-.23, .23]:
 		var foot := edge + forward * offset
 		Kit.beam(root, foot - Vector3.UP * 1.23, foot + Vector3.UP * .47, .045, alloy)
@@ -129,6 +134,19 @@ func ladder(at: Vector3, forward: Vector3, width: float, side: float) -> void:
 	for step in 5:
 		var rung := edge - Vector3.UP * (.09 + step * .25)
 		Kit.beam(root, rung - forward * .23, rung + forward * .23, .035, alloy)
+
+
+func aimed_ladder(feet: Vector3, eye: Camera3D) -> Dictionary:
+	if not bounds.grow(3.0).has_point(Vector2(feet.x, feet.z)):
+		return {}
+	for entry in ladders:
+		var edge: Vector3 = entry.edge
+		var outward: Vector3 = entry.outward
+		var look := edge + Vector3.UP * .12 - eye.global_position
+		if feet.y < edge.y and (feet - edge).dot(outward) > -.12 \
+				and feet.distance_squared_to(edge) < 2.35 * 2.35 and look.normalized().dot(-eye.global_basis.z) > .72:
+			return entry
+	return {}
 
 
 func finish() -> void:

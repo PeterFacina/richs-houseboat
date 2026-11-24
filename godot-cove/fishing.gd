@@ -633,6 +633,8 @@ func _physics_process(delta: float) -> void:
 			yaw = mower.yaw
 			pitch = -.10
 			update_view()
+		elif campaign.climb_dock_ladder():
+			pass
 		elif can_board_from_water():
 			campaign.keep_player_on_deck(vessel, vessel.board_anchor())
 			set_swimming(false)
@@ -1884,7 +1886,9 @@ func update_hud() -> void:
 			and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and not campaign.dive.active:
 		instruction.text = action
 	if swimming and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
-		if can_board_from_water():
+		if not campaign.dock_ladder().is_empty():
+			instruction.text = "E  Climb dock ladder"
+		elif can_board_from_water():
 			instruction.text = "E  Climb aboard at the bow"
 		elif river.lamure.at_swim_ladder(player.global_position, eye):
 			instruction.text = "E  Climb onto the swim float"
