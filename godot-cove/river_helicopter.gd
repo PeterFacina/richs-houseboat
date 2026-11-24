@@ -3,6 +3,8 @@ extends Node3D
 const Kit = preload("res://scenery.gd")
 const Tools = preload("res://crew_tools.gd")
 const SEATS := [Vector3(.40, .08, -.62), Vector3(-.40, .08, -.62), Vector3(.40, .08, .45), Vector3(-.40, .08, .45)]
+const SOUND_MIX_RATE := 12000
+const ROTOR_VOLUME_DB := -12.0
 var game: Node3D
 var campaign: Node3D
 var craft: CharacterBody3D
@@ -21,6 +23,11 @@ var old_seat := -1
 var saved_mask := 1
 var hud: Label
 var sound: AudioStreamPlayer3D
+var transition_sound: AudioStreamPlayer3D
+var startup_sound: AudioStreamWAV
+var shutdown_sound: AudioStreamWAV
+var previous_audio_speed := 0.0
+var rotor_audio_running := false
 
 
 func setup(scene: Node3D) -> void:
@@ -43,6 +50,7 @@ func setup(scene: Node3D) -> void:
 	craft.global_position = game.regions.helipad + Vector3.UP * .16
 	target_pose = craft.global_transform
 	build_model()
+	build_audio()
 	hud = Label.new()
 	hud.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	hud.add_theme_font_size_override("font_size", 17)
@@ -130,25 +138,74 @@ func build_model() -> void:
 	for angle in [0.0,PI*.5]:
 		var blade := Kit.box_at(tail_rotor,Vector3.ZERO,Vector3(.035,1.05,.075),dark)
 		blade.rotation.x = angle
-	sound = AudioStreamPlayer3D.new()
-	craft.add_child(sound)
-	sound.position.y = 2
-	sound.max_distance = 220
-	sound.unit_size = 8
-	sound.volume_db = -15
+
+
+func build_audio() -> void:
+	sound = rotor_emitter("RotorLoop")
+	transition_sound = rotor_emitter("EngineTransition")
+	startup_sound = engine_cue(1.35, 55.0, 170.0)
+	shutdown_sound = engine_cue(1.8, 145.0, 38.0)
 	var wave := AudioStreamWAV.new()
 	wave.format = AudioStreamWAV.FORMAT_16_BITS
-	wave.mix_rate = 12000
+	wave.mix_rate = SOUND_MIX_RATE
 	var samples := PackedByteArray()
-	samples.resize(24000)
-	for frame in 12000:
-		var t := float(frame)/12000
+	samples.resize(SOUND_MIX_RATE * 2)
+	for frame in SOUND_MIX_RATE:
+		var t := float(frame) / SOUND_MIX_RATE
 		var value := (sin(t*TAU*96)*.5+sin(t*TAU*192)*.18)*( .35+.65*pow(.5+.5*sin(t*TAU*24),3))
 		samples.encode_s16(frame*2,int(value*12000))
 	wave.data = samples
 	wave.loop_mode = AudioStreamWAV.LOOP_FORWARD
-	wave.loop_end = 12000
+	wave.loop_end = SOUND_MIX_RATE
 	sound.stream = wave
+
+
+func rotor_emitter(emitter_name: String) -> AudioStreamPlayer3D:
+	var emitter := AudioStreamPlayer3D.new()
+	emitter.name = emitter_name
+	emitter.position.y = 2.0
+	emitter.max_distance = 450.0
+	emitter.unit_size = 64.0
+	emitter.max_db = -12.0
+	emitter.volume_db = ROTOR_VOLUME_DB
+	craft.add_child(emitter)
+	return emitter
+
+
+func engine_cue(duration: float, start_hz: float, end_hz: float) -> AudioStreamWAV:
+	var frames := roundi(duration * SOUND_MIX_RATE)
+	var samples := PackedByteArray()
+	samples.resize(frames * 2)
+	var phase := 0.0
+	for frame in frames:
+		var progress := float(frame) / (frames - 1)
+		phase += TAU * lerpf(start_hz, end_hz, progress) / SOUND_MIX_RATE
+		var envelope := smoothstep(0.0, .10, progress) * (1.0 - smoothstep(.55, 1.0, progress))
+		var turbine := .28 * sin(phase) + .17 * sin(phase * 3.0) + .06 * sin(phase * 5.0)
+		samples.encode_s16(frame * 2, int(turbine * envelope * 24000))
+	var wave := AudioStreamWAV.new()
+	wave.format = AudioStreamWAV.FORMAT_16_BITS
+	wave.mix_rate = SOUND_MIX_RATE
+	wave.data = samples
+	return wave
+
+
+func update_audio() -> void:
+	# The host and guests already share rotor speed. A change in its direction marks a new cue.
+	if rotor_speed != previous_audio_speed:
+		var accelerating := rotor_speed > previous_audio_speed
+		if accelerating != rotor_audio_running:
+			rotor_audio_running = accelerating
+			transition_sound.stream = startup_sound if accelerating else shutdown_sound
+			transition_sound.play()
+		previous_audio_speed = rotor_speed
+	if rotor_speed > .05:
+		sound.pitch_scale = .45 + .55 * rotor_speed
+		sound.volume_db = ROTOR_VOLUME_DB + linear_to_db(rotor_speed)
+		if not sound.playing:
+			sound.play()
+	elif sound.playing:
+		sound.stop()
 
 
 func my_seat() -> int:
@@ -235,6 +292,10 @@ func flight(pose: Transform3D, velocity: Vector3, speed: float) -> void:
 	target_pose = pose
 	target_velocity = velocity
 	rotor_speed = speed
+	if not established:
+		# A late joiner's first snapshot may already show a running rotor.
+		previous_audio_speed = speed
+		rotor_audio_running = speed > 0.0
 	if not established or craft.global_position.distance_to(pose.origin)>30:
 		craft.global_transform = pose
 	established = true
@@ -328,10 +389,7 @@ func tick(delta: float, has_input: bool) -> void:
 	if packet_age >= .05: packet_age = 0
 	rotor.rotation.y = fposmod(rotor.rotation.y + delta*rotor_speed*38,TAU)
 	tail_rotor.rotation.x = fposmod(tail_rotor.rotation.x + delta*rotor_speed*53,TAU)
-	if rotor_speed > .05:
-		if not sound.playing: sound.play()
-		sound.pitch_scale = .45+.55*rotor_speed
-	else: sound.stop()
+	update_audio()
 	if mounted():
 		game.yaw += wrapf(craft.rotation.y-previous_heading,-PI,PI)
 		game.player.global_position = craft.to_global(SEATS[my_seat()])
