@@ -8,16 +8,15 @@ config/features=PackedStringArray("4.3", "GL Compatibility")
 [audio]
 general/text_to_speech=false
 
+[autoload]
+GameFont="*res://game_font.gd"
+
 [display]
 window/size/viewport_width=1280
 window/size/viewport_height=720
 window/size/resizable=true
 window/stretch/mode="canvas_items"
 window/stretch/aspect="expand"
-
-[gui]
-
-theme/custom_font="res://fonts/playfull_rocket.ttf"
 
 [input]
 
