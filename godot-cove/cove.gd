@@ -149,7 +149,7 @@ func build_hud() -> void:
 	ui.add_child(marker)
 	fps = label("", 14, Color("#e0e8e3"))
 	fps.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
-	fps.offset_left = -142
+	fps.offset_left = -400
 	fps.offset_right = -14
 	fps.offset_top = 21
 	fps.hide()

@@ -216,7 +216,7 @@ func _ready() -> void:
 	fish.hide()
 	build_hud()
 	build_ignition_prompt()
-	fps.offset_left = -228
+	fps.offset_left = -400
 	fps.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	build_tension_display()
 	backpack = Backpack.new()
@@ -1813,6 +1813,7 @@ func update_hud() -> void:
 	backpack.hud_available = not piloting and not campaign.crewplay.hands_busy() and not cabin.hands_in_use() and not chart.visible and not fish_guide.visible and not cheats.visible \
 		and not campaign.controls_blocked() and not cabin.busy() and not campaign.marina_fuel.is_local_holder()
 	objective.text = ""
+	var at: Vector3 = vessel.center if aboard() else player.global_position
 	instruction.text = ""
 	var on_line := fishing == Fishing.FIGHT
 	progress.visible = on_line
