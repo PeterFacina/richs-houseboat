@@ -1,0 +1,60 @@
+import { once } from 'node:events';
+import { createStudio } from '../game_prompt_studio/server.mjs';
+import { createOllama } from '../game_prompt_studio/lib/model.mjs';
+import { liveKnowledge } from './source-knowledge.mjs';
+import { studioClient } from './studio.mjs';
+import { repository } from './workflow.mjs';
+
+export async function workerGeneration({ storage, model, knowledge, github, inbox, fetchOllama = fetch }) {
+  const options = { port: 8765, ollamaPort: 11434, model, context: 8192, keepAliveMinutes: 2,
+    tier: 'detailed', privateOrigin: '', exclude: [] };
+  let active;
+  const provider = createOllama(options.ollamaPort, (url, init) => {
+    if (new URL(url).pathname === '/api/chat') active.request = JSON.parse(init.body);
+    return fetchOllama(url, init);
+  });
+  const server = createStudio({ storage, options, provider, async prepareKnowledge(input) {
+    if (input.note !== active?.note) throw new Error('Generation requires a queued report.');
+    const [source, { tasks, githubContextComplete }] = await Promise.all([
+      knowledge.refresh(), liveKnowledge(github, active.issue.number),
+    ]);
+    try {
+      return { ...source, githubContextComplete, selection: await knowledge.select(input.note, tasks) };
+    } catch {
+      console.warn('Knowledge selector unavailable for ' + source.commit + '. Studio used its excerpt search.');
+      return { ...source, githubContextComplete: false, retrievalFallback: true };
+    }
+  } });
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  const generateBrief = studioClient('http://127.0.0.1:' + server.address().port);
+  return {
+    async generate(note, issue) {
+      if (active) throw new Error('The worker is already processing a report.');
+      active = { note, issue };
+      try {
+        const { record, exportPassed } = await generateBrief(note, { details: true });
+        const { request } = active;
+        const input = request && JSON.parse(request.messages.find(message => message.role === 'user').content);
+        if (input?.currentRequest.note !== note || !record.generation.knowledge?.commit || request.model !== model) {
+          throw new Error('Could not match the model request to the report and indexed commit.');
+        }
+        const { knowledge, facts, ...metrics } = record.generation;
+        const retrievedContext = input.untrustedRetrievedEvidence;
+        const captureId = inbox.capture(issue.number, { repository, issueUrl: issue.html_url, report: note,
+          commit: knowledge.commit, knowledge, retrievedContext, model: request.model, modelDigest: metrics.modelDigest,
+          contextBytes: Buffer.byteLength(JSON.stringify(retrievedContext)), request, metrics, exportPassed }, record.prompt.trim());
+        if (!exportPassed) throw new Error('Studio blocked export. The private capture is available for human review.');
+        return { brief: record.prompt.trim(), captureId };
+      } finally {
+        active = null;
+      }
+    },
+    async close() {
+      const closed = once(server, 'close');
+      server.close();
+      server.closeAllConnections();
+      await closed;
+    },
+  };
+}

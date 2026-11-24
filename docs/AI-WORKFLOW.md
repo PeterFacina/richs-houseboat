@@ -6,7 +6,7 @@ GitHub issues and draft PRs are the durable task records; Discord is the team in
 
 ## Deployment versus main
 
-The GPU worker, Discord issue pilot and Prompt Studio may be deployed from branches other than main. Check the current source, [open pull requests](https://github.com/PeterFacina/richs-houseboat/pulls) and the operator's deployed revision before asserting what is live. The team reports that automatic issue brief posting and gameplay issue-to-PR review are operational; confirm training capture, export and fine-tuning status separately. Keep private deployment configuration and credentials out of the repository. The worker source reviewed during this documentation change scans its checkout at startup and captures that startup commit; this is not evidence that a running deployment follows main. Do not pull into or mutate a running worker's checkout. A future refresh should use a clean, pinned revision and reindex before accepting work, with matching captured provenance.
+The GPU worker, Discord issue pilot and Prompt Studio may be deployed from branches other than main. Check the current source, [open pull requests](https://github.com/PeterFacina/richs-houseboat/pulls) and the operator's deployed revision before asserting what is live. The [worker knowledge runbook](GPU-WORKER-KNOWLEDGE.md) covers automatic refresh from main, pinned generation, and the checks for rollout and training capture. Keep deployment credentials and training records private.
 
 ## Acceptance and learning
 

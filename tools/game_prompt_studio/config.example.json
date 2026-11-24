@@ -1,0 +1,10 @@
+{
+  "port": 8765,
+  "ollamaPort": 11434,
+  "model": "qwen3:14b",
+  "context": 8192,
+  "keepAliveMinutes": 2,
+  "tier": "detailed",
+  "privateOrigin": "",
+  "exclude": []
+}

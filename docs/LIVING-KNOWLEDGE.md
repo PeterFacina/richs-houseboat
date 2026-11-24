@@ -46,7 +46,7 @@ CI compares the PR base to the checked-out merge preview (or previous main revis
 
 ## Prompt Studio
 
-The local GPU worker has its own source indexing and provenance. This CI artifact does not automatically update Ethan's checkout or change worker retrieval. Confirm the deployed revision and refresh procedure with the operator; do not hot-update a running worker or mix source revisions within training records.
+The [GPU worker knowledge integration](GPU-WORKER-KNOWLEDGE.md) uses the same deterministic indexer against a dedicated sparse checkout of `main`. Prompt Studio retrieves bounded excerpts using the index, selected guides, and related live GitHub tasks. The worker records the pinned source commit for each generation. Check the deployed worker revision separately from the game revision shown in its briefs. The CI artifact remains available for development and review.
 
 ## Verification and metrics
 

@@ -23,12 +23,13 @@ def inspect_source(data):
     return symbols, sorted(set("godot-cove/" + m for m in REF.findall(text)))
 
 
-def build(root):
+def build(root, previous=None):
     revision = git(root, "rev-parse", "HEAD").decode().strip()
     tracked = sorted(set(git(root, "ls-files", "-z", "--", "godot-cove").decode().split("\0")))
     dirty = bool(git(root, "status", "--porcelain", "--untracked-files=all", "--", "godot-cove").strip())
     files = {}
     skipped = []
+    cached = previous["files"] if previous and previous.get("schema") == 1 else {}
     for name in tracked:
         if not name or Path(name).suffix.lower() not in EXT:
             continue
@@ -37,15 +38,19 @@ def build(root):
             skipped.append(name)
             continue
         data = path.read_bytes()
-        try:
-            symbols, refs = inspect_source(data)
-        except UnicodeDecodeError:
-            skipped.append(name)
-            continue
-        files[name] = {"sha256": hashlib.sha256(data).hexdigest(),
-                       "symbols": symbols, "references": refs}
+        digest = hashlib.sha256(data).hexdigest()
+        old = cached.get(name, {})
+        if old.get("sha256") == digest and "literal_references" in old:
+            symbols, refs = old["symbols"], old["literal_references"]
+        else:
+            try:
+                symbols, refs = inspect_source(data)
+            except UnicodeDecodeError:
+                skipped.append(name)
+                continue
+        files[name] = {"sha256": digest, "symbols": symbols, "literal_references": refs}
     for item in files.values():
-        item["references"] = [name for name in item["references"] if name in files]
+        item["references"] = [name for name in item["literal_references"] if name in files]
     return {"schema": 1, "revision": revision, "dirty": dirty,
             "files": files, "skipped": skipped}
 
@@ -54,14 +59,20 @@ def query(index, phrase, limit):
     terms = re.findall(r"\w+", phrase.lower())
     if not terms:
         return []
+    wanted = set(terms)
     hits = []
     for path, item in index["files"].items():
-        matches = [s for s in item["symbols"]
-                   if any(t in s["name"].lower() for t in terms)]
+        def symbol_score(symbol):
+            name = symbol["name"].lower()
+            return 8 * (name in wanted) + sum(2 if t in name.split("_") else int(t in name) for t in wanted)
+
+        matches = sorted(((symbol_score(s), s) for s in item["symbols"]),
+                         key=lambda match: (-match[0], match[1]["line"]))
+        matching = [s for score, s in matches if score]
         score = sum(4 for t in terms if t in path.lower())
-        score += sum(3 for t in terms if any(t in s["name"].lower() for s in matches))
+        score += matches[0][0] if matches else 0
         if score:
-            hits.append((score, path, matches[:8], item["references"][:5]))
+            hits.append((score, path, matching[:8], item["references"][:5]))
     hits.sort(key=lambda h: (-h[0], h[1]))
     return [{"path": p, "symbols": s, "references": r} for _, p, s, r in hits[:limit]]
 
@@ -84,12 +95,14 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parents[2])
     parser.add_argument("--output", type=Path)
+    parser.add_argument("--previous", type=Path, help="Reuse declarations from a previous index")
     parser.add_argument("--query")
     parser.add_argument("--limit", type=int, choices=range(1, 21), default=5)
     parser.add_argument("--base", help="Optional baseline commit for advisory review")
     args = parser.parse_args()
     root = args.root.resolve()
-    index = build(root)
+    previous = json.loads(args.previous.read_text(encoding="utf-8")) if args.previous else None
+    index = build(root, previous)
     if args.base:
         if not re.fullmatch(r"[0-9a-fA-F]{40,64}", args.base):
             parser.error("--base must be a full commit hash")
