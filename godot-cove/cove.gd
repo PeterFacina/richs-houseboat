@@ -148,12 +148,19 @@ func build_hud() -> void:
 	marker = label("", 16, Color("#fff0cb"))
 	ui.add_child(marker)
 	fps = label("", 14, Color("#e0e8e3"))
-	fps.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
-	fps.offset_left = -400
-	fps.offset_right = -14
-	fps.offset_top = 21
+	fps.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	fps.hide()
-	ui.add_child(fps)
+	var top_right_hud := VBoxContainer.new()
+	top_right_hud.name = "top_right_hud"
+	top_right_hud.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
+	top_right_hud.offset_right = -14
+	top_right_hud.offset_top = 21
+	top_right_hud.offset_left = -600
+	top_right_hud.size_flags_horizontal = Control.SIZE_SHRINK_END
+	top_right_hud.add_theme_constant_override("separation", 4)
+	top_right_hud.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	ui.add_child(top_right_hud)
+	top_right_hud.add_child(fps)
 	crosshair = ColorRect.new()
 	crosshair.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	crosshair.color = Color("#f6e7c9")

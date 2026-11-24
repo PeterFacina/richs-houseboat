@@ -216,8 +216,6 @@ func _ready() -> void:
 	fish.hide()
 	build_hud()
 	build_ignition_prompt()
-	fps.offset_left = -400
-	fps.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	build_tension_display()
 	backpack = Backpack.new()
 	hud.add_child(backpack)
