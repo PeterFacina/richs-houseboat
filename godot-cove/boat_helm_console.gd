@@ -20,15 +20,8 @@ func build(boat: Node3D, lever_pose: Transform3D) -> void:
 	Kit.box_at(self, Vector3(-.036, .039, .037), Vector3(.366, .138, .010), screen)
 	speed_readout = face("", Vector3(-.036, .063, .044), .00215, Color("#e7f4dc"))
 	throttle_readout = face("", Vector3(-.036, .002, .044), .0012, Color("#c1d4bc"))
-	Tools.tube(self, Vector3(.225, -.038, .025), Vector3(.225, -.038, .047), .034, .032, metal)
 	face("KEY", Vector3(.225, -.085, .029), .0009, Color("#eee3ce"))
-	ignition_key = Node3D.new()
-	ignition_key.name = "IgnitionKey"
-	add_child(ignition_key)
-	ignition_key.position = Vector3(.225, -.038, .057)
-	Kit.box_at(ignition_key, Vector3(0, .006, .004), Vector3(.013, .016, .037), accent)
-	Kit.box_at(ignition_key, Vector3(0, .016, .026), Vector3(.055, .032, .019), grip)
-	Kit.box_at(ignition_key, Vector3(0, .026, .036), Vector3(.041, .007, .005), accent)
+	ignition_key = build_ignition_key(self, Vector3(.225, -.038, .057))
 
 	var quadrant := Node3D.new()
 	quadrant.name = "ThrottleQuadrant"
@@ -41,6 +34,27 @@ func build(boat: Node3D, lever_pose: Transform3D) -> void:
 	Tools.tube(throttle_lever, Vector3.ZERO, Vector3(0, .19, 0), .016, .014, metal)
 	Kit.box_at(throttle_lever, Vector3(0, .192, 0), Vector3(.080, .043, .054), grip)
 	Kit.box_at(throttle_lever, Vector3(-.017, .216, 0), Vector3(.022, .009, .025), accent)
+
+
+static func build_ignition_key(panel: Node3D, at: Vector3) -> Node3D:
+	var bezel := Kit.paint(Color("#b5bfbc"), .38, .49)
+	var brass := Kit.paint(Color("#b79355"), .43, .38)
+	var handle := Kit.paint(Color("#242b29"), .47)
+	Tools.tube(panel, at - Vector3(0, 0, .032), at - Vector3(0, 0, .010), .034, .032, bezel)
+	var key := Node3D.new()
+	key.name = "IgnitionKey"
+	panel.add_child(key)
+	key.position = at
+	Kit.box_at(key, Vector3(0, .006, .004), Vector3(.013, .016, .037), brass)
+	Kit.box_at(key, Vector3(0, .016, .026), Vector3(.055, .032, .019), handle)
+	Kit.box_at(key, Vector3(0, .026, .036), Vector3(.041, .007, .005), brass)
+	return key
+
+
+static func aims_at_key(key: Node3D, origin: Vector3, forward: Vector3) -> bool:
+	var offset := key.global_position - origin
+	var distance := offset.dot(forward)
+	return distance > 0.0 and distance < 1.8 and (offset - forward * distance).length_squared() < .0025
 
 
 func face(value: String, at: Vector3, pixel: float, ink: Color) -> Label3D:
