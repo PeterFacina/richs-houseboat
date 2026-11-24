@@ -4,6 +4,7 @@ const SETTINGS := "user://river_graphics.cfg"
 const NAMES := ["Performance", "Balanced", "Scenic"]
 const DRAW_DISTANCE := [2400.0, 4200.0, 8700.0]
 const SHADOW_DISTANCE := [72.0, 125.0, 230.0]
+const NEAR_SHADOW_DISTANCE := 5.0
 const WATER_GRID := [72, 112, 180]
 const RANGES := {
 	"tree_detail": [135.0, 235.0, 360.0],
@@ -40,7 +41,11 @@ func apply(river: Node3D, view: Camera3D) -> void:
 	viewport.msaa_3d = [Viewport.MSAA_2X, Viewport.MSAA_4X, Viewport.MSAA_8X][level]
 	viewport.screen_space_aa = Viewport.SCREEN_SPACE_AA_DISABLED
 	view.far = DRAW_DISTANCE[level]
-	river.landscape_light.directional_shadow_max_distance = SHADOW_DISTANCE[level]
+	var sun: DirectionalLight3D = river.landscape_light
+	sun.directional_shadow_max_distance = SHADOW_DISTANCE[level]
+	# Keep nearby deck and cabin shadows in the same high-detail split at every preset.
+	sun.directional_shadow_split_1 = NEAR_SHADOW_DISTANCE / SHADOW_DISTANCE[level]
+	sun.directional_shadow_blend_splits = true
 	river.set_water_grid(WATER_GRID[level])
 	river.fog_scale = pow(DRAW_DISTANCE[2] / DRAW_DISTANCE[level], .82)
 	river.landscape_environment.fog_density = lerpf(.00010, .00038, maxf(0.0, river.last_evening)) * river.fog_scale

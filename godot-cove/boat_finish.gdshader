@@ -5,6 +5,7 @@ uniform vec4 coat : source_color = vec4(.25, .28, .29, 1.0);
 uniform bool timber = false;
 uniform float matte = .50;
 uniform float grain_offset = 0.0;
+uniform float plank_width = 0.0;
 varying vec3 panel;
 varying vec3 panel_normal;
 
@@ -15,6 +16,11 @@ float grain(vec2 p) {
 	vec4 y = block.y + vec4(0.0, 0.0, 1.0, 1.0);
 	vec4 ink = fract(sin(x * 13.29 + y * 61.31) * 321.56);
 	return mix(mix(ink.x, ink.y, f.x), mix(ink.z, ink.w, f.x), f.y);
+}
+
+float filtered_grain(vec2 p) {
+	vec2 footprint = fwidth(p);
+	return mix(grain(p), .5, smoothstep(.45, 1.25, max(footprint.x, footprint.y)));
 }
 
 void vertex() {
@@ -29,10 +35,15 @@ void fragment() {
 			strip = vec2(abs(panel_normal.x) > .55 ? panel.z : panel.x, panel.y);
 		}
 		float knots = grain(strip * vec2(3.45, 12.0) + grain_offset);
-		float fibers = grain(vec2(strip.x * 4.6, strip.y * 122.0 + knots * 2.6 + grain_offset));
-		float pores = grain(strip * vec2(22.0, 314.0));
+		float fibers = filtered_grain(vec2(strip.x * 4.6, strip.y * 122.0 + knots * 2.6 + grain_offset));
+		float pores = filtered_grain(strip * vec2(22.0, 314.0));
 		float seam = smoothstep(.77, .97, pores) * (.43 + .57 * knots);
 		ALBEDO = coat.rgb * (.78 + knots * .14 + fibers * .21 + pores * .047 - seam * .049);
+		if (plank_width > 0.0 && abs(panel_normal.y) > .5) {
+			float edge = abs(fract(panel.z / plank_width + .5) - .5) * plank_width;
+			float line = 1.0 - smoothstep(.001, .002 + fwidth(panel.z), edge);
+			ALBEDO *= 1.0 - .22 * line;
+		}
 		ROUGHNESS = .72 + fibers * .18 + seam * .061;
 	} else {
 		vec2 steel = vec2(panel.x + panel.z, panel.y + (panel.z - panel.x) * .034);

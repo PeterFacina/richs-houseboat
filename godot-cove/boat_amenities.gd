@@ -58,15 +58,16 @@ func solid(at: Vector3, size: Vector3, material: Material) -> void:
 
 
 func build_rooms() -> void:
-	var wood: Material = boat.finish(Color("#9b8162"), .88, true)
+	var wood: ShaderMaterial = boat.finish(Color("#9b8162"), .88, true)
+	var floor_finish := wood.duplicate() as ShaderMaterial
+	floor_finish.set_shader_parameter("plank_width", .20)
 	var cream: Material = boat.finish(Color("#d7d2bc"), .91)
 	var dark := Kit.paint(Color("#34474b"), .76)
 	var cloth := Kit.paint(Color("#4e7773"), .97)
 	var porcelain := Kit.paint(Color("#e3e6dd"), .38)
 	var steel := Kit.paint(Color("#a0aaa5"), .52, .35)
-	solid(Vector3(0, .69, 4.64), Vector3(2.82, .12, 3.92), wood)
-	for index in 19:
-		Kit.box_at(boat, Vector3(0, .755, 2.83 + index * .2), Vector3(2.79, .012, .194), wood)
+	Kit.box_at(boat, Vector3(0, .6955, 4.64), Vector3(2.82, .131, 3.92), floor_finish)
+	Kit.collider(boat, Vector3(0, .69, 4.64), Vector3(2.82, .12, 3.92))
 	for side in [-1.0, 1.0]:
 		solid(Vector3(side * 1.35, 1.05, 4.63), Vector3(.12, .60, 3.94), dark)
 		solid(Vector3(side * 1.35, 2.47, 4.63), Vector3(.12, .25, 3.94), cream)
@@ -89,7 +90,8 @@ func build_rooms() -> void:
 	# Bathroom partition leaves a 0.95 m passage beside the berth.
 	solid(Vector3(.50, 1.62, 5.37), Vector3(.075, 1.74, 2.29), cream)
 	Kit.box_at(boat, Vector3(.91, .769, 5.36), Vector3(.77, .025, 2.28), dark)
-	Kit.box_at(boat, Vector3(-.85, .95, 4.92), Vector3(.76, .36, 2.0), dark)
+	# Separate the frame sides from the mattress to prevent z-fighting.
+	Kit.box_at(boat, Vector3(-.85, .95, 4.92), Vector3(.72, .36, 1.96), dark)
 	solid(Vector3(-.85, 1.12, 4.92), Vector3(.76, .18, 2.0), cloth)
 	Tools.shell(boat, Vector3(-.85, 1.24, 4.24), Vector3(.64, .13, .36), cream)
 	for z in [4.65, 4.88, 5.11, 5.34, 5.57]:
