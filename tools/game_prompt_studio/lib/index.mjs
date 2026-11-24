@@ -1,6 +1,7 @@
 import { lstatSync, readdirSync, readFileSync, realpathSync } from 'node:fs';
 import { dirname, join, relative, sep } from 'node:path';
 import { now, sha, transaction } from './db.mjs';
+import { routedSourcePassages } from './source-passages.mjs';
 
 const allowed = new Set(['gd', 'tscn', 'tres', 'godot', 'gdshader', 'gdshaderinc', 'md', 'txt']);
 const rootDocs = ['AGENTS.md', 'GAME GUIDE AND ASSET CREDITS.md', 'START HERE.txt', 'Play Ottawa River.cmd'];
@@ -178,6 +179,7 @@ export function discovered(project, exclusions = []) {
 
 const terms = text => [...new Set(text.replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase()
   .split(/[\W_]+/u).filter(word => word.length > 2 && !stop.has(word)))];
+const genericSymbols = new Set(['at', 'text', 'layout', 'label', 'update', 'setup', 'show', 'hide']);
 
 export function findEvidence(db, note, focus, budget, { manifest, selection = {} } = {}) {
   const tokens = terms(note + ' ' + focus.join(' ')).slice(0, 32);
@@ -199,13 +201,17 @@ export function findEvidence(db, note, focus, budget, { manifest, selection = {}
     if (row) add({ ...row, kind: guide.test(path) ? 'guide' : 'source', reason: 'Selected file' }, 850);
   }
   const sourceCount = () => result.filter(item => item.kind === 'source').length;
+  const routed = routedSourcePassages(db, manifest, note);
   const bestChunk = path => (query && db.prepare(
     'SELECT path,line,excerpt,bm25(chunks,3,0,1) AS score FROM chunks WHERE chunks MATCH ? AND path=? ORDER BY score,line LIMIT 1'
   ).get(query, path)) || db.prepare('SELECT path,line,excerpt FROM chunks WHERE path=? ORDER BY line LIMIT 1').get(path);
 
   const atLine = db.prepare('SELECT path,line,excerpt FROM chunks WHERE path=? AND line<=? ORDER BY line DESC LIMIT 1');
-  for (const { path, symbols: [symbol] } of selection.matches ?? []) {
-    if (sourceCount() >= 3) break;
+  const explicitSymbols = new Set(note.toLowerCase().match(/\b[a-z][a-z0-9]*(?:_[a-z0-9]+)+\b/g) ?? []);
+  for (const { path, symbols } of selection.matches ?? []) {
+    if (sourceCount() >= (routed ? 2 : 3)) break;
+    const symbol = symbols.find(item => routed ? explicitSymbols.has(item.name.toLowerCase()) :
+      !genericSymbols.has(item.name.toLowerCase()));
     if (!symbol || result.some(item => item.path === path)) continue;
     const row = atLine.get(path, symbol.line);
     const lines = row?.excerpt.split('\n').slice(symbol.line - row.line);
@@ -214,21 +220,31 @@ export function findEvidence(db, note, focus, budget, { manifest, selection = {}
       reason: 'Matching ' + symbol.kind + ' declaration' }, 720);
   }
 
+  for (const passage of routed?.passages ?? []) {
+    if (sourceCount() >= 7) break;
+    if (result.some(item => item.path === passage.path && (item.line === passage.line || item.title === passage.title)
+        && Math.abs(item.line - passage.line) < 12)) continue;
+    add({ ...passage, kind: 'source', reason: 'Source for a requested behavior' }, 590);
+  }
+
   for (const { number, title, label } of selection.tasks ?? []) {
     add({ kind: 'github', title: label + ' #' + number, excerpt: title, ref: String(number),
       reason: 'Related current GitHub task' }, 200);
   }
   const selected = result.filter(item => item.kind === 'source').map(item => item.path);
   const guides = db.prepare("SELECT path FROM files WHERE path LIKE 'docs/systems/%' ORDER BY path").all().map(row => row.path);
-  for (const path of new Set([...(selection.guides ?? []).filter(path => guides.includes(path)), ...guides])) {
+  const proposedGuides = routed ? routed.guides : [...(selection.guides ?? []), ...guides];
+  for (const path of new Set(proposedGuides.filter(path => guides.includes(path)))) {
     if (result.filter(item => item.kind === 'guide').length >= 2) break;
     if (result.some(item => item.path === path)) continue;
     const chunks = db.prepare('SELECT path,line,excerpt FROM chunks WHERE path=? ORDER BY line').all(path);
     const linked = chunks.find(row => selected.some(source => row.excerpt.includes('../../' + source + ')')));
     const match = rows.find(row => row.path === path);
-    const row = match ?? linked ?? (selection.guides?.includes(path) && bestChunk(path));
+    const row = match ?? linked ?? ((routed || selection.guides?.includes(path)) && bestChunk(path));
     if (row) add({ ...row, kind: 'guide', reason: 'Relevant subsystem guide' }, 540);
   }
+
+  if (routed) return result;
 
   if (manifest) {
     const references = selected.flatMap(path => manifest.files[path]?.references ?? []);
@@ -241,7 +257,7 @@ export function findEvidence(db, note, focus, budget, { manifest, selection = {}
     [/\b(?:fish(?:ing)?|rods?|reel|lure|bobber)\b/i, ['fishing_rig.gd', 'fishing.gd']],
     [/\b(?:hands?|grips?|avatar|held|props?)\b/i, ['crew_avatar.gd', 'crew_play.gd']],
     [/\b(?:multiplayer|host|guest|remote|replicat\w*|friends)\b/i, ['river_crew.gd', 'crew_avatar.gd']],
-    [/\b(?:rich|face|limb|neck|topology)\b/i, ['rich_model.gd', 'rich_npc.gd']],
+    [/\b(?:face|limb|neck|topology)\b/i, ['rich_model.gd', 'rich_npc.gd']],
     [/\b(?:cooler|bong|drink|vape|cabin)\b/i, ['cabin_props.gd', 'cabin_life.gd']]
   ];
   for (const [pattern, names] of areas) {

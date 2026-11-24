@@ -14,6 +14,7 @@ This is a short navigation map, not a complete specification. Source in the curr
 | Boat movement, waves, thrust, helm | [Boat and water](systems/BOAT-WATER.md) |
 | Host/guest, shared controls, replicated poses | [Multiplayer](systems/MULTIPLAYER.md) |
 | Fishing, on-foot input, tools | [Fishing and player](systems/FISHING-PLAYER.md) |
+| In-game HUD, FPS, clock, and action hints | [HUD and UI](systems/HUD-UI.md) |
 | XP, jobs, economy and saves | [Progression and economy](systems/PROGRESSION-ECONOMY.md) |
 | Town, roads and vehicles | `deep_river_*.gd`, `marina_car*.gd`, `vehicle_driver.gd` (search actual callers) |
 | Mowing | `lawn_mower.gd`, `shannon_job.gd`, `mowing_routes.gd` |
