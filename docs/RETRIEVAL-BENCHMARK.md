@@ -32,3 +32,20 @@ Agent receipt reports reading AGENTS.md, running start_task.py, consulting ARCHI
 ## Next experiments
 
 Keep retrieval infrastructure unchanged. Repeat the original prompt in a fresh session at revision 86cf4a4, preferably pinning the same model as run 4; capture counters before follow-up. Compare startup receipt, evidence, correctness and token counters. Then test transfer to multiplayer with a separate fresh session: investigate how a guest takes and releases the houseboat helm and how host authority and vessel state are synchronized; identify relevant guides, functions, dependencies and overlapping GitHub work, report revision and tools, read-only. This is a new task, not a direct token-savings comparison to the drift task. Record actual model, revision, live overlap changes, counters and verification gaps. For a later editing benchmark, select an unclaimed scoped issue, use an isolated task branch and human-reviewed PR; assess tests and playtest acceptance alongside consumption. Do not alter the live GPU worker as part of these experiments.
+
+## Fifth and sixth exploratory runs — 2026-11-24
+
+Both runs used revision 86cf4a42d28b2d5f119f36cd3b0af75e0befb4f5 and explicitly selected Nemotron 3.5 Super VL Free, Instant (1M context window). User-provided UI counters and agent reports, not independently instrumented traces.
+
+| Metric | Run 5: repeat drift task | Run 6: multiplayer helm |
+| --- | ---: | ---: |
+| Input tokens | 91,900 | 130,900 |
+| Active context | 78,100 (8%) | 111,500 (11%) |
+| Output tokens | 4,000 | 5,800 |
+| Reasoning tokens | 0 | 0 |
+| Cache reads | 403,200 | ~2,200,000 |
+| Reported cost | $0 | $0 |
+
+Run 5 reported successful startup, function retrieval and live overlap checks. Input was 40.0% below run 1, but 16.8% above run 4. It missed the central departed gate in its explanation, incorrectly treated an empty PR file-list response as proof of no committed changes, and speculated about visual jitter. The mode and context capacity differed from run 4, so this was not a controlled replication. Run 6 reported successful startup, relevant guides, live overlap query, one function retrieval and conventional targeted reads. It traced host authority, helm acquisition/release, captain validation, remote input expiry, RPC channels and state synchronization. It did not report inspecting the relevant PR patch; the detailed technical claims and tool traces have not been independently audited. No runtime or playtest verification was performed in either read-only run. Run 6 is a different task and cannot establish savings against the drift baseline. Reported context percentages use different capacities across runs; compare absolute tokens instead.
+
+Across runs 4–6, startup compliance was consistently reported, but correct conclusions and efficient retrieval are not guaranteed. The next controlled mode comparison should repeat the original drift task in fresh sessions at the same source revision and with the same explicitly selected model, changing only reasoning effort where available. Record exact mode, model, context capacity, live overlap evidence and counters before follow-ups. Keep workflow unchanged for this comparison. The 50K target remains unmet. Do not interpret missing or empty GitHub tool output as proof of no overlap or changes; verify with an independent targeted query or report uncertainty.
