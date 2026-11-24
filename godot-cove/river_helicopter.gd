@@ -34,6 +34,10 @@ const APPROACH_AUDIO_HEIGHT := 8.0
 const APPROACH_AUDIO_FULL_HEIGHT := 1.2
 const IDLE_BLEND_RATE := 2.0
 const KEY_OFF_FADE_RATE := 14.0
+# Visible flight control travel limits and smoothing.
+const COLLECTIVE_LIMIT := deg_to_rad(35.0)
+const CYCLIC_LIMIT := deg_to_rad(25.0)
+const CONTROL_RATE := 8.0
 var game: Node3D
 var campaign: Node3D
 var craft: CharacterBody3D
@@ -52,6 +56,13 @@ var steering: AircraftSteering
 var instruments: Instruments
 var climb_control := 0.0
 var roll_control := 0.0
+# Smoothed visual positions of the collective lever and cyclic stick, driven by
+# the pilot's inputs and returned to rest when released.
+var collective_position := 0.0
+var cyclic_fore_aft := 0.0
+var cyclic_side_side := 0.0
+var cyclic: Node3D
+var collective: Node3D
 var bank_target := 0.0
 var bank_rate := 0.0
 var yaw_rate := 0.0
@@ -189,6 +200,25 @@ func build_model() -> void:
 	instruments = Instruments.new()
 	instruments.position.z = .019
 	bezel.add_child(instruments)
+
+	# Collective lever between the front seats, pivoted at the floor.
+	collective = Node3D.new()
+	collective.name = "Collective"
+	collective.position = Vector3(0, 0.95, -0.62)
+	craft.add_child(collective)
+	Tools.tube(collective, Vector3.ZERO, Vector3(0, 0.45, 0), 0.020, 0.018, metal)
+	Kit.box_at(collective, Vector3(0, 0.47, 0), Vector3(0.10, 0.032, 0.10), dark)
+	Kit.box_at(collective, Vector3(0, 0.485, 0), Vector3(0.060, 0.018, 0.060), metal)
+
+	# Cyclic stick in front of the pilot seat, pivoted at the floor.
+	cyclic = Node3D.new()
+	cyclic.name = "Cyclic"
+	cyclic.position = Vector3(0.40, 0.92, -0.92)
+	craft.add_child(cyclic)
+	Tools.tube(cyclic, Vector3.ZERO, Vector3(0, 0.42, 0), 0.018, 0.016, metal)
+	Kit.box_at(cyclic, Vector3(0, 0.44, 0), Vector3(0.10, 0.035, 0.10), dark)
+	Kit.box_at(cyclic, Vector3(0, 0.455, 0), Vector3(0.060, 0.018, 0.060), metal)
+
 	Tools.tube(craft,Vector3(0,1.56,1.1),Vector3(0,1.90,4.72),.24,.075,yellow)
 	Kit.box_at(craft,Vector3(0,2.1,4.5),Vector3(.09,1.3,.62),yellow)
 	Tools.tube(craft,Vector3(0,1.98,.12),Vector3(0,2.72,.12),.065,.065,metal)
@@ -469,6 +499,26 @@ func tick(delta: float, has_input: bool) -> void:
 				steer.rpc_id(1, climb, roll, steering.aim, level_bank)
 		else:
 			set_controls(climb, roll, steering.aim, level_bank)
+	# Drive the visible cyclic and collective controls from the pilot's inputs,
+	# smoothing toward their targets and returning them to rest when released.
+	var target_collective := 0.0
+	var target_cyclic_pitch := 0.0
+	var target_cyclic_roll := 0.0
+	if seat == 0:
+		target_collective = climb_control
+		target_cyclic_pitch = flight_aim.y / PITCH_LIMIT
+		target_cyclic_roll = roll_control
+	var rate := CONTROL_RATE * delta
+	collective_position = lerpf(collective_position, target_collective * COLLECTIVE_LIMIT, rate)
+	cyclic_fore_aft = lerpf(cyclic_fore_aft, -target_cyclic_pitch * CYCLIC_LIMIT, rate)
+	cyclic_side_side = lerpf(cyclic_side_side, -target_cyclic_roll * CYCLIC_LIMIT, rate)
+	var c_rot := collective.rotation
+	c_rot.x = collective_position
+	collective.rotation = c_rot
+	var cyc_rot := cyclic.rotation
+	cyc_rot.x = cyclic_fore_aft
+	cyc_rot.z = cyclic_side_side
+	cyclic.rotation = cyc_rot
 	var previous_heading := craft.rotation.y
 	if not campaign.crew.is_guest():
 		if control_age > .4 or seats.is_empty(): clear_controls()
