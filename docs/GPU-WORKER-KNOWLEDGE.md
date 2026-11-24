@@ -12,6 +12,8 @@ The standalone Studio continues to use the user's configured workspace and has s
 
 HUD and multiplayer helm requests use source functions associated with the reported behavior when those functions and matching passages exist in the pinned index. Other requests use the shared symbol and excerpt search. See [the retrieval benchmark](GPU-RETRIEVAL-BENCHMARK.md) for the reproducible comparison and its limitations.
 
+The [held-out evaluation](GPU-HELDOUT-EVALUATION.md) compares the general route and a separate reviewer pass across five reports. See [private inbox backup and recovery](GPU-TRAINING-BACKUP.md) for the online SQLite restore drill and the off-device recovery plan.
+
 ## Install and verify
 
 - Use Node.js 24, Git with sparse checkout and partial fetch support, Python 3.9 or newer, and the existing local Ollama with `qwen3:14b`. If `python` is an app alias or is absent, set `HOUSEBOAT_KNOWLEDGE_PYTHON` to the path of an installed Python executable. Set it in the worker launcher environment or local `.worker.env`.
