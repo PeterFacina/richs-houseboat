@@ -1836,6 +1836,7 @@ func update_hud() -> void:
 		else:
 			instruction.text += "\nE  Exit when stopped    C  Camera    H  Headlights    F4  Draw distance"
 		campaign.info.hide()
+		objective.visible = not objective.text.is_empty()
 		return
 	if chart.visible:
 		chart.update_boat(vessel.center)
@@ -1932,6 +1933,7 @@ func update_hud() -> void:
 			marker.text = waypoint_text
 			marker.position = Vector2(clampf(projected.x - 68, 20, 1080), clampf(projected.y - 25, 128, 585))
 			marker.show()
+	objective.visible = not objective.text.is_empty()
 
 
 func update_flight_mode(enabled: bool) -> void:

@@ -135,6 +135,7 @@ func build_hud() -> void:
 	framing.offset_right = -12
 	objective = label("Board the houseboat", 29, Color("#fff5de"))
 	objective.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	objective.hide()
 	framing.add_child(objective)
 	instruction = label("WASD  Walk onto the deck", 17, Color("#e0e8e3"))
 	instruction.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
