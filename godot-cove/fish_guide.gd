@@ -5,6 +5,8 @@ signal closed
 const Species = preload("res://fish_species.gd")
 const Fish = preload("res://river_fish.gd")
 const MenuTheme = preload("res://river_menu_theme.gd")
+const NotebookStyle = preload("res://notebook_theme.gd")
+var embedded := false
 
 var image := TextureRect.new()
 var viewport: SubViewport
@@ -24,12 +26,13 @@ var clock := 0.0
 
 
 func _ready() -> void:
-	theme = MenuTheme.get_theme()
+	theme = NotebookStyle.skin() if embedded else MenuTheme.get_theme()
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	var dim := ColorRect.new()
 	dim.color = MenuTheme.SCRIM
 	add_child(dim)
 	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	dim.visible = not embedded
 	var space := MenuTheme.panel(self, MenuTheme.CREAM, MenuTheme.SAND, 15, 24)
 	var frame := space.get_parent() as PanelContainer
 	frame.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -37,6 +40,8 @@ func _ready() -> void:
 	frame.offset_right = -MenuTheme.MARGIN
 	frame.offset_top = 40
 	frame.offset_bottom = -40
+	if embedded:
+		frame.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	var layout := VBoxContainer.new()
 	layout.add_theme_constant_override("separation", 16)
 	space.add_child(layout)
@@ -50,10 +55,11 @@ func _ready() -> void:
 	close.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	close.pressed.connect(func(): closed.emit())
 	top.add_child(close)
+	close.visible = not embedded
 	layout.add_child(HSeparator.new())
 
 	var pages := HBoxContainer.new()
-	pages.add_theme_constant_override("separation", 20)
+	pages.add_theme_constant_override("separation", 10 if embedded else 20)
 	pages.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	layout.add_child(pages)
 	var sidebar := VBoxContainer.new()
@@ -76,6 +82,8 @@ func _ready() -> void:
 	entries.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	entries.add_theme_constant_override("separation", MenuTheme.GAP)
 	scroll.add_child(entries)
+	if embedded:
+		pages.add_child(NotebookStyle.Binding.new())
 
 	var reading_area := MenuTheme.panel(pages, MenuTheme.PAPER, MenuTheme.SAND, 12, 18)
 	(reading_area.get_parent() as Control).size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -105,6 +113,9 @@ func _ready() -> void:
 		return Species.profile(a).name.naturalnocasecmp_to(Species.profile(b).name) < 0)
 	selected = ordered[0]
 	set_catches({})
+	if embedded:
+		title.add_theme_color_override(&"font_color", NotebookStyle.OLIVE)
+		NotebookStyle.restyle(self)
 	visibility_changed.connect(update_preview)
 	update_preview()
 
@@ -206,6 +217,8 @@ func add_card(index: int, species_name: String) -> void:
 	labels.add_child(MenuTheme.text(caption, 17, MenuTheme.NAVY, true))
 	var tint := MenuTheme.BLUE if caught.has(species_name) else MenuTheme.MUTED
 	labels.add_child(MenuTheme.text(discovery_text(species_name), 14, tint))
+	if embedded:
+		NotebookStyle.restyle(button)
 
 
 func discovery_text(species_name: String) -> String:

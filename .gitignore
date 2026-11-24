@@ -1,4 +1,5 @@
 /.venv/
 /build/
 /data/
+/.playtest-data/
 __pycache__/
