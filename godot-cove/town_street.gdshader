@@ -73,6 +73,20 @@ void fragment() {
 				max(paint_line(parallel_end, .054) * step(3.46, offset) * step(offset, 5.02),
 					paint_line(offset - 3.49, .054) * step(parallel_end, .54));
 			white = max(white, max(angled, parallel) * UV2.x);
+			// Weathered paving at the west storefront bays. The long repair follows
+			// the bay ends and tapers out before the adjoining frontages.
+			float along_frontage = UV.y - 49.0;
+			float frontage = 1.0 - smoothstep(15.0, 25.0, abs(along_frontage));
+			if (frontage > 0.0) {
+				float mottling = road_noise(UV * vec2(1.3, .55));
+				float seam = UV.x - 3.76 - along_frontage * .021 - (mottling - .5) * .27;
+				float bay_age = smoothstep(-.24, .58, seam) * (.07 + .11 * mottling);
+				float seal = paint_line(seam, .028) * mix(.44, 1.0, mottling);
+				float patch = 1.0 - smoothstep(.82, 1.0, max(
+					abs(UV.x - 2.4 + .33 * mottling) / .93, abs(along_frontage - 3.0) / 3.7));
+				asphalt *= 1.0 + frontage * (1.0 - gravel) * (bay_age - .29 * seal - .13 * patch);
+				white *= 1.0 - frontage * (1.0 - smoothstep(.05, .27, abs(seam))) * .36;
+			}
 		}
 		float walk = max(paint_line(UV2.y - 6.35, .10), paint_line(UV2.y - 8.35, .10));
 		float stop = paint_line(UV2.y - 9.55, .14) * step(.14, UV.x);
