@@ -1,0 +1,48 @@
+{
+  "source": "9097d61064bd0db0330832d1f355cb595bb0f5f7",
+  "pr77": "0ed6fd9b6defd4eaf5dffcf9b7bfc785b13fcd20",
+  "cases": [
+    {
+      "id": "recover-interrupted-campaign", "set": "independent",
+      "note": "Verify recovery after an interrupted campaign save. With a corrupt primary file and a previous backup, a solo trip should load the usable campaign, preserve the last good backup when saving again and report write failures. Check an ordinary second save and confirm that the unrelated catch journal stays intact.",
+      "required": [["river_ledger.gd", "load_file"], ["river_ledger.gd", "save_file"], ["river_campaign.gd", "changed"], ["fishing.gd", "save_trip"]],
+      "supporting": [["river_campaign.gd", "setup"], ["fishing.gd", "read_journal"]],
+      "requirements": ["Load usable backup if primary is corrupt", "Preserve last good backup on first save after recovery", "Report write failure", "Test subsequent ordinary save and preserve catch journal"]
+    },
+    {
+      "id": "berth-guest-transfer", "set": "independent",
+      "note": "A guest presses L to go ashore near a marked berth from the crew boat. Verify that the host decides whether the craft is slow and close enough, the guest lands at the correct pier, and L returns them aboard safely while the craft stays moored. Compare a valid attempt with one made too fast and check what another rider sees.",
+      "required": [["river_campaign.gd", "use_dock"], ["river_campaign.gd", "set_moored"], ["river_campaign.gd", "receive_result"], ["river_campaign.gd", "keep_player_on_deck"]],
+      "supporting": [["river_campaign.gd", "sync_guest"], ["river_campaign.gd", "run_shortcuts"], ["river_crew.gd", "result"]],
+      "requirements": ["Host authorizes slow and close docking", "Guest goes to the chosen pier", "L reboards safely and the craft stays moored", "Compare valid and too-fast attempts and another rider's view"]
+    },
+    {
+      "id": "muskie-slick-event", "set": "independent",
+      "note": "Check the trophy fish encounter after a spill overboard. Compare a spill into fishable water with a dockside spill, see whether the slick attracts the large muskie, and trace the final-run line strain and when netting is allowed. Preserve ordinary fishing and record what happened in both attempts.",
+      "required": [["fishing.gd", "register_slick"], ["trophy_muskie.gd", "start_slick"], ["trophy_muskie.gd", "strain_floor"], ["trophy_muskie.gd", "can_net"]],
+      "supporting": [["trophy_muskie.gd", "update"], ["trophy_muskie.gd", "can_bite"], ["trophy_muskie.gd", "hook"], ["fishing.gd", "tick_fight"]],
+      "requirements": ["Compare overboard and dockside spill", "Check the slick and trophy fish attraction", "Trace final-run strain and when netting is allowed", "Preserve regular fishing and record attempts"]
+    },
+    {
+      "id": "remote-car-input-expiry", "set": "independent",
+      "note": "Check the marina road car when a guest driver stops sending driving input during a turn. The host should expire the last command rather than keep steering and accelerating, and the guest should converge on the authoritative position. Test recovery just after contacting a curb and compare host and guest views, without changing seats or the engine mix.",
+      "required": [["marina_cars.gd", "drive_order"], ["marina_cars.gd", "step"], ["marina_car.gd", "drive"], ["marina_cars.gd", "interpolate_cars"]],
+      "supporting": [["marina_cars.gd", "car_poses"], ["marina_car.gd", "present"]],
+      "requirements": ["Guest input stops during turn", "Host expires command so steering and acceleration stop", "Guest converges on authoritative pose", "Compare host and guest after curb contact and preserve seating and sound"]
+    },
+    {
+      "id": "swim-board-transition", "set": "independent",
+      "note": "Check the transition from wading into swimming near the houseboat. The camera should settle correctly when the swimmer boards, the ordinary boarding action should work only within its valid reach, and a shallow shoreline transition should return to walking without a jump. Test in both directions and avoid changing the helm or fishing input.",
+      "required": [["fishing.gd", "move_on_foot"], ["fishing.gd", "set_swimming"], ["fishing.gd", "can_board_from_water"], ["river_campaign.gd", "keep_player_on_deck"]],
+      "supporting": [["fishing.gd", "_physics_process"], ["fishing.gd", "walk_on_ground"], ["fishing.gd", "recover_after_fall"]],
+      "requirements": ["Wade into swimming near boat", "Check board reach and camera settling", "Verify shallow exit to walking without jump", "Test both ways and preserve helm and fishing inputs"]
+    },
+    {
+      "id": "hud-narrow-window-transfer", "set": "history-probe", "expectedLesson": "issue-69-pr-70",
+      "note": "Add a regression check for the in-game HUD after dragging the window narrow and switching a graphics preset. Verify the date and time keep their position when F3 hides the FPS line, that a live interaction hint stays aligned without an empty row, and that waypoint distance text still updates. Capture actual Control bounds for both toggles and a narrow and wide window.",
+      "required": [["cove.gd", "build_hud"], ["cove.gd", "_unhandled_input"], ["fishing.gd", "update_hud"], ["shannon_job.gd", "update_clock"]],
+      "supporting": [["fishing.gd", "_unhandled_input"], ["fishing.gd", "update_menu_hud"]],
+      "requirements": ["Narrow and wide window and changing graphics preset", "Date/time remains anchored when F3 hides FPS", "Live hint stays aligned without empty row", "Preserve waypoint distance text and capture actual bounds"]
+    }
+  ]
+}
