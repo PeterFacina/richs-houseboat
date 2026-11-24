@@ -26,7 +26,7 @@ const helmPaths = [
   [null, 'river_campaign.gd', 'step_boat', ['tick_client_ship', 'remote_age', 'remote_throttle', 'remote_rudder']],
 ];
 
-function functionPassage(db, manifest, path, name, cues) {
+export function bestFunctionWindow(db, manifest, path, name, scoreWindow) {
   const symbols = manifest.files[path]?.symbols ?? [];
   const index = symbols.findIndex(symbol => symbol.kind === 'func' && symbol.name === name);
   if (index === -1) return null;
@@ -45,7 +45,6 @@ function functionPassage(db, manifest, path, name, cues) {
   let best;
   for (const [line, first] of lines) {
     if (!first.trim()) continue;
-    const covered = new Set();
     const excerpt = [];
     let length = 0;
     for (let next = line; next < line + 12 && lines.has(next); next++) {
@@ -53,11 +52,12 @@ function functionPassage(db, manifest, path, name, cues) {
       if (length + text.length + 1 > 590) break;
       excerpt.push(text);
       length += text.length + 1;
-      for (const cue of cues) if (text.includes(cue)) covered.add(cue);
     }
-    const score = covered.size * 10 + Number(line === start);
-    if (covered.size && (!best || score > best.score)) {
-      best = { path, line, excerpt: excerpt.join('\n').trimEnd(), title: name, score };
+    const passage = excerpt.join('\n').trimEnd();
+    const match = scoreWindow(passage);
+    const score = match + 0.1 * Number(line === start);
+    if (match > 0 && (!best || score > best.score)) {
+      best = { path, line, excerpt: passage, title: name, score };
     }
   }
   return best;
@@ -70,7 +70,8 @@ export function routedSourcePassages(db, manifest, note) {
   const paths = hudReport ? hudPaths : helmPaths;
   const passages = paths.flatMap(([intent, file, name, cues]) => {
     if (intent && !intent.test(note)) return [];
-    const passage = functionPassage(db, manifest, 'godot-cove/' + file, name, cues);
+    const passage = bestFunctionWindow(db, manifest, 'godot-cove/' + file, name,
+      text => cues.filter(cue => text.includes(cue)).length * 10);
     return passage ? [passage] : [];
   });
   if (!passages.length) return null;

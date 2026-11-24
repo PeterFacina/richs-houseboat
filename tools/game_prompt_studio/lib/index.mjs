@@ -181,7 +181,7 @@ const terms = text => [...new Set(text.replace(/([a-z])([A-Z])/g, '$1 $2').toLow
   .split(/[\W_]+/u).filter(word => word.length > 2 && !stop.has(word)))];
 const genericSymbols = new Set(['at', 'text', 'layout', 'label', 'update', 'setup', 'show', 'hide']);
 
-export function findEvidence(db, note, focus, budget, { manifest, selection = {} } = {}) {
+export function findEvidence(db, note, focus, budget, { manifest, selection = {}, rankedSources = [] } = {}) {
   const tokens = terms(note + ' ' + focus.join(' ')).slice(0, 32);
   const query = tokens.map(word => '"' + word + '"*').join(' OR ');
   const rows = query ? db.prepare(
@@ -201,7 +201,8 @@ export function findEvidence(db, note, focus, budget, { manifest, selection = {}
     if (row) add({ ...row, kind: guide.test(path) ? 'guide' : 'source', reason: 'Selected file' }, 850);
   }
   const sourceCount = () => result.filter(item => item.kind === 'source').length;
-  const routed = routedSourcePassages(db, manifest, note);
+  const routed = rankedSources.length ? { passages: rankedSources, guides: selection.guides ?? [] } :
+    routedSourcePassages(db, manifest, note);
   const bestChunk = path => (query && db.prepare(
     'SELECT path,line,excerpt,bm25(chunks,3,0,1) AS score FROM chunks WHERE chunks MATCH ? AND path=? ORDER BY score,line LIMIT 1'
   ).get(query, path)) || db.prepare('SELECT path,line,excerpt FROM chunks WHERE path=? ORDER BY line LIMIT 1').get(path);

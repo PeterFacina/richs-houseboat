@@ -1,0 +1,46 @@
+{
+  "main": "688da719026b5096740f6f610490b7fa70b07422",
+  "pr71": "916c2a822f01235791433a419404e0aee3355974",
+  "cases": [
+    {
+      "id": "fishing-motion",
+      "system": "fishing",
+      "report": "https://github.com/PeterFacina/richs-houseboat/pull/12",
+      "note": "Check that rod bend, reel motion and the reel sound follow what the angler is doing during a fish fight. Compare retrieving with line payout under drag. Trace the local fishing state into the rod rig and sound, and verify what a second player can see. This report is about motion and sound timing during a fight.",
+      "required": [["fishing.gd", "tick_fight"], ["fishing.gd", "render_fishing"], ["fishing_rig.gd", "pose_rod"], ["fishing_water_fx.gd", "crank_sounds"]],
+      "supporting": [["fishing.gd", "capture_crew_pose"], ["fishing.gd", "tick_fishing"], ["fishing_rig.gd", "update_blank"]]
+    },
+    {
+      "id": "vehicle-audio",
+      "system": "vehicle audio",
+      "report": "https://github.com/PeterFacina/richs-houseboat/issues/49",
+      "note": "The fishing boat and road cars need believable engine audio from startup through idle, acceleration, coasting and shutdown. Include boat wake and car tire cues. Nearby players should hear directional pass-bys and start and stop transitions. A player joining mid-run should hear the current engine state without replaying startup. Test both the driver and a nearby player, including shutting a car off while seated.",
+      "required": [["houseboat.gd", "set_ignition"], ["outboard.gd", "run"], ["marina_car.gd", "present"], ["marina_cars.gd", "car_poses"]],
+      "supporting": [["houseboat.gd", "tick_ignition"], ["houseboat.gd", "update_motor"], ["marina_car.gd", "engine_sample"], ["river_campaign.gd", "tick_client_ship"]]
+    },
+    {
+      "id": "first-person-props",
+      "system": "player animation",
+      "report": "https://github.com/PeterFacina/richs-houseboat/issues/52",
+      "note": "The first-person bong and pen use animations look sideways or aimed below the mouth. Verify how the visible props and hands move from the held pose to the mouth and back for both actions. Preserve the remote representation and test both actions from the user's camera before claiming that the pose is fixed.",
+      "required": [["cabin_life.gd", "animate_bong"], ["cabin_life.gd", "animate_pen"], ["cabin_life.gd", "pose_action"], ["river_hand_actions.gd", "prop_pose"]],
+      "supporting": [["cabin_life.gd", "pose_bong_hands"], ["cabin_life.gd", "update_action"], ["crew_avatar.gd", "update_shared_actions"]]
+    },
+    {
+      "id": "progression-reconnect",
+      "system": "progression",
+      "report": "https://github.com/PeterFacina/richs-houseboat/pull/14",
+      "note": "After a guest reconnects, check that earned XP and bought skill ranks follow their own profile. Verify that repeating the same reward event cannot award XP twice and that the host still checks skill purchases. Confirm that guests receive their own progression and cannot award catch XP by claiming a catch locally.",
+      "required": [["progression.gd", "award"], ["progression.gd", "buy"], ["river_campaign.gd", "snapshot_for"], ["river_crew.gd", "register"]],
+      "supporting": [["progression.gd", "can_buy"], ["river_campaign.gd", "count_catch"], ["river_campaign.gd", "progression_for"], ["river_ledger.gd", "load_file"]]
+    },
+    {
+      "id": "town-driveways",
+      "system": "world generation",
+      "report": "https://github.com/PeterFacina/richs-houseboat/pull/27",
+      "note": "Check how Deep River generates residential driveways near the widened Highway 17 approaches. Entrances should connect to the road edge and follow terrain without cutting across nearby footprints or sidewalks. Trace the world-building call into driveway placement and road geometry. Verify a highway frontage and a side street in game.",
+      "required": [["ottawa_map.gd", "build_town"], ["deep_river_driveways.gd", "plan"], ["deep_river_driveways.gd", "find_approach"], ["deep_river_driveways.gd", "clear_route"]],
+      "supporting": [["deep_river_driveways.gd", "setup"], ["deep_river_driveways.gd", "index_street"], ["deep_river_roads.gd", "build_span"], ["deep_river_roads.gd", "span_width_at"]]
+    }
+  ]
+}
