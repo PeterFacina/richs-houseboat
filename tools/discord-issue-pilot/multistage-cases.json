@@ -1,0 +1,54 @@
+{
+  "source": "688da719026b5096740f6f610490b7fa70b07422",
+  "pr71": "916c2a822f01235791433a419404e0aee3355974",
+  "pr72": "247b556e3fa41ef1c421717ad7681cf1995c4f7d",
+  "regressionRequirements": {
+    "fishing-motion": ["Rod bend, reel motion and reel audio follow fight state", "Compare retrieval and payout under drag", "Trace the local state into the rig and audio", "Check the second player's view"],
+    "vehicle-audio": ["Boat and car engine cues cover starting, idle, acceleration, coasting and stopping", "Boat wake and tire cues", "Directional pass-bys and audible start/stop for nearby players", "Late arrival hears current engine without stale startup", "Test driver and nearby listener, including a seated car shutdown"],
+    "first-person-props": ["Address both bong and pen from the first-person view", "Check held pose to mouth and return with hands", "Preserve remote representation", "Test both through the user's camera"],
+    "progression-reconnect": ["Guest reconnect restores the correct player's XP and ranks", "Prevent duplicate reward events", "Host validates skill purchases", "Keep individual snapshots private and standalone guest catch claims from awarding XP"],
+    "town-driveways": ["Connect residential driveways to widened Highway 17 road edges", "Follow terrain and avoid footprints and sidewalks", "Trace world build through driveway and road generation", "Check both a highway frontage and a side street"]
+  },
+  "cases": [
+    {
+      "id": "cabin-tv-sync",
+      "system": "shared amenities",
+      "note": "A friend joins our trip after someone has turned on the cabin television. Verify whether that friend sees the same current playback time as the rest of us. Check what happens if the host turns the set off and back on, and distinguish the built-in River News placeholder from playback with optional licensed media. Test the person already aboard and the late joiner. Keep plumbing and seats as they are.",
+      "required": [["boat_amenities.gd", "act"], ["boat_amenities.gd", "welcome"], ["boat_amenities.gd", "state"], ["boat_amenities.gd", "tick"]],
+      "supporting": [["boat_amenities.gd", "build_tv"], ["boat_amenities.gd", "publish"], ["river_campaign.gd", "remote_request"]],
+      "requirements": ["Late join reproduces the current television playback time", "Host turns the TV off and back on", "Distinguish placeholder and optional licensed media", "Check established player and late guest", "Preserve plumbing and seating"]
+    },
+    {
+      "id": "fuel-nozzle-sale",
+      "system": "marina fuel transaction",
+      "note": "At the Visitor Dock, check one full refueling transaction as a guest. The guest should take and attach the nozzle to a stopped boat, hold to dispense, release to stop, and rack it when finished. Verify that fuel and cash change only for delivered fuel and that the host agrees when a near-full tank cuts the flow off. Include the other player's view of the hose and pump.",
+      "required": [["marina_fuel.gd", "action"], ["marina_fuel.gd", "trigger"], ["marina_fuel.gd", "dispense"], ["marina_fuel.gd", "persist_sale"]],
+      "supporting": [["marina_fuel.gd", "advance"], ["marina_fuel.gd", "cut_off"], ["marina_fuel.gd", "rack"], ["marina_fuel.gd", "receive"], ["river_campaign.gd", "perform"]],
+      "requirements": ["Guest takes and attaches nozzle to stopped boat", "Hold to dispense, release to stop and rack it", "Fuel and shared cash reflect only delivered fuel", "Check near-full cutoff and host agreement", "Check remote hose and pump visuals"]
+    },
+    {
+      "id": "solo-slot-reset",
+      "system": "solo save lifecycle",
+      "note": "Make sure a confirmed reset from Play Solo affects only the chosen slot. Compare slot 1 and slot 2 with distinct catch journals, and make sure a new trip reopens the selected slot. Verify the old files go to a backup and that a failed partial reset can restore what was already moved. The multiplayer campaign must stay intact.",
+      "required": [["solo_slot_menu.gd", "reset_selected"], ["solo_saves.gd", "files"], ["solo_saves.gd", "reset"], ["title_screen.gd", "finish_loading"]],
+      "supporting": [["solo_slot_menu.gd", "ask_reset"], ["title_screen.gd", "launch"], ["fishing.gd", "read_journal"], ["river_campaign.gd", "setup"], ["river_ledger.gd", "load_file"]],
+      "requirements": ["Confirmed reset affects only the chosen solo slot", "Compare distinct catch journals for both slots", "Opening a new trip selects the requested slot", "Back up old files and restore already-moved files on partial failure", "Preserve the multiplayer campaign"]
+    },
+    {
+      "id": "warehouse-rack-placement",
+      "system": "property construction",
+      "note": "In a shared warehouse, compare placing a new storage rack with moving an existing one. Rotate the footprint near the edge and another furnishing, and try while a second crew member is standing in the target tiles. Verify that the host rejects blocked placement, the move keeps the item, and only a valid new purchase spends crew money. Compare the local preview with the host's final result.",
+      "required": [["property_management.gd", "place_selected"], ["property_management.gd", "placement_clear"], ["property_management.gd", "clear_of_player"], ["property_management.gd", "perform"]],
+      "supporting": [["property_management.gd", "request"], ["property_management.gd", "commit"], ["property_management.gd", "update_aim"], ["warehouse_property.gd", "footprint"]],
+      "requirements": ["Compare new rack placement with moving an existing rack", "Rotate near edges and other furnishings", "Host rejects placement occupied by another crew member", "Move retains item and only a valid new purchase spends cash", "Compare local preview with host result"]
+    },
+    {
+      "id": "helicopter-door-exit",
+      "system": "aircraft exit safety",
+      "note": "Test getting out of the survey helicopter after touching down beside a slope. Verify that exit uses the seated passenger's side door, refuses while moving or when that side has no safe ground, and puts a cleared guest at the same exit point the host chose. Check both sides and keep the emergency Unstuck path available.",
+      "required": [["river_helicopter.gd", "act"], ["river_helicopter.gd", "exit_by_door"], ["river_helicopter.gd", "landed_and_stopped"], ["river_helicopter.gd", "occupants"]],
+      "supporting": [["river_helicopter.gd", "interact"], ["river_helicopter.gd", "publish_seats"], ["river_helicopter.gd", "apply_local_seat"], ["river_helicopter.gd", "escape"], ["river_safety.gd", "find_near"]],
+      "requirements": ["Exit via seated passenger's side door after touchdown", "Refuse while moving or without safe ground on that side", "Guest lands at the host-selected point", "Check both sides including sloped ground", "Preserve emergency Unstuck"]
+    }
+  ]
+}
