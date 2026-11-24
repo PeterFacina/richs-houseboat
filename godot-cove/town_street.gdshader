@@ -3,6 +3,13 @@ shader_type spatial;
 #include "res://river_surfaces.gdshaderinc"
 #include "res://road_asphalt.gdshaderinc"
 
+// Matches RoadSurface in deep_river_roads.gd.
+const int CHAMPLAIN_SURFACE = 0;
+const int BROCKHOUSE_SURFACE = 1;
+const int CEDAR_SURFACE = 2;
+const int YARD_DRIVE_SURFACE = 3;
+const float STANDARD_SURFACE = 4.0;
+
 uniform vec2 champlain_access = vec2(0.0);
 uniform vec4 champlain_bays = vec4(24.0, 3.25, .59, 3.5);
 uniform bool parking_lot = false;
@@ -20,11 +27,40 @@ float paint_line(float value, float half_width) {
 		* min(1.0, half_width / blur);
 }
 
+float road_section(float station, float start, float end, float taper) {
+	return smoothstep(start, start + taper, station) * (1.0 - smoothstep(end - taper, end, station));
+}
+
+float cedar_wear(vec2 road_uv, vec2 world) {
+	float approach = road_section(road_uv.y, 178.0, 316.0, 17.0);
+	float mottling = road_noise(world * .44);
+	float seam = road_uv.x + .62 + (mottling - .5) * .36;
+	float seal = paint_line(seam, .027) * smoothstep(.24, .62, mottling);
+	float patch = 1.0 - smoothstep(.78, 1.0, max(
+		abs(road_uv.x - 1.45 + (mottling - .5) * .38) / 1.01, abs(road_uv.y - 256.0) / 4.2));
+	float edge_dust = smoothstep(1.85, 3.40, abs(road_uv.x) + (mottling - .5) * .65);
+	return approach * (.12 * mottling + .14 * edge_dust - .23 * seal - .12 * patch);
+}
+
+vec3 yard_drive_dust(vec2 road_uv, vec2 world) {
+	float mottling = road_noise(world * .47);
+	float track = 1.0 - smoothstep(.20, .72, abs(abs(road_uv.x) - 1.00));
+	// Keep the paving visible while dust builds up toward the gravel yard.
+	float dust = smoothstep(5.0, 54.0, road_uv.y) * mix(.65, 1.0, mottling);
+	return dust * (1.0 - track * .78) * vec3(.22, .17, .11);
+}
+
 void fragment() {
 	float eye = length(VERTEX);
+	int road_surface = int(round(COLOR.a * STANDARD_SURFACE));
+	float school_paving = 0.0;
+	if (road_surface == BROCKHOUSE_SURFACE) {
+		school_paving = road_section(UV.y, 265.0, 475.0, 16.0) *
+			(1.0 - smoothstep(2.68, 3.40, abs(UV.x)));
+	}
 	vec2 blocks = abs(world_xz - vec2(18028., 13364.)) / vec2(67., 71.);
 	float civic = 1.0 - smoothstep(.92, 1.16, max(blocks.x, blocks.y));
-	vec3 asphalt = weathered_asphalt(world_xz, eye, mix(1.0, .04, civic));
+	vec3 asphalt = weathered_asphalt(world_xz, eye, mix(1.0, .04, civic) * mix(1.0, .28, school_paving));
 	asphalt = mix(asphalt, vec3(.265, .241, .213), civic * .20);
 	float yellow = 0.0;
 	float white = 0.0;
@@ -41,6 +77,16 @@ void fragment() {
 		white = max(spaces * stripes * paint_line(divider, .055), crossing * paint_line(bar, .08));
 	} else {
 		float gravel = marina_gravel_mask(world_xz);
+		if (road_surface == CEDAR_SURFACE) {
+			asphalt *= 1.0 + cedar_wear(UV, world_xz);
+		} else if (road_surface == YARD_DRIVE_SURFACE) {
+			asphalt *= 1.0 + yard_drive_dust(UV, world_xz);
+		} else if (school_paving > 0.0) {
+			// A faint longitudinal paving join and fewer patches near the school.
+			float mottling = road_noise(world_xz * .37);
+			float join = paint_line(UV.x + .17 + (mottling - .5) * .09, .022);
+			asphalt *= 1.0 - school_paving * (.09 + .04 * mottling + .09 * join);
+		}
 		asphalt = mix(asphalt, marina_gravel(world_xz), gravel);
 		float style = round(COLOR.r * 3.0);
 		float dash = abs(mod(UV.y + 1.2, 9.0) - 4.5);
@@ -51,7 +97,7 @@ void fragment() {
 			yellow = paint_line(abs(UV.x) - .135, .064) * UV2.x;
 			white = paint_line(abs(UV.x) - 5.11, .072) * COLOR.g * UV2.x;
 		}
-		if (COLOR.a < .5) {
+		if (road_surface == CHAMPLAIN_SURFACE) {
 			float offset = abs(UV.x);
 			float east = 1.0 - step(0.0, UV.x);
 			yellow = paint_line(UV.x, .048) * UV2.x * .83;

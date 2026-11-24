@@ -33,9 +33,12 @@ const MARINA_APPROACH := 62
 const PLAZA_FRONTAGE := Vector2(18025.0, 13243.0)
 
 enum Marking { NONE, SOLID, BROKEN, HIGHWAY }
+# Packed into vertex alpha for town_street.gdshader. Standard meshes use alpha 1.
+enum RoadSurface { CHAMPLAIN, BROCKHOUSE, CEDAR, YARD_DRIVE, STANDARD }
 
 class Span:
 	var street: int
+	var road_surface: RoadSurface
 	var order: int
 	var start: Vector2
 	var end: Vector2
@@ -99,14 +102,15 @@ func build(map: Node3D, data: Dictionary, elevation: Callable, parking_mask: Tex
 	var streets: Array = data.streets
 	add_street(HIGHWAY[0], highway_line(streets), HIGHWAY_HALF_WIDTH)
 	var through := [RIDGE, DEEP_RIVER_ROAD, CHAMPLAIN, BROCKHOUSE, MARINA_APPROACH]
+	var road_surfaces := {CHAMPLAIN: RoadSurface.CHAMPLAIN, BROCKHOUSE: RoadSurface.BROCKHOUSE}
 	for index: int in through:
 		var line: Array = champlain_line(streets[index]) if index == CHAMPLAIN else streets[index]
-		add_street(index, line, STREET_HALF_WIDTH)
+		add_street(index, line, STREET_HALF_WIDTH, road_surfaces.get(index, RoadSurface.STANDARD))
 	for index in streets.size():
 		if not through.has(index) and index not in HIGHWAY:
 			add_street(index, streets[index], 3.4)
-	add_street(streets.size(), PublicWorks.CEDAR_ROAD, 3.4)
-	add_street(streets.size() + 1, PublicWorks.YARD_DRIVE, 2.85)
+	add_street(streets.size(), PublicWorks.CEDAR_ROAD, 3.4, RoadSurface.CEDAR)
+	add_street(streets.size() + 1, PublicWorks.YARD_DRIVE, 2.85, RoadSurface.YARD_DRIVE)
 	find_neighbors()
 	for span: Span in spans:
 		build_span(span)
@@ -196,7 +200,7 @@ static func champlain_walk_end(side: float) -> float:
 	return CHAMPLAIN_WALK_END.x if side < 0.0 else CHAMPLAIN_WALK_END.y
 
 
-func add_street(street: int, line: Array, width: float) -> void:
+func add_street(street: int, line: Array, width: float, road_surface := RoadSurface.STANDARD) -> void:
 	var centers := PackedVector2Array()
 	for pair: Array in line:
 		var point := Vector2(pair[0], pair[1])
@@ -217,6 +221,7 @@ func add_street(street: int, line: Array, width: float) -> void:
 	for i in range(1, centers.size()):
 		var span := Span.new()
 		span.street = street
+		span.road_surface = road_surface
 		span.order = spans.size()
 		span.start = centers[i - 1]
 		span.end = centers[i]
@@ -418,7 +423,7 @@ func emit_vertex(surface: SurfaceTool, span: Span, point: Vector2, nearby: Array
 	var style := float(span.marking) / 3.0
 	var edges := 1.0 if span.street in HIGHWAY or (span.street == BROCKHOUSE and not downtown.has_point(point)) else 0.0
 	surface.set_color(Color(style, edges, (1.0 - joins) * end_blend * (1.0 - apron),
-		0.0 if span.street == CHAMPLAIN else 1.0))
+		float(span.road_surface) / float(RoadSurface.STANDARD)))
 	surface.set_uv(Vector2(lateral, station))
 	surface.set_uv2(Vector2(shoulder_mix if shoulder else paint * end_blend, transverse))
 	var height := ground.call(point.x, point.y) as float
