@@ -36,6 +36,7 @@ var cast_origin: Vector3
 var objective: Label
 var instruction: Label
 var marker: Label
+var crosshair: ColorRect
 var fps: Label
 var progress: ProgressBar
 var hud: Control
@@ -155,7 +156,7 @@ func build_hud() -> void:
 	fps.offset_top = 21
 	fps.hide()
 	ui.add_child(fps)
-	var crosshair := ColorRect.new()
+	crosshair = ColorRect.new()
 	crosshair.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	crosshair.color = Color("#f6e7c9")
 	ui.add_child(crosshair)

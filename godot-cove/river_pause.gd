@@ -9,7 +9,7 @@ var game: Node3D
 var graphics: Graphics
 var preferences := {"volume": .8, "sensitivity": 1.0, "fov": 78.0,
 	"fullscreen": false, "vsync": true, "fps": false, "hand_motion": .65,
-	"toggle_crouch": false}
+	"toggle_crouch": false, "aircraft_invert_pitch": false}
 var name_field: LineEdit
 var status: Label
 var quit_dialog: ConfirmationDialog
@@ -17,14 +17,17 @@ var paused_solo := false
 var graphics_option: OptionButton
 var sliders: Dictionary = {}
 var fullscreen_button: CheckButton
+var aircraft_invert_pitch: CheckButton
 var windowed_mode := DisplayServer.WINDOW_MODE_WINDOWED
 var title: Label
 var main_page: VBoxContainer
 var settings_page: VBoxContainer
+var vehicle_page: VBoxContainer
 var crew_page: VBoxContainer
 var back: Button
 var resume_button: Button
 var settings_button: Button
+var vehicle_button: Button
 var crew_button: Button
 var leave_button: Button
 var main_menu_button: Button
@@ -85,6 +88,7 @@ func setup(scene: Node3D = null) -> void:
 	else:
 		build_pause_pages(column)
 		settings_page.hide()
+		vehicle_page.hide()
 		crew_page.hide()
 		back.hide()
 	hide()
@@ -108,6 +112,7 @@ func build_pause_pages(column: VBoxContainer) -> void:
 	grid.add_theme_constant_override("v_separation", MenuTheme.GAP)
 	main_page.add_child(grid)
 	settings_button = button(grid, "Settings", func(): show_page(settings_page, "Settings", sliders["volume"]), &"Button", "settings")
+	vehicle_button = button(grid, "Vehicle Controls", func(): show_page(vehicle_page, "Vehicle Controls", aircraft_invert_pitch), &"Button", "tools")
 	button(grid, "Save", save_world, &"Button", "save")
 	button(grid, "Backpack", func(): navigate("pack"), &"Button", "pack").tooltip_text = "Backpack · I"
 	button(grid, "River Chart", func(): navigate("chart"), &"Button", "chart").tooltip_text = "River Chart · Tab / M"
@@ -127,6 +132,7 @@ func build_pause_pages(column: VBoxContainer) -> void:
 	button(footer, "Exit to Windows", confirm_exit, &"QuietAction", "exit", 37).tooltip_text = "Save and exit to desktop"
 	for action: Button in footer.get_children():
 		action.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	build_vehicle_controls(column)
 	crew_page = VBoxContainer.new()
 	crew_page.add_theme_constant_override("separation", 12)
 	column.add_child(crew_page)
@@ -163,6 +169,7 @@ func confirm_exit() -> void:
 func show_page(page: VBoxContainer, caption: String, first: Control) -> void:
 	main_page.visible = page == main_page
 	settings_page.visible = page == settings_page
+	vehicle_page.visible = page == vehicle_page
 	crew_page.visible = page == crew_page
 	back.visible = page != main_page
 	title.text = caption
@@ -171,8 +178,36 @@ func show_page(page: VBoxContainer, caption: String, first: Control) -> void:
 
 
 func show_main() -> void:
-	var first := settings_button if settings_page.visible else crew_button
+	var first := settings_button if settings_page.visible else vehicle_button if vehicle_page.visible else crew_button
 	show_page(main_page, "Paused", first)
+
+
+func build_vehicle_controls(column: VBoxContainer) -> void:
+	vehicle_page = VBoxContainer.new()
+	vehicle_page.add_theme_constant_override("separation", 12)
+	column.add_child(vehicle_page)
+	text(vehicle_page, "Helicopter", 22, MenuTheme.NAVY)
+	var bindings := GridContainer.new()
+	bindings.columns = 2
+	bindings.add_theme_constant_override("h_separation", 18)
+	bindings.add_theme_constant_override("v_separation", 6)
+	vehicle_page.add_child(bindings)
+	for binding: Array in [["Mouse", "Pitch and yaw"], ["A / D", "Bank left or right. Release to hold."],
+			["Space / Ctrl", "Climb or descend"], ["H", "Level the craft and hover"]]:
+		text(bindings, binding[0], 16, TEAL)
+		text(bindings, binding[1], 16, MIST)
+	vehicle_page.add_child(HSeparator.new())
+	text(vehicle_page, "Aim at a door handle and press E to board or exit when the helicopter is landed and stopped.", 16, MIST)
+	text(vehicle_page, "Aim at the dash key and hold E to start. Lift is ready at 100% RPM. After landing, aim at the key and tap E to shut down.", 16, MIST)
+	aircraft_invert_pitch = CheckButton.new()
+	aircraft_invert_pitch.text = "Invert Pitch"
+	aircraft_invert_pitch.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	aircraft_invert_pitch.button_pressed = preferences.aircraft_invert_pitch
+	aircraft_invert_pitch.toggled.connect(func(enabled: bool):
+		preferences.aircraft_invert_pitch = enabled
+		apply_settings()
+		persist())
+	vehicle_page.add_child(aircraft_invert_pitch)
 
 
 func build_settings(settings: VBoxContainer) -> void:
@@ -275,6 +310,7 @@ func apply_settings() -> void:
 	AudioServer.set_bus_volume_db(0, linear_to_db(maxf(.0001, preferences.volume)))
 	AudioServer.set_bus_mute(0, preferences.volume <= 0)
 	if game != null:
+		game.aircraft_steering.invert_pitch = preferences.aircraft_invert_pitch
 		game.mouse_sensitivity = .0022 * preferences.sensitivity
 		game.eye.fov = preferences.fov
 		game.rig.motion_amount = preferences.hand_motion

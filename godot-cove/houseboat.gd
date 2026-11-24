@@ -266,10 +266,7 @@ func clear_helm() -> void:
 
 
 func key_focused(camera: Camera3D) -> bool:
-	var offset := helm_console.ignition_key.global_position - camera.global_position
-	var forward := -camera.global_basis.z
-	var distance := offset.dot(forward)
-	return distance > 0.0 and distance < 1.8 and (offset - forward * distance).length_squared() < .0025
+	return HelmConsole.aims_at_key(helm_console.ignition_key, camera.global_position, -camera.global_basis.z)
 
 
 func set_ignition(phase: int) -> void:

@@ -23,6 +23,7 @@ const Safety = preload("res://river_safety.gd")
 const RiverChart = preload("res://river_chart.gd")
 const MenuTheme = preload("res://river_menu_theme.gd")
 const Lobby = preload("res://river_lobby.gd")
+const AircraftSteering = preload("res://aircraft_steering.gd")
 const Regions = preload("res://river_regions.gd")
 const Helicopter = preload("res://river_helicopter.gd")
 const SoloSaves = preload("res://solo_saves.gd")
@@ -69,6 +70,7 @@ var stand_query := PhysicsShapeQueryParameters3D.new()
 var river: Ottawa
 var regions: Regions
 var helicopter: Helicopter
+var aircraft_steering := AircraftSteering.new()
 var rig: Rig
 var effects: WaterFX
 var fish: Fish
@@ -351,10 +353,18 @@ func finish_return_to_title(message: String) -> void:
 
 
 func update_menu_hud() -> void:
-	var show_hud: bool = not (pause_menu.visible or chart.visible or campaign.board.visible or campaign.boats_menu.visible)
+	var piloting := is_instance_valid(helicopter) and helicopter.my_seat() == 0
+	crosshair.visible = not piloting
+	var show_hud: bool = not (piloting or pause_menu.visible or chart.visible or campaign.board.visible or campaign.boats_menu.visible)
 	(objective.get_parent() as Control).visible = show_hud
 	marker.self_modulate.a = 1.0 if show_hud else 0.0
 	campaign.info.self_modulate.a = marker.self_modulate.a
+	var ambient_alpha := 0.0 if piloting else 1.0
+	regions.region_label.self_modulate.a = ambient_alpha
+	shannon_job.calendar.self_modulate.a = ambient_alpha
+	fps.self_modulate.a = ambient_alpha
+	(skill_screen.heading.get_parent() as Control).visible = not piloting
+	skill_screen.banner.self_modulate.a = ambient_alpha
 
 
 func build_tension_display() -> void:
@@ -635,7 +645,7 @@ func _physics_process(delta: float) -> void:
 	interact_pressed = false
 	has_input = play_input()
 	walk_multiplier = cabin.walk_scale() * campaign.crewplay.movement_scale()
-	helicopter.tick(delta, has_input and not cabin.busy())
+	helicopter.tick(delta, has_input and get_window().has_focus() and not cabin.busy())
 	grounded_motion = false
 	if flying or in_aircraft() or campaign.amenities.seated() or marina_cars.active >= 0 \
 			or mower.rider != null or driving or campaign.dive.active:
@@ -660,9 +670,9 @@ func _physics_process(delta: float) -> void:
 	if mower.rider != null:
 		eye.rotation.x = pitch
 		mower.update_rider_camera(eye)
-	elif marina_cars.active < 0:
+	elif marina_cars.active < 0 and not in_aircraft():
 		eye.rotation.x = pitch + cabin.camera_pitch
-		if driving and not in_aircraft():
+		if driving:
 			eye.position.y = vessel.helm_eye_height()
 	campaign.amenities.pin_local()
 	marina_cars.step(delta, axis(KEY_W, KEY_S), axis(KEY_D, KEY_A), Input.is_physical_key_pressed(KEY_SPACE),
@@ -1742,7 +1752,7 @@ func teleport_from_chart() -> void:
 		var view_target: Vector3
 		match teleport_destination:
 			ChartDestination.HELIPAD:
-				arrival = regions.helipad + Vector3(7.5, .1, 0)
+				arrival = regions.helipad + Vector3(4.0, .1, 0)
 				view_target = regions.helipad
 			ChartDestination.CEMETERY:
 				arrival = regions.cemetery + Vector3(38, 0, 0)
@@ -1793,6 +1803,7 @@ func refresh_journal() -> void:
 
 
 func update_hud() -> void:
+	var piloting := helicopter.my_seat() == 0
 	ignition_prompt.visible = play_input() and at_ignition_key()
 	var engine_running: bool = ignition_prompt.visible and vessel.ignition == Boat.Ignition.RUN
 	if ignition_prompt.visible:
@@ -1800,7 +1811,7 @@ func update_hud() -> void:
 	ignition_ring.visible = ignition_prompt.visible and not engine_running and ignition_hold > 0.0
 	ignition_ring.progress = clampf(ignition_hold / Boat.START_TIME, 0.0, 1.0) if ignition_ring.visible else 0.0
 	backpack.update_throttle(mower.throttle_index if mower.rider != null and play_input() else -1, mower.throttle_label())
-	backpack.hud_available = not campaign.crewplay.hands_busy() and not cabin.hands_in_use() and not chart.visible and not fish_guide.visible and not cheats.visible \
+	backpack.hud_available = not piloting and not campaign.crewplay.hands_busy() and not cabin.hands_in_use() and not chart.visible and not fish_guide.visible and not cheats.visible \
 		and not campaign.controls_blocked() and not cabin.busy() and not campaign.marina_fuel.is_local_holder()
 	var location := "Ottawa River"
 	var at: Vector3 = vessel.center if aboard() else player.global_position
@@ -1921,8 +1932,8 @@ func update_hud() -> void:
 		var fuel_hint: String = campaign.marina_fuel.hint()
 		if not fuel_hint.is_empty():
 			instruction.text = fuel_hint
-	backpack.waypoint.visible = target_index >= 0
-	if target_index >= 0:
+	backpack.waypoint.visible = target_index >= 0 and not piloting
+	if backpack.waypoint.visible:
 		var target: Vector3 = river.point(target_index)
 		var distance := at.distance_to(target)
 		var waypoint_text := "%s  ·  %.1f km" % [river.meta.places[target_index].name, distance / 1000.0]
