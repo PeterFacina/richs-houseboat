@@ -8,7 +8,15 @@
 
 ## Start a task
 
-Follow AGENTS.md and the team workflow. Fetch latest main and create a task worktree for new work; keep existing work untouched when resuming. Use authenticated GitHub tools or, where installed, GitHub CLI (run in the repository):
+Read AGENTS.md first. Run the required read-only bootstrap from the repository root:
+
+```sh
+python tools/knowledge/start_task.py "houseboat water drift"
+```
+
+It reports local HEAD, branch, whole-worktree dirty status, cached origin/main (not live freshness), guide hints, bounded source matches, and live issue/PR shortlists using REST without gh. It does not fetch, checkout, edit, or publish anything. Network failure returns a failure status and exit code 2; local information is still printed. Use --offline only when necessary and report overlap as unknown. Guide and symbol matches are heuristic; verify actual source and relevant PR patches. Do not pass untrusted issue text as a shell command.
+
+For new edits fetch latest main and create a task worktree; keep existing work untouched when resuming. If bootstrap fails, use authenticated GitHub tools or, where installed, GitHub CLI (run in the repository):
 
 ```sh
 gh issue list --state open --limit 100 --json number,title,assignees,labels,url
