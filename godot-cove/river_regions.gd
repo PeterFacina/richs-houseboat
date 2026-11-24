@@ -7,7 +7,6 @@ const SECTION_SIZE := 18000.0
 const NAMES := ["Entire river reach", "Deep River", "Swisha / Des Joachims", "Chalk River"]
 var game: Node3D
 var data: Dictionary
-var region_label: Label
 var helipad := Vector3.ZERO
 var cemetery := Vector3.ZERO
 var ski := Vector3.ZERO
@@ -38,13 +37,6 @@ func setup(scene: Node3D) -> void:
 	clear_pad_trees()
 	plant_travel_groves(ski_trail)
 	clear_property_trees()
-	region_label = Label.new()
-	region_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	game.hud.add_child(region_label)
-	region_label.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
-	region_label.offset_left = -200
-	region_label.offset_right = 200
-	region_label.offset_top = 12
 
 
 func init_helipad() -> void:
@@ -231,13 +223,3 @@ func tick(delta: float) -> void:
 	elapsed += delta
 	if elapsed < .5: return
 	elapsed = 0
-	var at: Vector3 = game.player.global_position
-	var closest := 0
-	var distance := INF
-	for index in [0, 3, 4]:
-		var value: float = at.distance_squared_to(game.campaign.landings.sites[index].stand)
-		if value < distance:
-			distance = value
-			closest = index
-	region_label.text = {0:"DEEP RIVER", 3:"SWISHA / DES JOACHIMS", 4:"CHALK RIVER"}[closest]
-	region_label.visible = not game.menu_blocks_play()

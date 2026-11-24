@@ -86,8 +86,8 @@ func setup(fishing_game: Node3D, grass_owner: AnimatableBody3D, station: Vector3
 	calendar.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	game.hud.add_child(calendar)
 	calendar.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
-	calendar.offset_left = -250
-	calendar.offset_right = -26
+	calendar.offset_left = -228
+	calendar.offset_right = -14
 	calendar.offset_top = 77
 	mower.grass_trimmed.connect(grass_trimmed)
 	update_clock(0.0)
@@ -122,6 +122,10 @@ func update_clock(delta: float) -> void:
 	var today := current_day()
 	var minute := posmod(floori(state.work_minutes), Routes.MINUTES_PER_DAY)
 	calendar.text = "%s  %02d:%02d" % [Routes.DAYS[today % Routes.DAYS.size()], floori(minute / 60.0), minute % 60]
+	if game.fps.visible:
+		calendar.offset_top = 77
+	else:
+		calendar.offset_top = 21
 	calendar.visible = not game.chart.visible and not game.fish_guide.visible \
 		and not game.sonar_overlay.visible and not game.campaign.controls_blocked()
 

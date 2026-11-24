@@ -133,8 +133,6 @@ func build_hud() -> void:
 	ui.add_child(framing)
 	framing.anchor_right = .49
 	framing.offset_right = -12
-	var title := label("RICH'S HOUSEBOAT", 15, Color("#e2ba84"))
-	framing.add_child(title)
 	objective = label("Board the houseboat", 29, Color("#fff5de"))
 	objective.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	framing.add_child(objective)
