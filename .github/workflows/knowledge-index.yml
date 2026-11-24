@@ -1,0 +1,56 @@
+name: Living knowledge
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  index:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Test index and advisory logic
+        run: python3 -m unittest discover -s tools/knowledge -p "test_*.py"
+      - name: Build current source index
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before || '' }}
+        run: |
+          set -euo pipefail
+          args=()
+          if [[ "$BASE" =~ ^[0-9a-f]{40}$ ]] && git cat-file -e "$BASE^{commit}" 2>/dev/null; then
+            args+=(--base "$BASE")
+          fi
+          python3 tools/knowledge/index.py --output "$RUNNER_TEMP/houseboat-knowledge.json" "${args[@]}"
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          data = json.loads((Path(os.environ["RUNNER_TEMP"]) / "houseboat-knowledge.json").read_text())
+          assert not data["dirty"], "CI source checkout is dirty"
+          assert data["files"], "No source files indexed"
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as out:
+              print("## Living knowledge", file=out)
+              print(f"Revision: {data['revision']} — {len(data['files'])} indexed files; {len(data['skipped'])} skipped.", file=out)
+              if "documentation_advisories" not in data:
+                  print("No usable baseline: freshness comparison skipped.", file=out)
+              else:
+                  notes = data["documentation_advisories"]
+                  print(f"Documentation review advisories: {len(notes)} (not failures).", file=out)
+                  for note in notes:
+                      print("- " + note["guide"] + ": " + ", ".join(note["changed_sources"]), file=out)
+          PY
+      - name: Publish revision-tagged index
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: houseboat-knowledge-${{ github.sha }}
+          path: ${{ runner.temp }}/houseboat-knowledge.json
+          retention-days: 7
+          if-no-files-found: error

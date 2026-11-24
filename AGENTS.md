@@ -15,3 +15,9 @@
 - Preserve unrelated gameplay, save compatibility and multiplayer behavior. Update affected guides when behavior, ownership or verification changes; if documentation is unaffected, say so.
 - In the PR, record the implementation agent/model if known, base revision, guides consulted, actual verification and outstanding playtests. For issue-linked tasks use `Fixes #NUMBER` (replace NUMBER with the actual issue number) on its own line when the PR is intended to resolve it. Do not merge without human approval. A passing startup check is not gameplay acceptance.
 - These rules apply to all coding agents. Cloud agents may use equivalent Git and source-search tools when Windows tools are unavailable. Do not claim checks were run if they were not.
+
+## Living knowledge
+
+- At task start query current GitHub issues and PRs (including drafts); never rely on issue numbers or open/closed status copied into guides. Check relevant PR diffs for overlap. See [living knowledge](docs/LIVING-KNOWLEDGE.md) for portable commands and offline fallback.
+- Use the on-demand source index to find symbols and direct resource dependencies when helpful; it reads the task checkout, not a remote snapshot. Do not put the full generated index in model context. On main, CI produces a fresh commit-tagged index; it is a navigation aid, not an automatic synchronization mechanism.
+- Review any documentation freshness advisory on your PR. Update affected guides or explain why the change does not alter their documented contract. Never invent facts to satisfy a check.
