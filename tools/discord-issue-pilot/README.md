@@ -71,7 +71,7 @@ On Ethan’s GPU PC, use a separate worktree of this PR, Node.js 24, and Ollama 
 node --env-file=.worker.env gpu-worker.mjs
 ```
 
-Run one worker. It checks GitHub every 30 seconds between batches, uses a temporary local Studio indexed from the worker checkout, and handles one report at a time. It skips issues that already have a marked brief. A failed export stays pending. A report edited during generation is read again on the next pass. The worker can be stopped with Ctrl+C. Rebuild or restart from the intended source checkout when changing the indexed game version.
+Run one worker. It checks the queue every 30 seconds between batches and handles one report at a time. It skips issues that already have a marked brief. A failed export stays pending. A report edited during generation is read again on the next pass. The worker can be stopped with Ctrl+C. See [GPU worker knowledge](../../docs/GPU-WORKER-KNOWLEDGE.md) for prerequisites, automatic refresh, the read-only GPU smoke test, and deployment and rollback.
 
 For a gameplay report, use **Apps → Create game issue** in Discord. Restart both the bot and the worker from a revision that supports this command before testing it. The report stays separate from the notes-only pilot and still requires a teammate to claim it and open Codex. Include the observed behavior, what you expected, how often it repeats, and who saw it. Keep untested viewpoints and causes open. Review and playtest the resulting draft before merging.
 
@@ -79,7 +79,7 @@ For the live test, Peter submits one new notes-only report from Discord with the
 
 ### Training records
 
-New successful generations are captured on the GPU PC in `%LOCALAPPDATA%/HouseboatPromptTraining/examples.sqlite`. The worker saves the report, exact Ollama request (including the source excerpts), indexed commit, and checked brief before posting to GitHub. It links the posted comment to that capture. Captures and review entries are grouped by issue number. Existing briefs remain available on GitHub, and their historical model inputs are only available if they were separately captured.
+Generations are captured on the GPU PC in `%LOCALAPPDATA%/HouseboatPromptTraining/examples.sqlite`. The worker saves the report, retrieved evidence, exact Ollama request, model tag and available digest, indexed commit and freshness, available token counts, and generated brief before posting to GitHub. The worker attaches the posted comment to its capture. Drafts blocked by the export guard remain local and cannot be approved. Captures and review entries are grouped by issue number. Existing captures remain readable with their original fields.
 
 From the worker folder, run `node training-review.mjs show 123` on the GPU PC to review issue 123. The output includes private report and source data. Keep it local.
 

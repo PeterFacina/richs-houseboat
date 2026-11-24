@@ -87,9 +87,11 @@ export function buildDraft(payload, title, facts, evidence, note = "") {
   sections.push(labels.tasks + '\n' + bullets(work));
   for (let index = 3; index < fields.length; index++) sections.push(labels[fields[index]] + '\n' + bullets(generated[index]));
   const profile = facts.map(item => '- ' + item.fact + ' (' + item.path + ':' + item.line + ')');
-  const sources = evidence.filter(item => item.kind === 'source').map(item => '- [' + item.id + '] ' + item.path + ':' + item.line);
-  const memory = evidence.filter(item => item.kind !== 'source').map(item => '- [' + item.id + '] ' +
-    ({ reported: 'Historical player report', imported: 'Imported history', history: 'Studio history', attachment: 'User description of a stored screenshot' })[item.kind] + ' (verify before acting)');
+  const sources = evidence.filter(item => item.kind === 'source' || item.kind === 'guide')
+    .map(item => '- [' + item.id + '] ' + item.path + ':' + item.line);
+  const memory = evidence.filter(item => item.kind !== 'source' && item.kind !== 'guide').map(item => '- [' + item.id + '] ' +
+    ({ reported: 'Historical player report', imported: 'Imported history', history: 'Studio history',
+      attachment: 'User description of a stored screenshot', github: item.title })[item.kind] + ' (verify before acting)');
   sections.splice(2, 0, 'PROJECT CONTEXT\n' + (profile.length ? profile.join('\n') : '- No project profile facts were confirmed by the index.'),
     'SOURCES TO INSPECT\n' + (sources.length ? sources.join('\n') : '- No relevant source file was matched. Inspect the current project first.') +
       (memory.length ? '\n' + memory.join('\n') : ''));
@@ -140,7 +142,8 @@ export function createOllama(port, fetcher = fetch) {
         }) }
       ];
       const installed = await request('/api/tags', {}, AbortSignal.any([signal, AbortSignal.timeout(5000)]));
-      if (!(installed.models ?? []).some(item => [item.name, item.model].includes(settings.model))) {
+      const selected = (installed.models ?? []).find(item => [item.name, item.model].includes(settings.model));
+      if (!selected) {
         throw new Error('Pull ' + settings.model + ' in Ollama or select an installed model in Settings.');
       }
       const response = await request('/api/chat', {
@@ -161,7 +164,8 @@ export function createOllama(port, fetcher = fetch) {
       const tokens = number('eval_count');
       return {
         payload,
-        metrics: { version: 1, context: settings.context, promptTokens: number('prompt_eval_count'), outputTokens: tokens,
+        metrics: { version: 1, context: settings.context, modelDigest: selected.digest ?? null,
+          promptTokens: number('prompt_eval_count'), outputTokens: tokens,
           durationMs: number('total_duration') === null ? null : Math.round(number('total_duration') / 1e6),
           loadMs: number('load_duration') === null ? null : Math.round(number('load_duration') / 1e6),
           tokensPerSecond: duration && tokens ? Math.round(tokens / duration * 1e10) / 10 : null }

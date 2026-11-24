@@ -8,7 +8,7 @@ import { appDir, config, dataDir, getSettings, modelSettings, projectDir } from 
 import { audit, getRecord, importBatch, importPreview, now, openDb, recordList, removeBatch, saveEdit, saveNew, snapshot, states } from './lib/db.mjs';
 import { sanitizePng } from './lib/images.mjs';
 import { createAuth } from './lib/auth.mjs';
-import { discovered, findEvidence, projectProfile, recentScan, scan } from './lib/index.mjs';
+import { discovered, findEvidence, indexedKnowledge, projectProfile, recentScan, scan } from './lib/index.mjs';
 import { buildDraft, checkExport, createOllama, exportName, tiers } from './lib/model.mjs';
 
 class HttpError extends Error {
@@ -86,7 +86,8 @@ const staticFiles = new Map([
   ['/app.js', ['app.js', 'text/javascript; charset=utf-8']]
 ]);
 
-export function createStudio({ options = config(), storage = dataDir, project = projectDir, provider } = {}) {
+export function createStudio({ options = config(), storage = dataDir, project = projectDir, provider,
+  prepareKnowledge } = {}) {
   const db = openDb(storage);
   const privateMode = Boolean(options.privateOrigin);
   const tailscaleMode = privateMode && options.tailscaleUsers != null;
@@ -121,25 +122,35 @@ export function createStudio({ options = config(), storage = dataDir, project = 
     const job = { id: randomUUID(), owner: user.name, status: 'working', controller };
     jobs.set(job.id, job);
     active = job;
-    const facts = projectProfile(db);
-    const evidence = findEvidence(db, input.note, input.focus, settings.context === 4096 ? 3400 : 5800);
-    if (input.parentId) {
-      const attachments = db.prepare("SELECT id,name,description,origin,actor,created_at FROM attachments WHERE record_id=? AND description<>'' ORDER BY id LIMIT 4").all(input.parentId);
-      for (const image of attachments) {
-        evidence.push({ id: 'S' + (evidence.length + 1), kind: 'attachment', title: image.name,
-          excerpt: image.description.slice(0, 500), ref: String(image.id), reason: 'Human screenshot description',
-          provenance: { author: image.actor, label: image.origin, created_at: image.created_at } });
-      }
-    }
     const author = privateMode ? user.name : input.author || user.name;
     void (async () => {
       try {
+        const { selection, ...knowledge } = prepareKnowledge ? await prepareKnowledge(input) : {};
+        if (controller.signal.aborted) return;
+        const facts = projectProfile(db);
+        const manifest = prepareKnowledge ? indexedKnowledge(db) : null;
+        if (prepareKnowledge && (!manifest || manifest.revision !== knowledge.commit)) {
+          throw new Error('Studio cannot match the source index to the generation.');
+        }
+        const evidence = findEvidence(db, input.note, input.focus, settings.context === 4096 ? 3400 : 5800,
+          { manifest, selection });
+        if (input.parentId) {
+          const attachments = db.prepare("SELECT id,name,description,origin,actor,created_at FROM attachments WHERE record_id=? AND description<>'' ORDER BY id LIMIT 4").all(input.parentId);
+          for (const image of attachments) {
+            evidence.push({ id: 'S' + (evidence.length + 1), kind: 'attachment', title: image.name,
+              excerpt: image.description.slice(0, 500), ref: String(image.id), reason: 'Human screenshot description',
+              provenance: { author: image.actor, label: image.origin, created_at: image.created_at } });
+          }
+        }
         const { payload, metrics } = await ollama.generate({ input, facts, evidence, settings, signal: controller.signal });
         if (controller.signal.aborted) return;
-        const prompt = buildDraft(payload, input.title, facts, evidence, input.note);
+        const brief = buildDraft(payload, input.title, facts, evidence, input.note);
+        const prompt = knowledge.commit ? 'Game knowledge revision ' + knowledge.commit +
+          (knowledge.stale ? ' (stale, main refresh failed)' : '') + '\n\n' + brief : brief;
         const findings = checkExport(prompt, evidence, facts);
         const record = saveNew(db, { ...input, author, prompt, model: settings.model, evidence,
-          generation: { ...metrics, facts }, status: findings.length ? 'needs revision' : 'generated' });
+          generation: { ...metrics, facts, ...(prepareKnowledge ? { knowledge } : {}) },
+          status: findings.length ? 'needs revision' : 'generated' });
         job.status = 'complete';
         job.recordId = record.id;
         job.findings = findings;
@@ -227,6 +238,7 @@ export function createStudio({ options = config(), storage = dataDir, project = 
       }
       if (method === 'POST' && path === '/api/scan') {
         admin();
+        if (prepareKnowledge) throw new HttpError(409, 'The worker refreshes this index before generation.');
         const input = await body(req);
         const result = scan(db, project, options.exclude, input.full === true);
         audit(db, user.name, input.full === true ? 'rebuilt index' : 'rescanned project');
@@ -372,7 +384,7 @@ export function createStudio({ options = config(), storage = dataDir, project = 
     }
   });
   server.once('listening', () => {
-    if (!recentScan(db)) scheduledScan = setTimeout(() => {
+    if (!prepareKnowledge && !recentScan(db)) scheduledScan = setTimeout(() => {
       try { scan(db, project, options.exclude); } catch (error) { console.error('Initial index failed:', error.code ?? error.name); }
     }, 10);
   });

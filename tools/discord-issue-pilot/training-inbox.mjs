@@ -22,10 +22,14 @@ export function openTrainingInbox(path = trainingPath()) {
       const id = digest(serialized + '\n' + brief);
       db.prepare('INSERT OR IGNORE INTO captures (issue,id,input,brief,recorded) VALUES (?,?,?,?,?)')
         .run(issue, id, serialized, brief, new Date().toISOString());
+      return id;
     },
-    link(issue, brief, url) {
-      db.prepare('UPDATE captures SET published=? WHERE issue=? AND brief=? AND published IS NULL')
-        .run(url, issue, brief);
+    link(issue, brief, url, id = null) {
+      db.prepare(`UPDATE captures SET published=? WHERE issue=? AND id=(
+        SELECT id FROM captures WHERE issue=? AND brief=? AND (? IS NULL OR id=?)
+        AND COALESCE(json_extract(input, '$.exportPassed'), 1)=1
+        ORDER BY published DESC, rowid DESC LIMIT 1) AND published IS NULL`)
+        .run(url, issue, issue, brief, id, id);
     },
     read(issue) {
       return {

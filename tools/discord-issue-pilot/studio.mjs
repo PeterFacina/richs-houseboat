@@ -13,8 +13,8 @@ export function studioClient(value) {
     if (!response.ok) throw new Error('Studio returned HTTP ' + response.status + ' for ' + path);
     return response;
   }
-  return async function generate(note) {
-    const signal = AbortSignal.timeout(120_000);
+  return async function generate(note, { details = false } = {}) {
+    const signal = AbortSignal.timeout(details ? 750_000 : 120_000);
     const session = await (await call('/api/session', signal)).json();
     if (session.privateMode || session.tailscaleMode || !session.user?.csrf) {
       throw new Error('The bot requires a separate loopback-mode Studio instance.');
@@ -29,10 +29,16 @@ export function studioClient(value) {
       await delay(750, undefined, { signal });
       const state = await (await call('/api/jobs/' + encodeURIComponent(job.id), signal)).json();
       if (state.status === 'complete') {
-        return (await call('/api/prompts/' + state.recordId + '/download', signal)).text();
+        const path = '/api/prompts/' + state.recordId;
+        if (!details) return (await call(path + '/download', signal)).text();
+        const record = await (await call(path, signal)).json();
+        if (record.findings.length) return { record, exportPassed: false };
+        record.prompt = await (await call(path + '/download', signal)).text();
+        return { record, exportPassed: true };
       }
       if (state.status !== 'working' && state.status !== 'canceling') {
-        throw new Error('Studio generation ended with status ' + state.status + '.');
+        throw new Error('Studio generation ended with status ' + state.status +
+          (details && state.error ? ': ' + state.error : '.'));
       }
     }
   };

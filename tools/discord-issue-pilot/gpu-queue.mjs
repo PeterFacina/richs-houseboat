@@ -41,7 +41,8 @@ export async function processGpuIssue(issue, github, generate, linkBrief = () =>
     return { status: 'already posted', url: existing.html_url };
   }
 
-  const brief = (await generate(note, issue)).trim();
+  const generated = await generate(note, issue);
+  const brief = (typeof generated === 'string' ? generated : generated.brief).trim();
   if (!brief) throw new Error('Studio returned an empty brief.');
   const current = await github(path);
   if (!queuedReport(current) || current.body !== issue.body) {
@@ -53,6 +54,6 @@ export async function processGpuIssue(issue, github, generate, linkBrief = () =>
     return { status: 'already posted', url: concurrent.html_url };
   }
   const posted = await github(comments, 'POST', { body: gpuBriefMarker + '\n\n' + brief });
-  linkBrief(issue.number, brief, posted.html_url);
+  linkBrief(issue.number, brief, posted.html_url, generated.captureId);
   return { status: 'posted', url: posted.html_url };
 }
