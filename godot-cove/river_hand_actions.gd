@@ -20,9 +20,9 @@ static func prop_pose(kind: int, age: float, reach: Vector3) -> Transform3D:
 	if kind == Props.Item.BONG:
 		# Bring the mouthpiece inward while the chamber stays ahead of the
 		# jacket; an upright tube at the lips buries the holding hand in the chest.
-		turn.x = lerpf(-.12, .65, use)
+		turn.x = lerpf(-.12, .50, use)
 	elif kind == Props.Item.PEN:
-		turn.x = lerpf(-.12, 1.12, use)
+		turn.x = lerpf(-.12, .88, use)
 	else:
 		turn.x = lerpf(-.12, 1.14, use)
 	var rotation := Basis.from_euler(turn)
@@ -38,7 +38,10 @@ static func prop_pose(kind: int, age: float, reach: Vector3) -> Transform3D:
 static func view_lip(kind: int) -> Vector3:
 	# Keep the close viewmodel inside the camera frustum. The world avatar uses
 	# the anatomical mouth target below, with the whole grip assembly shifted.
-	return Vector3(.035, -.04, -.42) if kind == Props.Item.BONG else Vector3(.035, -.065, -.30)
+	match kind:
+		Props.Item.BONG: return Vector3(.015, -.012, -.34)
+		Props.Item.PEN: return Vector3(.015, -.033, -.20)
+		_: return Vector3(.035, -.065, -.30)
 
 
 static func world_offset(kind: int, age: float) -> Vector3:
