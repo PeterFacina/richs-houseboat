@@ -1,9 +1,20 @@
 # Rich's Houseboat
 
-Team setup is ready. The latest agreed Godot game will be added under `godot-cove/` when the team has it. Until then this repository is a collaboration setup, not a playable build.
+A Godot game set on the Ottawa River around Deep River, Ontario, with boating, fishing, town activities, progression and multiplayer. The shared game source is in [godot-cove/](godot-cove/). The team develops on separate task branches and integrates reviewed changes into main.
 
-- [Team workflow](docs/TEAM-WORKFLOW.md)
+## Getting started
+
+- [Releases and available downloads](https://github.com/PeterFacina/richs-houseboat/releases)
+- [Team development workflow](docs/TEAM-WORKFLOW.md) — clone, task worktree, playtest and PR setup.
+- Open `godot-cove/project.godot` in the supported Godot editor; see [build checks](docs/BUILD-CHECKS.md) for the documented engine and headless validation procedure.
+
+## Project navigation
+
+- [Architecture and subsystem index](docs/ARCHITECTURE.md)
+- [Shared coding-agent instructions](AGENTS.md)
+- [Discord handbook](docs/DISCORD-HANDBOOK.md)
+- [AI workflow status](docs/AI-WORKFLOW.md)
+- [Team task queue](https://github.com/PeterFacina/richs-houseboat/issues)
 - [Developer notes](team/README.md)
-- [Shared Codex instructions](AGENTS.md)
 
-Once the agreed game is in main, use the Windows task starter described in the team workflow to make a new branch from the current shared version.
+Game behavior must be verified in source and through appropriate tests and human playtesting. Do not treat an automated startup pass as gameplay approval.
