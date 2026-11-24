@@ -34,8 +34,8 @@ const APPROACH_AUDIO_HEIGHT := 8.0
 const APPROACH_AUDIO_FULL_HEIGHT := 1.2
 const IDLE_BLEND_RATE := 2.0
 const KEY_OFF_FADE_RATE := 14.0
-# Visible flight control travel limits and smoothing.
-const COLLECTIVE_LIMIT := deg_to_rad(35.0)
+const COLLECTIVE_REST_Y := 1.0
+const COLLECTIVE_TRAVEL := 0.30
 const CYCLIC_LIMIT := deg_to_rad(25.0)
 const CONTROL_RATE := 8.0
 var game: Node3D
@@ -56,8 +56,6 @@ var steering: AircraftSteering
 var instruments: Instruments
 var climb_control := 0.0
 var roll_control := 0.0
-# Smoothed visual positions of the collective lever and cyclic stick, driven by
-# the pilot's inputs and returned to rest when released.
 var collective_position := 0.0
 var cyclic_fore_aft := 0.0
 var cyclic_side_side := 0.0
@@ -201,16 +199,17 @@ func build_model() -> void:
 	instruments.position.z = .019
 	bezel.add_child(instruments)
 
-	# Collective lever between the front seats, pivoted at the floor.
 	collective = Node3D.new()
 	collective.name = "Collective"
-	collective.position = Vector3(0, 0.95, -0.62)
+	collective.position = Vector3(0, COLLECTIVE_REST_Y, -0.62)
 	craft.add_child(collective)
-	Tools.tube(collective, Vector3.ZERO, Vector3(0, 0.45, 0), 0.020, 0.018, metal)
-	Kit.box_at(collective, Vector3(0, 0.47, 0), Vector3(0.10, 0.032, 0.10), dark)
-	Kit.box_at(collective, Vector3(0, 0.485, 0), Vector3(0.060, 0.018, 0.060), metal)
+	var base := Kit.box_at(collective, Vector3(0, -0.04, 0), Vector3(0.14, 0.08, 0.14), dark)
+	Tools.tube(collective, Vector3.ZERO, Vector3(0, 0.42, 0), 0.020, 0.018, metal)
+	Kit.box_at(collective, Vector3(0, 0.44, 0), Vector3(0.11, 0.030, 0.11), dark)
+	Kit.box_at(collective, Vector3(0, 0.455, 0), Vector3(0.065, 0.016, 0.065), metal)
+	var grip := Kit.box_at(collective, Vector3(0, 0.475, 0), Vector3(0.130, 0.024, 0.042), dark)
+	grip.rotation.z = 0.42
 
-	# Cyclic stick in front of the pilot seat, pivoted at the floor.
 	cyclic = Node3D.new()
 	cyclic.name = "Cyclic"
 	cyclic.position = Vector3(0.40, 0.92, -0.92)
@@ -377,7 +376,7 @@ func publish_seats(leaver := 0, landing := Vector3.INF) -> void:
 
 func welcome(peer: int) -> void:
 	occupants.rpc_id(peer, seats, 0, Vector3.INF)
-	flight.rpc_id(peer,craft.global_transform,craft.velocity,rotor_speed,ignition)
+	flight.rpc_id(peer,craft.global_transform,craft.velocity,rotor_speed,ignition,climb_control,roll_control,flight_aim)
 
 
 @rpc("authority","call_remote","reliable")
@@ -387,11 +386,12 @@ func occupants(value: Dictionary, leaver: int, landing: Vector3) -> void:
 
 
 @rpc("authority","call_remote","unreliable_ordered",1)
-func flight(pose: Transform3D, velocity: Vector3, speed: float, phase: int) -> void:
+func flight(pose: Transform3D, velocity: Vector3, speed: float, phase: int, climb: float, roll: float, aim: Vector2) -> void:
 	target_pose = pose
 	target_velocity = velocity
 	rotor_speed = speed
 	set_ignition(phase)
+	set_controls(climb, roll, aim, false)
 	if not established or craft.global_position.distance_to(pose.origin)>30:
 		craft.global_transform = pose
 	established = true
@@ -494,27 +494,15 @@ func tick(delta: float, has_input: bool) -> void:
 			elif not is_zero_approx(roll):
 				level_bank = false
 		hover_pressed = false
+		set_controls(climb, roll, steering.aim, level_bank)
 		if campaign.crew.is_guest():
 			if packet_age >= PACKET_INTERVAL:
 				steer.rpc_id(1, climb, roll, steering.aim, level_bank)
-		else:
-			set_controls(climb, roll, steering.aim, level_bank)
-	# Drive the visible cyclic and collective controls from the pilot's inputs,
-	# smoothing toward their targets and returning them to rest when released.
-	var target_collective := 0.0
-	var target_cyclic_pitch := 0.0
-	var target_cyclic_roll := 0.0
-	if seat == 0:
-		target_collective = climb_control
-		target_cyclic_pitch = flight_aim.y / PITCH_LIMIT
-		target_cyclic_roll = roll_control
-	var rate := CONTROL_RATE * delta
-	collective_position = lerpf(collective_position, target_collective * COLLECTIVE_LIMIT, rate)
-	cyclic_fore_aft = lerpf(cyclic_fore_aft, -target_cyclic_pitch * CYCLIC_LIMIT, rate)
-	cyclic_side_side = lerpf(cyclic_side_side, -target_cyclic_roll * CYCLIC_LIMIT, rate)
-	var c_rot := collective.rotation
-	c_rot.x = collective_position
-	collective.rotation = c_rot
+	var rate := clampf(CONTROL_RATE * delta, 0.0, 1.0)
+	collective_position = lerpf(collective_position, climb_control, rate)
+	cyclic_fore_aft = lerpf(cyclic_fore_aft, flight_aim.y / PITCH_LIMIT * CYCLIC_LIMIT, rate)
+	cyclic_side_side = lerpf(cyclic_side_side, -roll_control * CYCLIC_LIMIT, rate)
+	collective.position.y = COLLECTIVE_REST_Y + collective_position * COLLECTIVE_TRAVEL
 	var cyc_rot := cyclic.rotation
 	cyc_rot.x = cyclic_fore_aft
 	cyc_rot.z = cyclic_side_side
@@ -525,7 +513,7 @@ func tick(delta: float, has_input: bool) -> void:
 		tick_ignition(delta)
 		step_flight(delta)
 		if campaign.crew.on_server() and packet_age >= PACKET_INTERVAL:
-			flight.rpc(craft.global_transform, craft.velocity, rotor_speed, ignition)
+			flight.rpc(craft.global_transform, craft.velocity, rotor_speed, ignition, climb_control, roll_control, flight_aim)
 	else:
 		craft.global_transform = craft.global_transform.interpolate_with(target_pose,1-exp(-delta*18))
 		craft.velocity = target_velocity
