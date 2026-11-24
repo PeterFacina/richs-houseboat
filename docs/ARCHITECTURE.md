@@ -23,3 +23,5 @@ This is a short navigation map, not a complete specification. Source in the curr
 ## Retrieval strategy
 
 Start with the relevant guide, then use [Godot source lookup](../tools/godot-lookup/README.md) on Windows or equivalent targeted search. The existing optional Graphify link snapshot is hash-checked by that tool. Read current source ranges around results and expand to callers and tests when needed. Do not read unrelated guides merely to satisfy a checklist. Update this index when adding or moving a subsystem guide.
+
+For a portable, commit-aware symbol and direct-resource index, live GitHub status commands and documentation review checks, see [Living knowledge](LIVING-KNOWLEDGE.md). The index supplements existing source lookup; it does not replace current source or Graphify's richer relationships.
