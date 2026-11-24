@@ -30,22 +30,29 @@ async function existingBrief(github, route) {
   return null;
 }
 
-export async function processGpuIssue(issue, github, generate) {
+export async function processGpuIssue(issue, github, generate, linkBrief = () => {}) {
   const note = queuedReport(issue);
   if (!note) return { status: 'not queued' };
   const path = '/issues/' + issue.number;
   const comments = path + '/comments';
   const existing = await existingBrief(github, comments);
-  if (existing) return { status: 'already posted', url: existing.html_url };
+  if (existing) {
+    linkBrief(issue.number, existing.body.slice(gpuBriefMarker.length).trim(), existing.html_url);
+    return { status: 'already posted', url: existing.html_url };
+  }
 
-  const brief = (await generate(note)).trim();
+  const brief = (await generate(note, issue)).trim();
   if (!brief) throw new Error('Studio returned an empty brief.');
   const current = await github(path);
   if (!queuedReport(current) || current.body !== issue.body) {
     return { status: 'issue changed during generation' };
   }
   const concurrent = await existingBrief(github, comments);
-  if (concurrent) return { status: 'already posted', url: concurrent.html_url };
+  if (concurrent) {
+    linkBrief(issue.number, concurrent.body.slice(gpuBriefMarker.length).trim(), concurrent.html_url);
+    return { status: 'already posted', url: concurrent.html_url };
+  }
   const posted = await github(comments, 'POST', { body: gpuBriefMarker + '\n\n' + brief });
+  linkBrief(issue.number, brief, posted.html_url);
   return { status: 'posted', url: posted.html_url };
 }

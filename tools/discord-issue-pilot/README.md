@@ -76,3 +76,13 @@ Run one worker. It checks GitHub every 30 seconds between batches, uses a tempor
 For a gameplay report, use **Apps → Create game issue** in Discord. Restart both the bot and the worker from a revision that supports this command before testing it. The report stays separate from the notes-only pilot and still requires a teammate to claim it and open Codex. Include the observed behavior, what you expected, how often it repeats, and who saw it. Keep untested viewpoints and causes open. Review and playtest the resulting draft before merging.
 
 For the live test, Peter submits one new notes-only report from Discord with the bot in queued mode. Ethan leaves the worker running and checks that GitHub gets exactly one marked brief without anyone starting a Codex chat or posting the brief manually. Peter verifies the Discord card switches to **Ready to claim** and that the Codex prompt links to the new brief. Post evidence and any failures on this PR.
+
+### Training records
+
+New successful generations are captured on the GPU PC in `%LOCALAPPDATA%/HouseboatPromptTraining/examples.sqlite`. The worker saves the report, exact Ollama request (including the source excerpts), indexed commit, and checked brief before posting to GitHub. It links the posted comment to that capture. Captures and review entries are grouped by issue number. Existing briefs remain available on GitHub, and their historical model inputs are only available if they were separately captured.
+
+From the worker folder, run `node training-review.mjs show 123` on the GPU PC to review issue 123. The output includes private report and source data. Keep it local.
+
+After playtesting, ask Codex for a short summary of what was tried, what was observed and what changed. Link to the PR or specific PR comment. On the GPU PC, use `node training-review.mjs record 123 review.json` with a local JSON file containing `status: "feedback"`, `prUrl` and `summary`. Repeat for each useful iteration. To approve, set `status` to `"approved"` and also supply `reviewer`, the published `captureId` from `show`, and `target` as the corrected Studio response object. It uses the current Studio schema fields: `objective`, `observations`, `tasks`, `verification`, `acceptance` and `unknowns`, each an array of strings. Cite only evidence the original model received, and record discoveries made during playtesting in the feedback history.
+
+The worker captures only the input and initial brief automatically. A teammate records the PR feedback and explicitly approves the corrected target. A merge never grants training approval. Keep review JSON, the database, raw chat transcripts, and token files out of Git.
