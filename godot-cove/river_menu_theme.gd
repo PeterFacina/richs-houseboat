@@ -125,12 +125,16 @@ static func text(words: String, size: int, color := NAVY, bold := false) -> Labe
 	label.add_theme_color_override("font_color", color)
 	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	if bold:
-		if bold_font == null:
-			bold_font = FontVariation.new()
-			bold_font.base_font = ThemeDB.fallback_font
-			bold_font.variation_embolden = .74
-		label.add_theme_font_override("font", bold_font)
+		label.add_theme_font_override("font", get_bold_font())
 	return label
+
+
+static func get_bold_font() -> FontVariation:
+	if bold_font == null:
+		bold_font = FontVariation.new()
+		bold_font.base_font = ThemeDB.fallback_font
+		bold_font.variation_embolden = .74
+	return bold_font
 
 
 static func button(caption: String, style: StringName = &"Button", icon_name := "", height := BUTTON_HEIGHT) -> Button:

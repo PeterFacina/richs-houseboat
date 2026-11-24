@@ -1,6 +1,7 @@
 extends Node3D
 
 const Kit = preload("res://scenery.gd")
+const MenuTheme = preload("res://river_menu_theme.gd")
 const Car = preload("res://marina_car_model.gd")
 const Graphics = preload("res://river_graphics.gd")
 const Masonry = preload("res://deep_river_plaza_masonry.gdshader")
@@ -40,7 +41,6 @@ var return_normal: Vector3
 var front_length: float
 var return_length: float
 var cupola: Vector3
-var sign_font := SystemFont.new()
 var column_material := Kit.paint(CREAM, .71)
 
 
@@ -54,8 +54,6 @@ func build(parent: Node3D, building: Dictionary, elevation: Callable,
 	position.y = ground.call(position.x, position.z)
 	add_child(structure)
 	structure.name = "PlazaFixtures"
-	sign_font.font_names = PackedStringArray(["Arial", "Liberation Sans"])
-	sign_font.font_weight = 800
 
 	front = wall_point(building.walls[FRONT][0])
 	corner = wall_point(building.walls[FRONT][1])
@@ -430,6 +428,7 @@ func tenant_sign(text: String, at: Vector3, along: Vector3, width: float, backgr
 func sign_label(text: String, at: Vector3, basis: Basis, width: float, height: float, color: Color) -> void:
 	var label := Label3D.new()
 	label.text = text
+	var sign_font := MenuTheme.get_bold_font()
 	label.font = sign_font
 	label.font_size = 100
 	label.pixel_size = minf(width / sign_font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, 100).x,
