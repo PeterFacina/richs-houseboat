@@ -21,6 +21,12 @@ The current source builds FPS in the shared top-right HUD, inserts the date/time
 
 The prior paired HUD pilot at `9097d61064bd0db0330832d1f355cb595bb0f5f7` used both viewport sizes and reported bounds passing. Its two variants disagreed on paused behavior: one kept the hint visible but left waypoint distance stale after a controlled position change; the other refreshed distance from 18.1 km to 4.0 km but lost the hint while paused. The exact Control rectangles and waypoint screen coordinates were not retained. See the [recorded HUD pilot](../codex-gameplay-benchmark/README.md#hud-pause-and-fps); do not treat those results as a fresh check of the current revision.
 
-For issue #98, this change records the procedure only. The narrow/wide runtime check, current Control rectangles, on-screen waypoint placement, paused and resumed hint observations, and paused position-change comparison were not rerun at `fc13a9524a67708112cb11c842d78fe38d05cd1c`.
+For issue #98, the procedure is documented. The current HUD acceptance checks remain unverified because the runtime attempt below did not reach the HUD.
+
+### Issue #98 runtime attempt
+
+On the PR #99 checkout (`833dbf4`), Godot 4.7.2 stable (`ed1daf0bf`) completed a fresh headless editor import with exit code 0. Before import, the title screen rendered with a fallback typeface; after import it rendered with the project's `Playfull Rocket` font. The initial screenshot was an import-state artifact, not a font change in this documentation patch.
+
+I launched Play Solo in an empty slot using an isolated `%APPDATA%` directory. The title stayed on “Launching…” and the log repeatedly reported `Invalid access to property or key 'motor' on a base object of type 'Nil'` at `title_screen.gd:96`, before the loading completion path. Launching `res://game_world.tscn` directly stayed on the Godot splash while the map initialized; its log emitted “Loaded resource as image file” warnings from map construction. Neither attempt reached the HUD, so F3/F4, narrow/wide HUD placement, actual Control rectangles, pause/resume hint visibility, waypoint placement, and paused position-refresh behavior remain unverified at this revision. The gameplay launch issue is outside this notes-only change and was not modified here.
 
 Verify relevant state transitions, gear switching, cast/retrieve/landing behavior, movement and camera, and local versus remote animation. Preserve other gear and interaction states. Check existing issues/PRs before changing shared input or animation code. Use screenshots and actual playtesting for visual acceptance where possible.
