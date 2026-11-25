@@ -339,16 +339,18 @@ func build_waterfront_parking(park: Node3D) -> void:
 	build_railing(park, "WaterfrontParkingRailing", survey_points([
 		Vector2(33.9, 8.89), Vector2(38, 8.89), Vector2(43, 8.89), Vector2(50.12, 8.89),
 	]), iron, true)
+	var stair_join: Vector2 = AMPHITHEATRE_ACCESS[0] - Vector2(.98, 0.0)
+	# Follow the parking edge to the taper, then use the stair entrance's road setback.
 	build_railing(park, "AmphitheatreRoadRailing", survey_points([
-		Vector2(53.02, 8.89), Vector2(64.5, 8.89), Vector2(71, 8.89), Vector2(75.7, 6.74),
-		Vector2(81.4, 5.55), Vector2(87.7, 5.13), Vector2(92.4, 5.46), Vector2(92.7, 7.18),
+		Vector2(53.02, 8.89), Vector2(64.5, 8.89), Vector2(PARKING_END, 8.89),
+		Vector2(PARKING_TAPERS.y, stair_join.y), stair_join,
 	]), iron, true)
 	for side: float in [-1.0, 1.0]:
 		var rail: Array[Vector2] = []
 		for step: Vector2 in AMPHITHEATRE_ACCESS.slice(0, 5):
 			rail.append(step + Vector2(side * .98, 0.0))
 		var label := "AmphitheatrePathHandrailGazeboSide" if side < 0.0 else "AmphitheatrePathHandrailMarinaSide"
-		build_railing(park, label, survey_points(rail), iron, false)
+		build_railing(park, label, survey_points(rail), iron, false, side < 0.0)
 
 
 func parking_hatch(surface: SurfaceTool, outline: Array) -> void:
@@ -385,7 +387,8 @@ func parking_stripe(surface: SurfaceTool, a: Vector2, b: Vector2, width := .10) 
 			surface.add_vertex(on_land(parking_point(p.x, p.y)) + Vector3.UP * (lift + .020))
 
 
-func build_railing(park: Node3D, label: String, path: PackedVector2Array, iron: Material, pickets: bool) -> void:
+func build_railing(park: Node3D, label: String, path: PackedVector2Array,
+		iron: Material, pickets: bool, shares_first_post := false) -> void:
 	var fence := StaticBody3D.new()
 	fence.name = label
 	park.add_child(fence)
@@ -393,7 +396,7 @@ func build_railing(park: Node3D, label: String, path: PackedVector2Array, iron: 
 	for index in range(1, path.size()):
 		var panels := maxi(1, ceili(path[index - 1].distance_to(path[index]) / 2.1))
 		var start := on_land(path[index - 1])
-		if index == 1:
+		if index == 1 and not shares_first_post:
 			bars.append(rail_post(start))
 		for panel in range(1, panels + 1):
 			var finish := on_land(path[index - 1].lerp(path[index], float(panel) / panels))
