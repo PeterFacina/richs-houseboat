@@ -20,6 +20,11 @@
       "docs/ARCHITECTURE.md"
     ],
     [
+      "\\bgame world (?:controller|coordination|scene)\\b",
+      ["game_world.gd", "game_world.tscn"],
+      "docs/ARCHITECTURE.md"
+    ],
+    [
       "\\b(?:municipal traffic|traffic controls?)\\b",
       [
         "deep_river_traffic_controls.gd",
@@ -70,13 +75,23 @@
       "docs/systems/PROGRESSION-ECONOMY.md"
     ],
     [
-      "\\b(?:universal xp|skill tree|research tree|fishing progression|driving progression|player progression|shared economy)\\b",
+      "\\bresearch tree\\b",
+      ["progression.gd", "progression_catalog.gd"],
+      "docs/GAME-IDENTITY.md"
+    ],
+    [
+      "\\b(?:universal xp|skill (?:tree|progression|ranks?)|fishing progression|driving progression|player progression|shared economy)\\b",
       [
         "progression.gd",
         "progression_catalog.gd",
         "game_ledger.gd"
       ],
       "docs/systems/PROGRESSION-ECONOMY.md"
+    ],
+    [
+      "\\b(?:multiplayer|host|guest) (?:player )?(?:progression|xp)\\b",
+      ["multiplayer_session.gd", "game_ledger.gd", "progression.gd"],
+      "docs/systems/MULTIPLAYER.md"
     ],
     [
       "\\bottawa river fish\\b",

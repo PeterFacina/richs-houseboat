@@ -119,7 +119,7 @@ export function buildCodeIndex(root, manifest, tracked) {
     }
   }
 
-  for (const path of tracked.filter(path => guidePath.test(path))) {
+  for (const path of tracked.filter(path => guidePath.test(path) || path === 'docs/GAME-IDENTITY.md')) {
     const file = { ...pinnedRead(root, path), path, entries: [], links: new Map() };
     files.set(path, file);
     const headings = file.lines.flatMap((text, i) => text.startsWith('#') ? [{ name: text.replace(/^#+\s*/, ''), line: i + 1 }] : []);

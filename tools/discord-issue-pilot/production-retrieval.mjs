@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { buildCodeIndex } from './multistage/code-index.mjs';
-import { collectEvidence } from './multistage/retrieval.mjs';
+import { collectGameEvidence } from './multistage/game-route-evidence.mjs';
 import { lessonStatus, relevantLesson } from './learning/lessons.mjs';
 import { trainingPath } from './training-inbox.mjs';
 
@@ -60,7 +60,7 @@ export function deterministicRetriever(knowledge, { lessons = defaultLessons, re
       index.verify(lesson.anchors);
       extra.push(item);
     }
-    const evidence = collectEvidence(index, note, extra);
+    const evidence = collectGameEvidence(index, note, extra);
     if (!evidence.some(entry => entry.kind === 'source')) throw new Error('No verified deterministic source passages.');
     return evidence;
   });
