@@ -31,5 +31,7 @@ void fragment() {
 		float patches = texture(concrete_scan, world_xz / 7.2).r;
 		ALBEDO = vec3(.35, .324, .294) * (.69 + .29 * grain + .26 * patches);
 	}
+	vec3 fresh = vec3(.68, .65, .59) * (.93 + .12 * grit + .10 * field - .20 * slab);
+	ALBEDO = mix(ALBEDO, fresh, COLOR.b);
 	ROUGHNESS = .93;
 }

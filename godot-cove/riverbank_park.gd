@@ -12,6 +12,13 @@ const SEATING_ARC := 1.49
 const ROAD_SETBACK := 5.55
 const WALK_SETBACK := 3.0
 const AISLE_HALF_WIDTH := .85
+const PARKING_ORIGIN := Vector2(18220.8982, 13147.5428)
+const PARKING_START := 6.0
+const PARKING_END := 33.0
+const PARKING_DEPTH := 8.8
+const PARKING_AISLE := Vector2(16.9, 19.6)
+const PARKING_TAPERS := Vector2(2.0, 38.0)
+const STREET_HALF_WIDTH := 3.4
 const Kit = preload("res://scenery.gd")
 const Beach = preload("res://lamure_beach.gd")
 const Marina = preload("res://marina_art.gd")
@@ -35,6 +42,8 @@ func prepare(definition: Dictionary) -> void:
 		Vector2(17976.0, 12653.8)]))
 	trails.append(PackedVector2Array([Vector2(18215.1, 13120.4), Vector2(18217.9, 13119.7),
 		Vector2(18221.3, 13120.2), Vector2(18222.5, 13122.0)]))
+	trails.append(PackedVector2Array([parking_point(18.25, PARKING_DEPTH - .10),
+		parking_point(18.25, 10.75), Vector2(18218.7, 13123.7), Vector2(18218, 13120.1)]))
 	for polygon: Array in layout.woodland:
 		groves.append(points(polygon))
 
@@ -54,7 +63,7 @@ func owns_tree(foot: Vector3) -> bool:
 	var location := Vector2(foot.x, foot.z)
 	if not bounds.has_point(location):
 		return false
-	return in_amphitheatre(location) or groves.any(func(polygon: PackedVector2Array) -> bool:
+	return in_amphitheatre(location) or in_parking(location) or groves.any(func(polygon: PackedVector2Array) -> bool:
 		return Geometry2D.is_point_in_polygon(location, polygon)) or near_trail(location)
 
 
@@ -91,6 +100,7 @@ func build(parent: Node3D, survey: PackedFloat32Array, marina: Marina, pines: Pi
 		seat.name = "RiverbankBench%d" % (index + 1)
 		seat.rotation.y = -.66 if index < 4 else -.16
 	build_river_walk(park, stone_scan, parent.concrete_scan)
+	build_waterfront_parking(park)
 	build_terraces(park, stone)
 	build_waterfront_stones(park, stone, clearance)
 	build_flag(park, on_land(FLAG_SITE))
@@ -104,8 +114,9 @@ func build(parent: Node3D, survey: PackedFloat32Array, marina: Marina, pines: Pi
 	var local := PackedFloat32Array()
 	for i in range(0, survey.size(), 3):
 		var foot := Vector3(survey[i], 0, survey[i + 1])
-		if owns_tree(foot) and not in_amphitheatre(Vector2(foot.x, foot.z)) and not near_trail(Vector2(foot.x, foot.z), 2.8) \
-				and Vector2(foot.x, foot.z).distance_squared_to(GAZEBO_SITE) > 36.0:
+		var location := Vector2(foot.x, foot.z)
+		if (owns_tree(foot) and not in_amphitheatre(location) and not in_parking(location)
+				and not near_trail(location, 2.8) and location.distance_squared_to(GAZEBO_SITE) > 36.0):
 			local.append(foot.x)
 			local.append(foot.z)
 			local.append(survey[i + 2])
@@ -144,15 +155,128 @@ func build_river_walk(park: Node3D, grit: Texture2D, concrete: Texture2D) -> voi
 						var center := trail[i - 1].lerp(trail[i], along)
 						var edge := edges[i - 1].lerp(edges[i], along)
 						var foot := on_land(center + edge * (across * 2.0 - 1.0))
+						var pavers := 1.0 - smoothstep(34.0, 52.0, center.distance_to(GAZEBO_SITE))
+						path_mesh.set_color(Color(pavers, 0.0, 0.0))
 						path_mesh.set_uv(Vector2(across, along))
 						path_mesh.add_vertex(foot + Vector3.UP * .041)
 	var finish := ShaderMaterial.new()
 	finish.shader = preload("res://riverbank_walk.gdshader")
 	finish.set_shader_parameter("grit", grit)
 	finish.set_shader_parameter("concrete_scan", concrete)
+	finish.set_shader_parameter("parking_origin", PARKING_ORIGIN)
+	finish.set_shader_parameter("parking_axis", ALONG_ROAD)
+	finish.set_shader_parameter("parking_extent", Vector4(PARKING_TAPERS.x, PARKING_START, PARKING_END, PARKING_TAPERS.y))
+	finish.set_shader_parameter("parking_depth", PARKING_DEPTH)
 	var walk := Kit.mesh_at(park, path_mesh.commit(), Vector3.ZERO, finish)
 	walk.name = "GazeboRiverWalk"
 	walk.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+
+
+static func parking_point(station: float, depth: float) -> Vector2:
+	return PARKING_ORIGIN - ALONG_ROAD * station + TOWARD_WATER * depth
+
+
+static func parking_road(line: Array) -> Array:
+	var result := line.slice(0, 2)
+	for station: float in [PARKING_TAPERS.x, PARKING_START, PARKING_END, PARKING_TAPERS.y]:
+		var point := parking_point(station, 0.0)
+		result.append([point.x, point.y])
+	result.append_array(line.slice(2))
+	return result
+
+
+static func parking_half_width(point: Vector2, street_width: float) -> float:
+	var offset := PARKING_ORIGIN - point
+	var station := offset.dot(ALONG_ROAD)
+	if absf(offset.dot(TOWARD_WATER)) > .15 or station < PARKING_TAPERS.x or station > PARKING_TAPERS.y:
+		return street_width
+	var extent := clampf(minf((station - PARKING_TAPERS.x) / (PARKING_START - PARKING_TAPERS.x),
+		(PARKING_TAPERS.y - station) / (PARKING_TAPERS.y - PARKING_END)), 0.0, 1.0)
+	return lerpf(street_width, PARKING_DEPTH, extent)
+
+
+static func in_parking(point: Vector2) -> bool:
+	var offset := point - PARKING_ORIGIN
+	var along := -offset.dot(ALONG_ROAD)
+	var across := offset.dot(TOWARD_WATER)
+	return along > PARKING_TAPERS.x and along < PARKING_TAPERS.y and across > 2.5 and across < PARKING_DEPTH + .65
+
+
+static func parking_lift(across: float, width: float) -> float:
+	return .072 * smoothstep(STREET_HALF_WIDTH, PARKING_DEPTH, width) * smoothstep(2.3, 4.0, across)
+
+
+func build_waterfront_parking(park: Node3D) -> void:
+	# Bays and the gate follow the May 2025 Brockhouse Way waterfront reference.
+	var markings := SurfaceTool.new()
+	markings.begin(Mesh.PRIMITIVE_TRIANGLES)
+	markings.set_normal(Vector3.UP)
+	var dividers := [6.4, 8.6, 11.3, 14.0, PARKING_AISLE.x, PARKING_AISLE.y, 23.1, 25.8, 28.5, 30.8]
+	for station: float in dividers:
+		parking_stripe(markings, Vector2(station, 3.6), Vector2(station, 8.56))
+	for aisle: Vector2 in [Vector2(6.4, 8.6), PARKING_AISLE, Vector2(28.5, 30.8)]:
+		for depth: float in [3.65, 4.48, 5.31, 6.14, 6.97, 7.8]:
+			parking_stripe(markings, Vector2(aisle.x, depth), Vector2(aisle.y, depth + .73))
+	var access := Vector2(21.4, 6.0)
+	var wheel := access + Vector2(-.14, -.06)
+	# Accessible bay marking, oriented to be readable from the travel lane.
+	for i in 22:
+		var a := .22 + float(i) * 4.9 / 22.0
+		var b := .22 + float(i + 1) * 4.9 / 22.0
+		parking_stripe(markings, wheel + Vector2.from_angle(a) * .29,
+			wheel + Vector2.from_angle(b) * .29, .075)
+	for stroke: Vector4 in [Vector4(.055, .42, .025, .02), Vector4(.055, .22, -.23, .22),
+			Vector4(.025, .02, .30, .02), Vector4(.30, .02, .44, -.26), Vector4(.44, -.26, .58, -.22)]:
+		parking_stripe(markings, access + Vector2(stroke.x, stroke.y),
+			access + Vector2(stroke.z, stroke.w), .078)
+	parking_stripe(markings, access + Vector2(.055, .56), access + Vector2(.055, .62), .14)
+	var paint := Kit.paint(Color("#e4dfd3"), .93)
+	paint.cull_mode = BaseMaterial3D.CULL_DISABLED
+	var striping := Kit.mesh_at(park, markings.commit(), Vector3.ZERO, paint)
+	striping.name = "WaterfrontParkingStriping"
+	striping.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var iron := Kit.paint(Color("#2d3030"), .59, .63)
+	for section: Vector2 in [Vector2(PARKING_START, PARKING_AISLE.x), Vector2(PARKING_AISLE.y, PARKING_END)]:
+		parking_railing(park, section, iron)
+
+
+func parking_stripe(surface: SurfaceTool, a: Vector2, b: Vector2, width := .10) -> void:
+	var segments := maxi(1, ceili(a.distance_to(b) / .36))
+	var side := (b - a).orthogonal().normalized() * width * .5
+	for i in segments:
+		var start := a.lerp(b, float(i) / segments)
+		var finish := a.lerp(b, float(i + 1) / segments)
+		for p: Vector2 in [start - side, start + side, finish - side,
+				finish - side, start + side, finish + side]:
+			var lift := lerpf(.116, .055, p.y / PARKING_DEPTH) + parking_lift(p.y, PARKING_DEPTH)
+			surface.add_vertex(on_land(parking_point(p.x, p.y)) + Vector3.UP * (lift + .017))
+
+
+func parking_railing(park: Node3D, section: Vector2, iron: Material) -> void:
+	var fence := StaticBody3D.new()
+	fence.name = "WaterfrontParkingRailing"
+	park.add_child(fence)
+	var panels := ceili((section.y - section.x) / 2.0)
+	for i in panels + 1:
+		var station := lerpf(section.x, section.y, float(i) / panels)
+		var foot := on_land(parking_point(station, PARKING_DEPTH + .14))
+		Kit.box_at(fence, foot + Vector3.UP * .54, Vector3(.064, 1.08, .064), iron)
+		if i == 0:
+			continue
+		var prior := lerpf(section.x, section.y, float(i - 1) / panels)
+		var start := on_land(parking_point(prior, PARKING_DEPTH + .14))
+		for height: float in [.18, 1.01]:
+			Kit.beam(fence, start + Vector3.UP * height, foot + Vector3.UP * height, .041, iron)
+		for bar in range(1, 12):
+			var at := start.lerp(foot, float(bar) / 12.0)
+			Kit.box_at(fence, at + Vector3.UP * .588, Vector3(.024, .82, .024), iron)
+		var shape := BoxShape3D.new()
+		shape.size = Vector3(.07, 1.04, start.distance_to(foot))
+		var collision := CollisionShape3D.new()
+		collision.shape = shape
+		fence.add_child(collision)
+		collision.position = start.lerp(foot, .5) + Vector3.UP * .53
+		collision.look_at_from_position(collision.position, foot + Vector3.UP * .53)
 
 
 func tier_line(lane: float) -> Vector2:

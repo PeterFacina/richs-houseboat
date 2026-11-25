@@ -7,6 +7,7 @@ const Furniture = preload("res://deep_river_champlain_furniture.gd")
 const StreetSigns = preload("res://deep_river_street_signs.gd")
 const TrafficControls = preload("res://deep_river_traffic_controls.gd")
 const Walkways = preload("res://deep_river_walkways.gd")
+const Riverbank = preload("res://riverbank_park.gd")
 const ROAD_DETAILS = preload("res://ottawa/deep_river_road_details.json")
 const MCANULTY_FEEDERS := [0, 2]
 const ROAD_LAYER := 1 << 18
@@ -132,6 +133,8 @@ func build(map: Node3D, data: Dictionary, elevation: Callable, parking_mask: Tex
 	var road_surfaces := {CHAMPLAIN: RoadSurface.CHAMPLAIN, BROCKHOUSE: RoadSurface.BROCKHOUSE}
 	for index: int in through:
 		var line: Array = champlain_line(streets[index]) if index == CHAMPLAIN else streets[index]
+		if index == BROCKHOUSE:
+			line = Riverbank.parking_road(line)
 		add_street(index, line, STREET_HALF_WIDTH, road_surfaces.get(index, RoadSurface.STANDARD))
 	for index in streets.size():
 		if not through.has(index) and index not in HIGHWAY:
@@ -276,10 +279,8 @@ func add_street(street: int, line: Array, width: float, road_surface := RoadSurf
 		span.length = span.start.distance_to(span.end)
 		span.station = stations[i - 1]
 		span.total = stations[-1]
-		span.start_width = Vector2(champlain_half_width(span.station, -1), champlain_half_width(span.station, 1)) \
-			if street == CHAMPLAIN else Vector2.ONE * width
-		span.end_width = Vector2(champlain_half_width(stations[i], -1), champlain_half_width(stations[i], 1)) \
-			if street == CHAMPLAIN else Vector2.ONE * width
+		span.start_width = street_widths(street, span.start, span.station, width)
+		span.end_width = street_widths(street, span.end, stations[i], width)
 		span.width = maxf(maxf(span.start_width.x, span.start_width.y), maxf(span.end_width.x, span.end_width.y))
 		span.bounds = Rect2(span.start, Vector2.ZERO).expand(span.end).grow(span.width * 1.4 + 4.5)
 		span.fine = downtown.intersects(span.bounds) or close_areas.any(
@@ -299,6 +300,14 @@ func add_street(street: int, line: Array, width: float, road_surface := RoadSurf
 		for point: Vector2 in span.outline:
 			span.pavement_bounds = span.pavement_bounds.expand(point)
 		spans.append(span)
+
+
+static func street_widths(street: int, point: Vector2, station: float, width: float) -> Vector2:
+	if street == CHAMPLAIN:
+		return Vector2(champlain_half_width(station, -1), champlain_half_width(station, 1))
+	if street == BROCKHOUSE:
+		return Vector2(Riverbank.parking_half_width(point, width), width)
+	return Vector2.ONE * width
 
 
 func find_neighbors() -> void:
@@ -389,10 +398,17 @@ func gravel_at(span: Span, point: Vector2) -> float:
 
 
 func build_span(span: Span) -> void:
-	var spacing := .78 if span.fine else 4.6
+	var parking := span.street == BROCKHOUSE and span.width > STREET_HALF_WIDTH + .01
+	var spacing := .38 if parking else (.78 if span.fine else 4.6)
 	var divisions := maxi(1, ceili(span.length / spacing))
 	var columns := PackedFloat32Array([-1.0, -.5, 0.0, .5, 1.0])
-	if not span.fine:
+	if parking:
+		# The wide bays cross several terrain triangles. Follow the terrain between the lane and railing.
+		columns.clear()
+		var strips := ceili(span.width / .35) * 2
+		for column in strips + 1:
+			columns.append(lerpf(-1.0, 1.0, float(column) / strips))
+	elif not span.fine:
 		columns = PackedFloat32Array([-1.0, 0.0, 1.0])
 	var rows := PackedFloat32Array([0.0])
 	for row in divisions:
@@ -548,6 +564,8 @@ func emit_vertex(surface: SurfaceTool, span: Span, point: Vector2, nearby: Array
 	var lift := lerpf(.116 - .061 * edge, JUNCTION_LIFT, joins)
 	lift = lerpf(.018 + end_blend * (lift - .018), JUNCTION_LIFT, joins)
 	lift = lerpf(lift, .026, plaza)
+	if span.street == BROCKHOUSE:
+		lift += Riverbank.parking_lift(-lateral, width)
 	var apron := apron_coverage(point)
 	lift = lerpf(lift, .010, apron)
 	var shoulder_mix := clampf((absf(lateral) - span.width) / span.shoulder, 0.0, 1.0)
@@ -561,19 +579,21 @@ func emit_vertex(surface: SurfaceTool, span: Span, point: Vector2, nearby: Array
 	if span.street == RIDGE:
 		paint *= smoothstep(26.0, 40.0, point.distance_to(PLAZA_FRONTAGE))
 	var style := float(span.marking) / 3.0
-	var edges := 1.0 if span.street in HIGHWAY or (span.street == BROCKHOUSE and not downtown.has_point(point)) else 0.0
+	var edges := 1.0 if span.street in HIGHWAY or (span.street == BROCKHOUSE
+		and not downtown.has_point(point) and width <= STREET_HALF_WIDTH + .01) else 0.0
 	var curb := Walkways.curb_strength(span.edge_profiles, station, signf(lateral))
 	# Blue is gravel coverage on pavement and opacity on the separate shoulder mesh.
 	var surface_gravel := 0.0
+	var verge := (1.0 - joins) * end_blend * (1.0 - apron) * (1.0 - curb)
+	if span.street == BROCKHOUSE and width > STREET_HALF_WIDTH + .01:
+		verge *= 1.0 - smoothstep(STREET_HALF_WIDTH, 4.1, width)
+	if downtown.has_point(point):
+		var outward := axis.orthogonal() * signf(lateral)
+		verge *= 0.0 if span.street == CHAMPLAIN else unpaved_ground(point, outward)
 	if shoulder:
-		surface_gravel = (1.0 - joins) * end_blend * (1.0 - apron) * (1.0 - curb)
+		surface_gravel = verge
 	else:
 		surface_gravel = lerpf(gravel_at(span, point), junction.z, junction.x)
-		# Match the shoulder material at the asphalt lip where a soft verge exists.
-		var verge := (1.0 - joins) * end_blend * (1.0 - apron) * (1.0 - curb)
-		if downtown.has_point(point):
-			var outside := point + axis.orthogonal() * (signf(lateral) * .4)
-			verge *= 0.0 if span.street == CHAMPLAIN else unpaved_ground(outside)
 		var street_wear := fposmod(float(span.street + 19) * .618034, 1.0)
 		surface.set_custom(0, Color(width, verge * (1.0 - junction.x), street_wear, junction.x))
 	surface.set_color(Color(style, edges, surface_gravel,
@@ -597,13 +617,23 @@ func apron_coverage(point: Vector2) -> float:
 	return marina_apron.get_pixelv(pixel.min(marina_apron.get_size() - Vector2i.ONE)).r
 
 
-func unpaved_ground(point: Vector2) -> float:
+func unpaved_ground(point: Vector2, outward: Vector2) -> float:
+	var edge := point + outward * .4
+	var adjacent := paving_at(edge)
+	# Connect apron asphalt across the narrow raster edge without reaching across a sidewalk verge.
+	var apron_edge := point + outward * 1.2
+	var apron := maxf(paving_at(point + outward * .85).r, paving_at(apron_edge).r)
+	if CivicParking.covers(edge) or CivicParking.covers(apron_edge):
+		apron = 1.0
+	return 1.0 - smoothstep(.08, .65, maxf(maxf(adjacent.r, adjacent.g), apron))
+
+
+func paving_at(point: Vector2) -> Color:
 	if not downtown.has_point(point):
-		return 1.0
+		return Color.BLACK
 	var uv := (point - downtown.position) / downtown.size
 	var pixel := Vector2i(uv * Vector2(town_paving.get_size()))
-	var paint := town_paving.get_pixelv(pixel)
-	return 1.0 - smoothstep(.08, .65, maxf(paint.r, paint.g))
+	return town_paving.get_pixelv(pixel)
 
 
 static func new_surface(pavement := false) -> SurfaceTool:

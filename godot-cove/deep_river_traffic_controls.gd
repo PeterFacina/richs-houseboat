@@ -3,6 +3,8 @@ extends RefCounted
 const Kit = preload("res://scenery.gd")
 const CONTROLS = preload("res://ottawa/municipal_traffic_controls.json")
 const SCHOOL_SIGN = preload("res://ottawa/school_crossing_wc2.svg")
+const STOP_SIGN = preload("res://ottawa/stop_ra1.svg")
+const SIGN_FONT = preload("res://ottawa/BarlowCondensed-SemiBold.ttf")
 # May 2025 imagery places these crosswalks across Laurier and the east leg of Deep River Rd.
 const LAURIER_CROSSING := Vector4(17653.77, 12928.52, -.0906, .9959)
 const DEEP_RIVER_CROSSING := Vector4(18143.57, 13325.72, .9996, -.0295)
@@ -19,6 +21,7 @@ var red: StandardMaterial3D
 var fluorescent: StandardMaterial3D
 var ink: StandardMaterial3D
 var school: StandardMaterial3D
+var stop: StandardMaterial3D
 var occupied: Array[Vector2]
 
 
@@ -34,6 +37,9 @@ func build(parent: Node3D, map: Node3D) -> void:
 	school = Kit.paint(Color.WHITE, .8)
 	school.albedo_texture = SCHOOL_SIGN
 	school.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
+	stop = Kit.paint(Color.WHITE, .8)
+	stop.albedo_texture = STOP_SIGN
+	stop.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
 	post = BoxMesh.new()
 	post.size = Vector3(.06, 2.46, .06)
 	octagon = polygon_face(8, PI / 8.0, .39)
@@ -112,18 +118,17 @@ static func in_building(buildings: Array, point: Vector2) -> bool:
 
 func add_regulatory_face(board: Node3D, kind: String) -> void:
 	var shape := triangle if kind == "yield" else octagon
-	var border := red if kind == "yield" else white
-	var fill := white if kind == "yield" else red
 	plate(board, shape, .047, 1.015, steel, true)
-	plate(board, shape, .063, 1.0, border)
-	plate(board, shape, .067, .80 if kind == "yield" else .90, fill)
 	if kind == "yield":
+		plate(board, shape, .063, 1.0, red)
+		plate(board, shape, .067, .80, white)
 		label_at(board, "YIELD", Vector3(0.0, FACE_HEIGHT + .06, .083), .0019, Color("#9c2125"))
 	else:
-		label_at(board, "STOP", Vector3(0.0, FACE_HEIGHT, .083), .00355, Color("#fffdf2"))
+		plate(board, shape, .063, 1.0, stop)
 		if kind == "all_way":
-			panel_at(board, Vector3(0.0, 1.62, .046), Vector3(.41, .16, .033), white)
-			label_at(board, "ALL WAY", Vector3(0.0, 1.62, .071), .00115, Color("#242320"))
+			panel_at(board, Vector3(0.0, 1.62, .046), Vector3(.41, .16, .033), red)
+			panel_at(board, Vector3(0.0, 1.62, .064), Vector3(.384, .134, .010), white)
+			label_at(board, "ALL-WAY", Vector3(0.0, 1.62, .071), .0020, Color("#9c2125"))
 
 
 func plate(board: Node3D, mesh: Mesh, depth: float, size: float,
@@ -146,7 +151,7 @@ static func label_at(board: Node3D, title: String, at: Vector3, pixels: float, i
 	board.add_child(label)
 	label.position = at
 	label.text = title
-	label.font = ThemeDB.fallback_font
+	label.font = SIGN_FONT
 	label.font_size = 48
 	label.pixel_size = pixels
 	label.outline_size = 0
@@ -158,11 +163,13 @@ static func label_at(board: Node3D, title: String, at: Vector3, pixels: float, i
 static func polygon_face(sides: int, phase: float, radius: float) -> ArrayMesh:
 	var surface := SurfaceTool.new()
 	surface.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var extent := cos(phase) if sides == 8 else 1.0
 	for i in sides:
 		var a := phase + TAU * i / sides
 		var b := phase + TAU * (i + 1) / sides
 		for v: Vector3 in [Vector3.ZERO, Vector3(sin(a), cos(a), 0.0), Vector3(sin(b), cos(b), 0.0)]:
 			surface.set_normal(Vector3.BACK)
+			surface.set_uv(Vector2(.5 + v.x / (2.0 * extent), .5 - v.y / (2.0 * extent)))
 			surface.add_vertex(v * radius)
 	return surface.commit()
 
