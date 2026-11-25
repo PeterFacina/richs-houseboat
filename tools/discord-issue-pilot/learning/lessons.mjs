@@ -1,3 +1,5 @@
+import { existsSync } from 'node:fs';
+import { DatabaseSync } from 'node:sqlite';
 import { createHash } from 'node:crypto';
 import { terms } from '../multistage/code-index.mjs';
 
@@ -55,4 +57,15 @@ export function relevantLesson(statuses, note, selected, excluded = new Set()) {
 export function lessonEvidence(item) {
   return { kind: 'github', title: `Source-verified historical lesson from issue #${item.report.number} and merged PR #${item.implementation.pull}`,
     excerpt: `History only. Failed approach: ${item.failure} Merged correction: ${item.success} Verification: ${item.verification}`.slice(0, 440) };
+}
+
+export function inboxLessons(path) {
+  if (!existsSync(path)) return [];
+  const db = new DatabaseSync(path, { readOnly: true });
+  try {
+    if (!db.prepare("SELECT 1 FROM sqlite_schema WHERE name='reviews'").get()) return [];
+    return db.prepare(`SELECT data FROM reviews WHERE json_extract(data, '$.status')='lesson'
+      AND rowid IN (SELECT max(rowid) FROM reviews WHERE json_extract(data, '$.status')='lesson' GROUP BY issue)
+      ORDER BY rowid DESC LIMIT 100`).all().map(row => JSON.parse(row.data).lesson).filter(Boolean);
+  } finally { db.close(); }
 }

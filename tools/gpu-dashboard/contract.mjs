@@ -6,7 +6,7 @@ export const repository = 'https://github.com/PeterFacina/richs-houseboat';
 export const loopback = '127.0.0.1';
 export const pageSize = 24;
 export const roles = ['viewer', 'reviewer'];
-export const reviewerRoutes = new Set(['/issues', '/learning']);
+export const reviewerRoutes = new Set(['/issues', '/learning', '/review']);
 export const retrievalModes = ['original', 'deterministic-v1'];
 export const evidenceKinds = ['source', 'guide', 'github', 'history', 'reported', 'imported', 'attachment', 'verified-lesson', 'other'];
 const rootSources = new Set(['AGENTS.md', 'GAME GUIDE AND ASSET CREDITS.md', 'START HERE.txt', 'Play Ottawa River.cmd']);
@@ -50,7 +50,7 @@ export function urlPath(req) {
 
 const decimal = /^(?:0|[1-9]\d*)$/;
 const apiRoutes = new Map([['/overview', []], ['/knowledge', ['kind', 'q', 'page']],
-  ['/issues', ['page']], ['/briefs', ['page']], ['/retrieval', ['issue']], ['/learning', ['page']]]);
+  ['/review', ['issue', 'page']], ['/issues', ['page']], ['/briefs', ['page']], ['/retrieval', ['issue']], ['/learning', ['page']]]);
 
 export function apiInput(path, query) {
   const allowed = apiRoutes.get(path);
@@ -63,7 +63,7 @@ export function apiInput(path, query) {
   const kind = query.get('kind') ?? 'files';
   const issue = query.get('issue');
   if (q.length > 80 || /[\p{Cc}\p{Cf}]/u.test(q) || !['files', 'functions'].includes(kind) ||
-      (path === '/retrieval' && (!decimal.test(issue ?? '') || !positive(Number(issue))))) return null;
+      ((path === '/retrieval' || (path === '/review' && issue !== null)) && (!decimal.test(issue ?? '') || !positive(Number(issue))))) return null;
   return { page: Number(page), q, kind, issue: Number(issue) };
 }
 
@@ -97,3 +97,16 @@ export function configuration(file) {
 }
 
 export const isEntryPoint = url => process.argv[1] && pathToFileURL(resolve(process.argv[1])).href === url;
+
+export async function readReviewBody(req) {
+  if (req.headers['content-type'] !== 'application/json') throw new Error('Use application/json.');
+  const chunks = [];
+  let size = 0;
+  for await (const chunk of req.iterator({ destroyOnReturn: false })) {
+    size += chunk.length;
+    if (size > 32_768) { req.resume(); throw new Error('Review exceeds the size limit.'); }
+    chunks.push(chunk);
+  }
+  try { return JSON.parse(Buffer.concat(chunks).toString('utf8')); }
+  catch { throw new Error('Invalid JSON.'); }
+}

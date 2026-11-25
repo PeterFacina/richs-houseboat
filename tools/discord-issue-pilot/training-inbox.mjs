@@ -41,11 +41,11 @@ function completedOutcome(review, capture) {
   };
 }
 
-export function openTrainingInbox(path = trainingPath()) {
-  mkdirSync(dirname(path), { recursive: true });
-  const db = new DatabaseSync(path);
-  db.exec('PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000;');
-  db.exec('CREATE TABLE IF NOT EXISTS captures (issue INTEGER NOT NULL, id TEXT NOT NULL,'
+export function openTrainingInbox(path = trainingPath(), { readOnly = false } = {}) {
+  if (!readOnly) mkdirSync(dirname(path), { recursive: true });
+  const db = new DatabaseSync(path, { readOnly });
+  if (!readOnly) db.exec('PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000;');
+  if (!readOnly) db.exec('CREATE TABLE IF NOT EXISTS captures (issue INTEGER NOT NULL, id TEXT NOT NULL,'
     + ' input TEXT NOT NULL, brief TEXT NOT NULL, recorded TEXT NOT NULL, published TEXT, PRIMARY KEY(issue,id));'
     + ' CREATE TABLE IF NOT EXISTS reviews (issue INTEGER NOT NULL, at TEXT NOT NULL, data TEXT NOT NULL);'
     + ' CREATE TABLE IF NOT EXISTS github_outcomes (issue INTEGER PRIMARY KEY, data TEXT NOT NULL);');
@@ -84,12 +84,26 @@ export function openTrainingInbox(path = trainingPath()) {
       db.prepare('INSERT INTO github_outcomes VALUES (?,?) ON CONFLICT(issue) DO UPDATE SET data=excluded.data')
         .run(issue, JSON.stringify(data));
     },
+    transaction(write) {
+      db.exec('BEGIN IMMEDIATE');
+      try { const result = write(); db.exec('COMMIT'); return result; }
+      catch (error) { db.exec('ROLLBACK'); throw error; }
+    },
     addReview(issue, review) {
       const record = this.read(issue);
       if (!record.captures.length) throw new Error('No original model input captured for this issue.');
       if (typeof review.summary !== 'string' || !review.summary.trim()) throw new Error('Add a short review summary.');
       if (review.status === 'outcome') {
-        review = completedOutcome(review, record.captures.find(row => row.id === review.captureId));
+        review = { ...completedOutcome(review, record.captures.find(row => row.id === review.captureId)),
+          ...(review.actionId && { actionId: review.actionId, actionHash: review.actionHash, supersedes: review.supersedes }) };
+      }
+      if (['lesson', 'rejected'].includes(review.status) &&
+          (!record.captures.some(row => row.id === review.captureId && row.published) ||
+           typeof review.reviewer !== 'string' || !review.reviewer.trim())) {
+        throw new Error('A published capture and named reviewer are required.');
+      }
+      if (review.status === 'lesson' && (!review.lesson?.anchors?.length || review.lesson.review?.by !== review.reviewer)) {
+        throw new Error('A verified source lesson and reviewer are required.');
       }
       if (review.status === 'approved') {
         const capture = record.captures.find(row => row.id === review.captureId && row.published);
@@ -101,8 +115,8 @@ export function openTrainingInbox(path = trainingPath()) {
           evidence, original.currentRequest.note);
         const findings = checkExport(brief, evidence, original.verifiedProjectFacts);
         if (findings.length) throw new Error('Target export rejected: ' + findings.join(', '));
-      } else if (!['feedback', 'outcome'].includes(review.status)) {
-        throw new Error('Use status feedback, outcome or approved.');
+      } else if (!['feedback', 'outcome', 'rejected', 'lesson'].includes(review.status)) {
+        throw new Error('Unknown review action.');
       }
       db.prepare('INSERT INTO reviews VALUES (?,?,?)').run(issue, new Date().toISOString(), JSON.stringify(review));
     },

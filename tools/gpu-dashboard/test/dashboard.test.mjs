@@ -7,6 +7,9 @@ import { DatabaseSync } from 'node:sqlite';
 import { test } from 'node:test';
 import { createAdapter } from '../adapter.mjs';
 import { createGitHubIssues } from '../github-issues.mjs';
+import { randomUUID } from 'node:crypto';
+import { createTrainingReview } from '../review.mjs';
+import { openTrainingInbox } from '../../discord-issue-pilot/training-inbox.mjs';
 import { createReader } from '../reader.mjs';
 import { createDashboard } from '../server.mjs';
 import { gpuBriefMarker } from '../../discord-issue-pilot/workflow.mjs';
@@ -27,7 +30,7 @@ async function listening(server, t) {
   return server.address().port;
 }
 
-function get(port, path, headers = {}, method = 'GET') {
+function get(port, path, headers = {}, method = 'GET', data) {
   return new Promise((resolve, reject) => {
     const req = request({ hostname: '127.0.0.1', port, path, method, headers: { Host: host, ...headers } }, res => {
       let body = '';
@@ -36,7 +39,7 @@ function get(port, path, headers = {}, method = 'GET') {
       res.on('end', () => resolve({ status: res.statusCode, headers: res.headers, body }));
     });
     req.on('error', reject);
-    req.end();
+    req.end(data);
   });
 }
 
@@ -237,4 +240,64 @@ test('a concurrent worker-style WAL write exposes only committed capture totals'
     assert.equal(reader().overview('reviewer').briefs.collected, 4);
     assert.deepEqual(reader().briefs(0).briefs.map(row => row.issue), [12, 11]);
   } finally { writer.close(); }
+});
+
+test('remote review rejects viewer, unlisted writer and cross-origin writes and persists audited decisions', async t => {
+  const f = fixture();
+  t.after(() => rmSync(f.root, { recursive: true, force: true }));
+  const inbox = openTrainingInbox(f.inbox);
+  const issue = 30;
+  const report = 'Synthetic review report';
+  const messages = [{ role: 'system', content: 'Build a brief.' }, { role: 'user',
+    content: JSON.stringify({ currentRequest: { note: report }, verifiedProjectFacts: [], untrustedRetrievedEvidence: [] }) }];
+  const id = inbox.capture(issue, { report, exportPassed: true, request: { messages } }, 'Synthetic brief');
+  inbox.link(issue, 'Synthetic brief', issueUrl(issue));
+  inbox.saveGitHubOutcome(issue, { pull: 31, url: 'https://github.com/PeterFacina/richs-houseboat/pull/31',
+    merge: current, mergedAt: '2026-01-01T12:00:00Z' });
+  inbox.close();
+  writeFileSync(join(f.root, 'holdout.json'), JSON.stringify([{ issue: 6 }, { issue: 7 }, { issue: 8 }]));
+  const realReviewer = process.env.HOUSEBOAT_TEST_REVIEWER || reviewer['Tailscale-User-Login'];
+  const allowed = { ...users, [realReviewer]: 'reviewer', 'other@example.invalid': 'reviewer' };
+  const adapter = await listening(createAdapter({ token, reader: createReader({ storage: f.root, inbox: f.inbox }),
+    review: createTrainingReview({ storage: f.root, inbox: f.inbox }) }), t);
+  const port = await listening(createDashboard({ origin, users: allowed, token, adapterPort: adapter,
+    remoteReview: true, reviewWriters: [realReviewer] }), t);
+  const route = '/api/review?issue=' + issue;
+  const authenticated = { 'Tailscale-User-Login': realReviewer };
+  const target = Object.fromEntries(['objective', 'observations', 'tasks', 'verification', 'acceptance', 'unknowns']
+    .map(field => [field, ['Check the control.']]));
+  const send = (payload, headers = authenticated, source = origin) => {
+    const data = JSON.stringify({ captureId: id, actionId: randomUUID(), summary: 'Documented review', ...payload });
+    return get(port, route, { ...headers, Origin: source, 'Content-Type': 'application/json',
+      'Content-Length': Buffer.byteLength(data), 'X-Review-Actor': 'forged@example.invalid' }, 'POST', data);
+  };
+  assert.equal((await get(port, route, viewer)).status, 403);
+  assert.equal((await get(port, route, authenticated)).status, 200);
+  assert.equal((await get(adapter, '/v1/review?issue=' + issue, authenticated)).status, 403);
+  assert.equal((await send({ status: 'feedback' }, viewer)).status, 403);
+  assert.equal((await send({ status: 'feedback' }, { 'Tailscale-User-Login': 'other@example.invalid' })).status, 403);
+  assert.equal((await send({ status: 'feedback' }, authenticated, 'https://unrelated.example')).status, 403);
+  const actionId = randomUUID();
+  assert.equal((await send({ status: 'feedback', actionId })).status, 200);
+  assert.equal((await send({ status: 'feedback', actionId })).status, 200);
+  assert.equal((await send({ status: 'feedback', supersedes: actionId })).status, 200);
+  assert.equal((await send({ status: 'outcome', firstAttempt: 'failed', verification: 'partial' })).status, 200);
+  assert.equal((await send({ status: 'approved', target, confirm: true })).status, 400);
+  assert.equal((await send({ status: 'outcome', firstAttempt: 'failed', verification: 'passed' })).status, 200);
+  assert.equal((await send({ status: 'approved', target })).status, 400);
+  assert.equal((await send({ status: 'approved', confirm: true, target: { ...target, tasks: ['Inspect [S999].'] } })).status, 400);
+  assert.equal((await send({ status: 'approved', target, confirm: true })).status, 200);
+  assert.equal((await send({ status: 'lesson', confirm: true, failure: 'Wrong source', success: 'Use the railing function',
+    feedback: 'Verify the source first', verification: 'Read the function', scope: ['railing', 'fence', 'waterfront'],
+    anchors: [{ path: f.sourcePath, name: 'build_railing' }] })).status, 200);
+  let detail = JSON.parse((await get(port, route, authenticated)).body);
+  assert.equal(detail.captures[0].eligible, true);
+  assert.equal(detail.history.filter(row => row.status === 'feedback').length, 2);
+  assert.equal(detail.history.at(-1).lesson.review.by, realReviewer);
+  assert.ok(detail.history.every(row => row.reviewer === realReviewer));
+  assert.equal((await send({ status: 'rejected' })).status, 200);
+  detail = JSON.parse((await get(port, route, authenticated)).body);
+  assert.equal(detail.captures[0].eligible, false);
+  assert.equal(detail.captures[0].decision, 'rejected');
+  assert.equal(detail.history.filter(row => row.status === 'approved').length, 1);
 });

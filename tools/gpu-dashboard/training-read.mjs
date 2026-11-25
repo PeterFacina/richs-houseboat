@@ -66,7 +66,9 @@ export function learningStats(db) {
   const { approved } = db.prepare(`SELECT COUNT(DISTINCT c.rowid) AS approved FROM captures c
     JOIN (${reviews}) r ON r.issue=c.issue AND json_extract(r.doc, '$.captureId')=c.id
     WHERE c.published IS NOT NULL AND json_extract(r.doc, '$.status')='approved'
-      AND json_type(r.doc, '$.target')='object' AND json_type(r.doc, '$.reviewer')='text'`).get();
+      AND json_type(r.doc, '$.target')='object' AND json_type(r.doc, '$.reviewer')='text'
+      AND NOT EXISTS (SELECT 1 FROM (${reviews}) later WHERE later.issue=r.issue AND later.rowid>r.rowid
+        AND json_extract(later.doc, '$.captureId')=c.id AND json_extract(later.doc, '$.status')='rejected')`).get();
   const { lessonsUsed } = db.prepare(`SELECT COUNT(*) AS lessonsUsed FROM (
     SELECT published, brief, ${cleanJson('input')} AS doc FROM captures)
     WHERE published IS NOT NULL AND instr(brief, char(10)||'VERIFIED LESSON FROM A COMPLETED TASK'||char(10))>0
@@ -175,7 +177,9 @@ export function retrievalResult(db, issue, reviewer) {
   if (reviewer && hasReviews(db)) {
     const review = db.prepare(`SELECT COUNT(CASE WHEN json_extract(r.doc, '$.status')='feedback' THEN 1 END) AS feedback,
       COUNT(CASE WHEN json_extract(r.doc, '$.status')='approved' AND json_extract(r.doc, '$.captureId')=c.id
-        AND json_type(r.doc, '$.target')='object' AND json_type(r.doc, '$.reviewer')='text' THEN 1 END)>0 AS approved
+        AND json_type(r.doc, '$.target')='object' AND json_type(r.doc, '$.reviewer')='text'
+        AND NOT EXISTS (SELECT 1 FROM (${reviews}) later WHERE later.issue=r.issue AND later.rowid>r.rowid
+          AND json_extract(later.doc, '$.captureId')=c.id AND json_extract(later.doc, '$.status')='rejected') THEN 1 END)>0 AS approved
       FROM (${reviews}) r JOIN captures c ON c.issue=r.issue AND c.rowid=?`).get(row.rowid);
     detail.review = { feedback: review.feedback, approved: Boolean(review.approved) };
   }

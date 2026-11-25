@@ -6,14 +6,14 @@ import { buildDraft, checkExport } from '../../game_prompt_studio/lib/model.mjs'
 import { trainingPath } from '../training-inbox.mjs';
 import { repository } from '../workflow.mjs';
 
-export function approvedDataset(path = trainingPath()) {
+export function approvedDataset(path = trainingPath(), { includeCaptureIds = false } = {}) {
   const db = new DatabaseSync(path, { readOnly: true });
   try {
     db.exec('PRAGMA query_only=ON; PRAGMA busy_timeout=500; BEGIN');
     const table = db.prepare("SELECT 1 FROM sqlite_schema WHERE type='table' AND name='github_outcomes'").get();
     const rows = db.prepare(`SELECT r.issue, r.data, c.input, c.published FROM reviews r JOIN captures c
       ON c.issue=r.issue AND c.id=json_extract(CASE WHEN json_valid(r.data) THEN r.data ELSE '{}' END, '$.captureId')
-      WHERE json_extract(CASE WHEN json_valid(r.data) THEN r.data ELSE '{}' END, '$.status') IN ('approved','outcome')
+      WHERE json_extract(CASE WHEN json_valid(r.data) THEN r.data ELSE '{}' END, '$.status') IN ('approved','rejected','outcome')
       AND c.published IS NOT NULL ORDER BY r.rowid DESC`).all();
     const merged = new Map(table ? db.prepare('SELECT issue,data FROM github_outcomes').all()
       .map(row => [row.issue, JSON.parse(row.data)]) : []);
@@ -23,11 +23,14 @@ export function approvedDataset(path = trainingPath()) {
       const review = JSON.parse(row.data);
       if (review.status === 'outcome' && !outcomes.has(key(row, review))) outcomes.set(key(row, review), review);
     }
+    const decisions = new Set();
     const issues = new Set();
     const reports = new Set();
     const examples = [];
     for (const row of rows) {
       const review = JSON.parse(row.data);
+      if (review.status === 'outcome' || decisions.has(key(row, review))) continue;
+      decisions.add(key(row, review));
       if (review.status !== 'approved' || !review.reviewer?.trim() || issues.has(row.issue)) continue;
       const outcome = outcomes.get(key(row, review));
       const pull = merged.get(row.issue);
@@ -49,7 +52,7 @@ export function approvedDataset(path = trainingPath()) {
           .map(field => [field, review.target[field]]));
         issues.add(row.issue);
         reports.add(fingerprint);
-        examples.push({ issue: row.issue, messages: [...messages.map(({ role, content }) => ({ role, content })),
+        examples.push({ issue: row.issue, ...(includeCaptureIds && { captureId: review.captureId }), messages: [...messages.map(({ role, content }) => ({ role, content })),
           { role: 'assistant', content: JSON.stringify(target) }] });
       } catch { /* An old or incomplete approval does not become training data. */ }
     }

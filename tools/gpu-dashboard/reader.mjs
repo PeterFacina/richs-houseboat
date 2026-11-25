@@ -3,7 +3,7 @@ import { dirname, join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { indexedKnowledge, projectProfile, recentScan } from '../game_prompt_studio/lib/index.mjs';
 import { pinnedFunctions } from '../discord-issue-pilot/multistage/code-index.mjs';
-import { lessonStatus } from '../discord-issue-pilot/learning/lessons.mjs';
+import { inboxLessons, lessonStatus } from '../discord-issue-pilot/learning/lessons.mjs';
 import { date, flag, model, number, oneOf, pageSize, positive, retrievalModes, revision, sourcePath, text } from './contract.mjs';
 import { briefStats, gitHubOutcomeCounts, latestKnowledgeCheck, learningStats, outcomePage, publishedBriefs, publishedLinks, retrievalResult,
   reviewedIssueOutcomes } from './training-read.mjs';
@@ -55,7 +55,7 @@ function trainingStatus(path) {
   try {
     if (statSync(path).size > 4096) return null;
     const state = JSON.parse(readFileSync(path, 'utf8'));
-    const phase = oneOf(['waiting-for-approved-examples', 'waiting-for-holdout', 'waiting-for-worker', 'waiting-for-gpu',
+    const phase = oneOf(['waiting-for-approved-examples', 'waiting-for-holdout', 'awaiting-training-authorization', 'waiting-for-worker', 'waiting-for-gpu',
       'training', 'evaluating', 'awaiting-promotion', 'evaluation-did-not-improve', 'failed'], state.phase);
     const time = typeof state.observedAt === 'string' && /Z$/.test(state.observedAt) ? Date.parse(state.observedAt) : NaN;
     if (state.schema !== 1 || !phase || !Number.isFinite(time)) return null;
@@ -164,7 +164,10 @@ export function createReader({ storage, inbox, githubIssues, lessons = JSON.pars
     retrieval(issue, role) { return training(db => ({ result: retrievalResult(db, issue, role === 'reviewer') })); },
     learning(page) {
       const development = training(db => outcomePage(db, page));
-      return { catalogue: source(db => curatedLessons(join(storage, 'source'), db, lessons)), development };
+      const remote = inboxLessons(inbox);
+      const ids = new Set(remote.map(lesson => lesson.report.number));
+      const snapshot = { lessons: [...remote, ...(lessons.lessons ?? []).filter(lesson => !ids.has(lesson.report.number))] };
+      return { catalogue: source(db => curatedLessons(join(storage, 'source'), db, snapshot)), development };
     },
   };
 }
