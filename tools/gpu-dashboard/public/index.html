@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Rich’s Houseboat · GPU Dashboard</title>
+  <link rel="stylesheet" href="/dashboard.css">
+  <script type="module" src="/dashboard.mjs"></script>
+</head>
+<body>
+  <a class="skip" href="#page">Skip to content</a>
+  <aside class="sidebar">
+    <a class="brand" href="#overview">
+      <span class="brand-mark" aria-hidden="true">RH</span>
+      <span>Rich’s Houseboat <small>GPU dashboard</small></span>
+    </a>
+    <nav id="nav" aria-label="Dashboard">
+      <a href="#overview" data-page="overview" aria-current="page">Overview</a>
+      <a href="#knowledge" data-page="knowledge">Game knowledge</a>
+      <a href="#retrieval" data-page="retrieval">Retrieval</a>
+      <a href="#learning" data-page="learning" hidden>Learning</a>
+    </nav>
+    <div class="sidebar-footer"><span class="read-only">Read-only</span><span id="role"></span></div>
+  </aside>
+  <div class="workspace">
+    <header class="top">
+      <div id="loaded" class="loaded" aria-live="polite">Connecting to worker data…</div>
+      <button type="button" class="button secondary" id="refresh">Refresh</button>
+    </header>
+    <main id="page" tabindex="-1" aria-busy="true">
+      <h1>Worker overview</h1>
+      <p class="notice">Loading the authoritative index…</p>
+    </main>
+  </div>
+</body>
+</html>

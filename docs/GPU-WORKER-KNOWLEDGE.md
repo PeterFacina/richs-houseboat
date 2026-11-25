@@ -2,6 +2,8 @@
 
 The [controlled rollout runbook](GPU-CONTROLLED-ROLLOUT.md) covers the single-issue candidate, preview, rollback and private development outcomes.
 
+The [read-only GPU dashboard](GPU-DASHBOARD.md) reads this worker index and private capture metadata through an authorized adapter. It has no scanner or generation endpoint. The dashboard can display older captures without runtime telemetry.
+
 ## How briefs get their context
 
 1. The existing Discord bot queues an issue on GitHub. The GPU worker skips reports that already have a marked brief and accepts one generation at a time.

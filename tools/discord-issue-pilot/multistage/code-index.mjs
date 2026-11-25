@@ -39,6 +39,44 @@ function markers(lines, symbols, path) {
   return declarations.sort((a, b) => a.line - b.line);
 }
 
+function sourceEnd(lines, declarations, i) {
+  const marker = declarations[i];
+  const boundary = declarations[i + 1]?.line ?? lines.length + 1;
+  if (marker.kind === 'func') {
+    // An annotation or another top-level statement belongs to the next declaration.
+    for (let n = marker.line; n < boundary - 1; n++) {
+      if (/^(?:@|const\b|var\b|static\b|func\b|signal\b|class\b)/.test(lines[n])) return n + 1;
+    }
+  }
+  return boundary;
+}
+
+function excerptLines(lines, start, end) {
+  const excerpt = lines.slice(start - 1, end - 1);
+  while (excerpt.length && !excerpt.at(-1).trim()) excerpt.pop();
+  return excerpt;
+}
+
+// Resolve only the curated lesson anchors. Dashboard reads do not build a second retrieval index.
+export function pinnedFunctions(root, manifest, anchors) {
+  root = realpathSync(root);
+  const files = new Map();
+  for (const path of new Set(anchors.map(item => item.path))) {
+    const entry = manifest.files[path];
+    if (!entry || !sourcePath.test(path)) continue;
+    let file;
+    try { file = pinnedRead(root, path); } catch { continue; }
+    if (file.hash !== entry.sha256) continue;
+    const names = new Set(anchors.filter(item => item.path === path).map(item => item.name));
+    const declarations = markers(file.lines, entry.symbols, path);
+    const entries = declarations.flatMap((marker, i) => marker.kind === 'func' && names.has(marker.name) ? [
+      { name: marker.name, symbolKind: 'func', lines: excerptLines(file.lines, marker.line, sourceEnd(file.lines, declarations, i)) },
+    ] : []);
+    files.set(path, { entries });
+  }
+  return { files };
+}
+
 function lexicalCode(text) {
   return text.replace(/"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|#[^\n]*/g, ' ');
 }
@@ -50,8 +88,7 @@ export function buildCodeIndex(root, manifest, tracked) {
   const byName = new Map();
   const docs = [];
   const add = (file, marker, end, kind) => {
-    const lines = file.lines.slice(marker.line - 1, end - 1);
-    while (lines.length && !lines.at(-1).trim()) lines.pop();
+    const lines = excerptLines(file.lines, marker.line, end);
     const item = { ...marker, symbolKind: marker.kind, id: `F${entries.length + 1}`, path: file.path, kind, lines, links: new Map() };
     item.nameTerms = new Set(terms(item.name));
     item.pathTerms = new Set(terms(item.path.replace(/^(?:godot-cove|docs)\//, '').replace(/\.[^.]+$/, '')));
@@ -74,15 +111,7 @@ export function buildCodeIndex(root, manifest, tracked) {
     files.set(path, file);
     const declarations = markers(file.lines, entry.symbols, path);
     for (const [i, marker] of declarations.entries()) {
-      const boundary = declarations[i + 1]?.line ?? file.lines.length + 1;
-      let end = boundary;
-      if (marker.kind === 'func') {
-        // An annotation or another top-level statement belongs to the next declaration.
-        for (let n = marker.line; n < boundary - 1; n++) {
-          if (/^(?:@|const\b|var\b|static\b|func\b|signal\b|class\b)/.test(file.lines[n])) { end = n + 1; break; }
-        }
-      }
-      add(file, marker, end, 'source');
+      add(file, marker, sourceEnd(file.lines, declarations, i), 'source');
     }
   }
 

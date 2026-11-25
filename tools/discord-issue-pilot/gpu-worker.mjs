@@ -11,6 +11,7 @@ import { workerGeneration } from './worker-generation.mjs';
 import { repository } from './workflow.mjs';
 import { openTrainingInbox } from './training-inbox.mjs';
 import { retrievalConfig } from './production-retrieval.mjs';
+import { workerStatus } from './worker-status.mjs';
 
 const token = process.env.GITHUB_TOKEN;
 const model = process.env.STUDIO_MODEL ?? 'qwen3:14b';
@@ -65,6 +66,7 @@ const lock = new DatabaseSync(join(lockDir, 'worker-lock.sqlite'));
 let db;
 let generation;
 let inbox;
+let status;
 try {
   try { lock.exec('BEGIN EXCLUSIVE'); } catch (error) {
     if (error.errcode !== 5) throw error;
@@ -73,8 +75,19 @@ try {
   const installed = await createOllama(11434).status();
   if (!installed.models.some(entry => entry.name === model)) throw new Error('Ollama is missing ' + model + '.');
   db = openDb(storage);
-  const knowledge = sourceKnowledge({ db, storage, remote: 'https://github.com/' + repository + '.git',
+  if (process.env.HOUSEBOAT_DASHBOARD_STATUS === '1') status = workerStatus(storage, { model, retrieval });
+  const source = sourceKnowledge({ db, storage, remote: 'https://github.com/' + repository + '.git',
     python: process.env.HOUSEBOAT_KNOWLEDGE_PYTHON || 'python' });
+  const knowledge = status ? { ...source, async refresh() {
+    try {
+      const state = await source.refresh();
+      status.knowledge(state);
+      return state;
+    } catch (error) {
+      status.knowledge(null);
+      throw error;
+    }
+  } } : source;
   inbox = openTrainingInbox();
   try {
     const state = await knowledge.refresh();
@@ -86,14 +99,25 @@ try {
   console.log(`Worker retrieval mode ${retrieval.mode}${retrieval.issue ? ' for canary issue #' + retrieval.issue : ''}.`);
   console.log('Houseboat GPU worker is watching GitHub for queued reports.');
   while (!stop.signal.aborted) {
-    try { await poll(generation.generate, inbox.link); } catch (error) {
-      if (!stop.signal.aborted) console.error(error.message);
+    try {
+      status?.phase('watching');
+      await poll(status ? async (...args) => {
+        status.phase('generating');
+        try { return await generation.generate(...args); }
+        finally { status.phase('watching'); }
+      } : generation.generate, inbox.link);
+    } catch (error) {
+      if (!stop.signal.aborted) {
+        status?.phase('degraded');
+        console.error(error.message);
+      }
     }
     await delay(30_000, undefined, { signal: stop.signal }).catch(error => {
       if (error.name !== 'AbortError') throw error;
     });
   }
 } finally {
+  await status?.close();
   await generation?.close();
   db?.close();
   inbox?.close();
