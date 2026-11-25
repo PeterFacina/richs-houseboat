@@ -1,0 +1,37 @@
+name: Release notes
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, reopened, synchronize, ready_for_review]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate player-facing release note
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the pull request head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Test release-note validator
+        run: python -m unittest discover -s tools/release-notes -p 'test_*.py' -v
+
+      - name: Require a valid note for gameplay changes
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: >-
+          python tools/release-notes/check_release_notes.py
+          --base "$BASE_SHA" --head "$HEAD_SHA" --pr "$PR_NUMBER"

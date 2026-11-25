@@ -5,21 +5,23 @@ const NOTES_DIR := "res://release-notes"
 
 
 static func latest_release() -> Dictionary:
-	var files := DirAccess.get_files_at(NOTES_DIR)
-	files.sort()
-	var latest: Dictionary = {}
-	for file_name in files:
+	var history := release_history()
+	return history.back() if not history.is_empty() else {}
+
+
+static func release_history() -> Array[Dictionary]:
+	var releases: Array[Dictionary] = []
+	for file_name in DirAccess.get_files_at(NOTES_DIR):
 		if not file_name.ends_with(".json"):
 			continue
 		var file := FileAccess.open(NOTES_DIR.path_join(file_name), FileAccess.READ)
 		if file == null:
 			continue
 		var parsed: Variant = JSON.parse_string(file.get_as_text())
-		if parsed is Dictionary and parsed.get("player_facing", false):
-			var number := int(parsed.get("pr", 0))
-			if number > int(latest.get("pr", 0)):
-				latest = parsed
-	return latest
+		if parsed is Dictionary and parsed.get("player_facing", false) and int(parsed.get("pr", 0)) > 0:
+			releases.append(parsed)
+	releases.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return int(a.get("pr", 0)) < int(b.get("pr", 0)))
+	return releases
 
 
 static func version_text(release: Dictionary = {}) -> String:
@@ -54,13 +56,22 @@ static func show_popup(parent: Node) -> void:
 	content.add_child(MenuTheme.text("RICH’S HOUSEBOAT  ·  %s" % version_text(release), 15, MenuTheme.ORANGE, true))
 	content.add_child(MenuTheme.text("What’s Been Added?", 34, MenuTheme.NAVY, true))
 	content.add_child(HSeparator.new())
-	for item in release.get("bullets", []):
-		var line := Label.new()
-		line.text = "•  " + str(item)
-		line.add_theme_font_size_override("font_size", 18)
-		line.add_theme_color_override("font_color", MenuTheme.NAVY)
-		line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		content.add_child(line)
+	var history := ScrollContainer.new()
+	history.custom_minimum_size = Vector2(490, 300)
+	history.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	content.add_child(history)
+	var entries := VBoxContainer.new()
+	entries.add_theme_constant_override("separation", 10)
+	history.add_child(entries)
+	for entry in release_history():
+		entries.add_child(MenuTheme.text(version_text(entry), 16, MenuTheme.ORANGE, true))
+		for item in entry.get("bullets", []):
+			var line := Label.new()
+			line.text = "•  " + str(item)
+			line.add_theme_font_size_override("font_size", 18)
+			line.add_theme_color_override("font_color", MenuTheme.NAVY)
+			line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			entries.add_child(line)
 	var button := MenuTheme.button("Continue", &"MainAction", "play", 50)
 	content.add_child(button)
 	button.pressed.connect(func(): overlay.queue_free())
