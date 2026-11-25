@@ -134,10 +134,15 @@ func build() -> void:
 		cut_launch_channel()
 	swisha_patch = TerrainPatch.new(meta.swisha, BASE + "swisha")
 	detail_patches = [marina_patch, swisha_patch]
+	var park := RiverbankPark.new()
 	if meta.has("lamure"):
 		lamure_patch = TerrainPatch.new(meta.lamure, BASE + "lamure")
 		detail_patches.append(lamure_patch)
 		meta.places.append({"name": "Lamure Beach", "point": meta.lamure.point})
+	if meta.has("riverbank"):
+		park.prepare(meta.riverbank)
+		marina_patch.heights = park.grade_parking(marina_patch.heights, marina_patch.grid,
+			marina_patch.area.position, marina_patch.spacing, ground_height)
 	regional_water = Image.load_from_file(BASE + "shoals.png")
 	chart_texture = ImageTexture.create_from_image(Image.load_from_file(BASE + "chart.png"))
 	station_water = ImageTexture.create_from_image(Image.load_from_file(BASE + "swisha_shoals.png"))
@@ -231,10 +236,9 @@ func build() -> void:
 	var residential_driveways := build_town(paving_texture, ground)
 	property_sites = PropertySites.build(self, ground_height, concrete_scan, scanned_surface("brick"), wood_scan)
 	build_landmarks()
-	var park := RiverbankPark.new()
 	if meta.has("riverbank"):
-		park.prepare(meta.riverbank)
 		var surface := Image.load_from_file(BASE + "riverbank_surface.png")
+		park.clear_old_path_paint(surface)
 		surface.generate_mipmaps()
 		ground.set_shader_parameter("riverbank_path_mask", ImageTexture.create_from_image(surface))
 		ground.set_shader_parameter("riverbank_path_bounds", Vector4(

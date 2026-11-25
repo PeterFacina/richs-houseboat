@@ -564,8 +564,6 @@ func emit_vertex(surface: SurfaceTool, span: Span, point: Vector2, nearby: Array
 	var lift := lerpf(.116 - .061 * edge, JUNCTION_LIFT, joins)
 	lift = lerpf(.018 + end_blend * (lift - .018), JUNCTION_LIFT, joins)
 	lift = lerpf(lift, .026, plaza)
-	if span.street == BROCKHOUSE:
-		lift += Riverbank.parking_lift(-lateral, width)
 	var apron := apron_coverage(point)
 	lift = lerpf(lift, .010, apron)
 	var shoulder_mix := clampf((absf(lateral) - span.width) / span.shoulder, 0.0, 1.0)
@@ -578,6 +576,10 @@ func emit_vertex(surface: SurfaceTool, span: Span, point: Vector2, nearby: Array
 		transverse = span.total - station
 	if span.street == RIDGE:
 		paint *= smoothstep(26.0, 40.0, point.distance_to(PLAZA_FRONTAGE))
+	if span.street == BROCKHOUSE:
+		# The marked bays border an unmarked travel lane along the park frontage.
+		var frontage := Riverbank.survey_at(point).x
+		paint *= maxf(1.0 - smoothstep(12.0, 18.0, frontage), smoothstep(100.0, 106.0, frontage))
 	var style := float(span.marking) / 3.0
 	var edges := 1.0 if span.street in HIGHWAY or (span.street == BROCKHOUSE
 		and not downtown.has_point(point) and width <= STREET_HALF_WIDTH + .01) else 0.0

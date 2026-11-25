@@ -43,7 +43,7 @@ Roadside sidewalk ranges follow the [town sidewalk asset map, figure A-4](https:
 
 The pale concrete corner at Glendale and Deep River Road follows the May 2025 Street View supplied for 99 Deep River Road. The [Ontario Ra-1 stop face](https://commons.wikimedia.org/wiki/File:CA-ON_road_sign_Ra-001.svg) is public domain. Roadside lettering uses Barlow Condensed by the Barlow Project Authors under the [SIL Open Font License](ottawa/Barlow-OFL.txt).
 
-The Riverbank Park entrance pavers, waterside parking row, access aisle, and railing opening follow the May 2025 Street View supplied for 16 Brockhouse Way. The bay positions fit the existing playable road and park grade. The brick pattern is drawn in the game shader.
+Riverbank Park follows the supplied May 2025 Street View recording and Google Earth aerial at 16–55 Brockhouse Way. The existing gazebo footprint and Brockhouse Way centerline anchor the approximate dimensions. The parking bays follow the road's longitudinal grade, with a shallow crossfall for drainage. The tan paver route drops to the gazebo beyond the striped end of the parking row. The shore-side barrier continues past the bays to the amphitheatre, and paired handrails mark the separate descent.
 
 To rebuild the included map assets, run `.venv\Scripts\python.exe download_ottawa_town.py` to fetch the town imagery, surface and terrain tiles, and supplemental footprints. Then run `.venv\Scripts\python.exe generate_ottawa_fishing.py`. The generator also uses the shoreline and regional elevation data already in `data/ottawa_fishing` and the OpenStreetMap features in `data/deep_river.gpkg`.
 
