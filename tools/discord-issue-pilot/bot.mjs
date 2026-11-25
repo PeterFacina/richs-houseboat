@@ -2,7 +2,8 @@ import { createServer } from 'node:http';
 import { DatabaseSync } from 'node:sqlite';
 import { ApplicationCommandType, ButtonBuilder, ButtonStyle, Client, Events, GatewayIntentBits,
   MessageFlags, ActionRowBuilder } from 'discord.js';
-import { codexLink, repository, pullStatus, findGpuBrief, gpuPendingMarker, reportHeader, reportKinds } from './workflow.mjs';
+import { codexLink, repository, pullStatus, findGpuBrief, gpuPendingMarker, reportCharacterLimit, reportHeader, reportKinds } from './workflow.mjs';
+import { reportInput, ReportInputError } from './report-input.mjs';
 import { studioClient } from './studio.mjs';
 
 const { DISCORD_TOKEN, DISCORD_GUILD_ID, DISCORD_CHANNEL_ID, GITHUB_TOKEN,
@@ -67,21 +68,27 @@ function card(report, status) {
 
 async function submit(message, kind) {
   const source = message.id;
+  const previous = find.get(source);
+  const reportText = previous?.issue ? null : await reportInput(message);
   const screenshots = [...message.attachments.values()].filter(attachment =>
     attachment.contentType?.startsWith('image/') || /\.(?:png|jpe?g|webp|gif)$/i.test(attachment.name ?? '')).length;
   const attachmentNote = screenshots ? `\n\nThe original Discord report contains ${screenshots} image attachment${screenshots === 1 ? '' : 's'}. Inspect them in Discord when reproducing the report.` : '';
+  const queuedText = reportText === null ? null : reportText + attachmentNote;
+  if (queuedText && queuedText.length > reportCharacterLimit) {
+    throw new ReportInputError(`Report text and attachments must total at most ${reportCharacterLimit} characters.`);
+  }
   // Generate before reserving an issue so a failed export or busy model can be retried.
-  const brief = generateBrief && !find.get(source) ? await generateBrief(message.content) : null;
-  const reservation = db.prepare('INSERT OR IGNORE INTO reports (source, created) VALUES (?, ?)')
+  const brief = generateBrief && !previous ? await generateBrief(reportText) : null;
+  const reservation = previous ? { changes: 0 } : db.prepare('INSERT OR IGNORE INTO reports (source, created) VALUES (?, ?)')
     .run(source, new Date().toISOString());
-  let report = find.get(source);
+  let report = previous ?? find.get(source);
   if (!report.issue) {
     const marker = '<!-- discord-pilot:' + source + ' -->';
     let issue;
     if (reservation.changes) {
       issue = await github('/issues', 'POST', {
-        title: reportKinds[kind].titlePrefix + message.content.trim().split('\n')[0].slice(0, 150),
-        body: reportHeader(kind) + message.content + attachmentNote + '\n\n'
+        title: reportKinds[kind].titlePrefix + reportText.trim().split('\n')[0].slice(0, 150),
+        body: reportHeader(kind) + reportText + attachmentNote + '\n\n'
           + 'Discord report: ' + message.url + '\n\n'
           + '## Done when\n\n' + reportKinds[kind].done + '\n\n'
           + (brief ? '## Game Prompt Studio brief\n\n' + brief + '\n\n' : '')
@@ -143,7 +150,7 @@ client.on(Events.InteractionCreate, async interaction => {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     if (interaction.isMessageContextMenuCommand()) {
       const message = interaction.targetMessage;
-      if (!message.content?.trim() || message.author.bot) {
+      if (message.author.bot) {
         await interaction.editReply('Choose a teammate’s text report.');
         return;
       }
@@ -180,7 +187,8 @@ client.on(Events.InteractionCreate, async interaction => {
   } catch (error) {
     console.error(error.message);
     if (interaction.deferred) {
-      const reply = error.message.startsWith('Studio ') ? error.message
+      const reply = error instanceof ReportInputError ? error.message
+        : error.message.startsWith('Studio ') ? error.message
         : 'The pilot could not complete that action. Ask the bot operator to check the log.';
       await interaction.editReply(reply)
         .catch(() => {});

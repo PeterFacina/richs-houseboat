@@ -21,6 +21,14 @@ LAUNCH_PORT=8766
 
 Set `DISCORD_ROLE_ID` to a team role to limit who can submit or claim. With it blank, anyone with access to #issues can use the pilot. Set `LAUNCH_URL` to the private HTTPS origin from step 3. Run one bot process and keep `pilot.sqlite` in the same working directory across restarts. The GitHub credentials and the launch page stay on the host.
 
+### Longer prompt input
+
+To submit more than Discord's message field allows, attach one UTF-8 `.txt` file and use **Apps → Create pilot issue** or **Apps → Create game issue** on that message. The bot combines the message and file text and sends the full report through the existing Studio or GPU-worker path. Their shared limit is 6,500 characters total. The report is copied into the GitHub issue, so only attach text intended for that issue.
+
+### Update after the change is merged
+
+On the PC that runs the Discord bot, stop its existing process using the same method used to start it. Update this checkout to the approved `main` commit, then run `npm ci` from this folder. Keep the existing `.env` and `pilot.sqlite` in place. Restart the bot with the existing launch method (for a console launch, `node --env-file=.env bot.mjs`) and submit one agreed notes-only TXT report to verify it. This change only updates the Discord bot; it does not require changing the GPU worker, training data, or model setup.
+
 ## Live smoke test
 
 1. Post an agreed notes-only task in #issues. Right-click the report and select **Apps → Create pilot issue**. Run the action a second time and check both replies point to the same issue.
