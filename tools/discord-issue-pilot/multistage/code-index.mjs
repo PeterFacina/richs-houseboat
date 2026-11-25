@@ -8,7 +8,7 @@ const stop = new Set(('a about after all also an and any are as at be before bet
   'use using verify want was we were when where whether which while who will with would you your var void self').split(' '));
 const word = /[a-z][a-z0-9]*/g;
 const sourcePath = /^godot-cove\/(?:[\w .-]+\/)*[\w .-]+\.(?:gd|tscn|tres|gdshader|gdshaderinc|godot|cs)$/i;
-const guidePath = /^docs\/(?:ARCHITECTURE\.md|systems\/[\w-]+\.md)$/i;
+const guidePath = /^docs\/(?:GAME-IDENTITY\.md|ARCHITECTURE\.md|systems\/[\w-]+\.md)$/i;
 const digest = bytes => createHash('sha256').update(bytes).digest('hex');
 
 export function terms(text) {

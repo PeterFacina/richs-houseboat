@@ -1,7 +1,7 @@
 import { lstatSync, readdirSync, readFileSync, realpathSync } from 'node:fs';
 import { dirname, join, relative, sep } from 'node:path';
 import { now, sha, transaction } from './db.mjs';
-import gameRoutes from '../../knowledge/game-routes.json' with { type: 'json' };
+import { resolveGameRoutes } from '../../knowledge/game-routes.mjs';
 
 const allowed = new Set(['gd', 'tscn', 'tres', 'godot', 'gdshader', 'gdshaderinc', 'md', 'txt']);
 const rootDocs = ['AGENTS.md', 'GAME GUIDE AND ASSET CREDITS.md', 'START HERE.txt'];
@@ -9,8 +9,6 @@ const identity = 'docs/GAME-IDENTITY.md';
 const coreGuides = [identity, 'docs/ARCHITECTURE.md', 'docs/UNIVERSAL-XP.md'];
 const guide = /^docs\/(?:GAME-IDENTITY|ARCHITECTURE|UNIVERSAL-XP|systems\/[\w-]+)\.md$/;
 const bakedAssets = /^godot-cove\/(?:ottawa|deep_river)(?:\/|$)/i;
-const sourceFilename = /(?<![\w.-])[\w-]+\.(?:gd|tscn)\b/gi;
-const routes = gameRoutes.routes.map(([pattern, paths, guidePath]) => ({ pattern: new RegExp(pattern, 'i'), paths, guidePath }));
 const historic = ['Ethan House Boat and UI Update.txt', 'Richs Houseboat - Feature List for Peter.txt'];
 const maxBytes = 500_000;
 const privateName = /(?:^|[/_.-])(?:\.git|\.godot|node_modules|\.venv|build|cache|exports?|secrets?|credentials?|tokens?|passwords?|private|keys?|env)(?:[/_.-]|$)/i;
@@ -185,7 +183,7 @@ const terms = text => [...new Set(text.replace(/([a-z])([A-Z])/g, '$1 $2').toLow
   .split(/[\W_]+/u).filter(word => word.length > 2 && !stop.has(word)))];
 
 export function findEvidence(db, note, focus, budget, { manifest, selection = {} } = {}) {
-  const lookup = note.replace(sourceFilename, name => gameRoutes.aliases[name.toLowerCase()] ?? name);
+  const { lookup, filenames, paths, guides: matchedGuides } = resolveGameRoutes(note);
   const tokens = terms(lookup + ' ' + focus.join(' ')).slice(0, 32);
   const query = tokens.map(word => '"' + word + '"*').join(' OR ');
   const rows = query ? db.prepare(
@@ -209,9 +207,7 @@ export function findEvidence(db, note, focus, budget, { manifest, selection = {}
     'SELECT path,line,excerpt,bm25(chunks,3,0,1) AS score FROM chunks WHERE chunks MATCH ? AND path=? ORDER BY score,line LIMIT 1'
   ).get(query, path)) || db.prepare('SELECT path,line,excerpt FROM chunks WHERE path=? ORDER BY line LIMIT 1').get(path);
 
-  const names = [...lookup.matchAll(sourceFilename)].map(match => match[0].toLowerCase());
-  const matchedRoutes = routes.filter(route => route.pattern.test(lookup));
-  const preferred = new Set([...names, ...matchedRoutes.flatMap(route => route.paths)]);
+  const preferred = new Set([...filenames, ...paths]);
   for (const name of preferred) {
     if (sourceCount() >= 3) break;
     const path = 'godot-cove/' + name;
@@ -237,7 +233,7 @@ export function findEvidence(db, note, focus, budget, { manifest, selection = {}
   }
   const selected = result.filter(item => item.kind === 'source').map(item => item.path);
   const guides = db.prepare('SELECT path FROM files ORDER BY path').all().map(row => row.path).filter(path => guide.test(path));
-  const preferredGuides = new Set([...matchedRoutes.map(route => route.guidePath), ...(selection.guides ?? [])]);
+  const preferredGuides = new Set([...matchedGuides, ...(selection.guides ?? [])]);
   for (const path of new Set([...preferredGuides, ...guides])) {
     if (!guides.includes(path)) continue;
     if (result.filter(item => item.kind === 'guide').length >= 2) break;

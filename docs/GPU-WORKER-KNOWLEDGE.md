@@ -12,6 +12,8 @@ The [controlled rollout runbook](GPU-CONTROLLED-ROLLOUT.md) covers the single-is
 
 The standalone Studio continues to use the user's configured workspace and has subsystem guide search. The worker's managed Studio follows `main`. Dynamic Godot calls and runtime dependencies are outside the literal reference index. GitHub task retrieval reads up to 100 open issues and 100 open PRs and omits bodies and diffs from the model request. Review overlap and relevant diffs before acting on a brief.
 
+Studio and deterministic retrieval use the same game route definitions and legacy names. Deterministic retrieval reserves bounded evidence for explicit current files and matching system routes before adding lexical and dependency matches. Citations use paths verified in the current checkout. Historical captures retain their original paths and revisions. The asset directory alias leads to map code and architecture guidance while baked assets stay outside the source index.
+
 ## Install and verify
 
 - Use Node.js 24, Git with sparse checkout and partial fetch support, Python 3.9 or newer, and the existing local Ollama with `qwen3:14b`. If `python` is an app alias or is absent, set `HOUSEBOAT_KNOWLEDGE_PYTHON` to the path of an installed Python executable. Set it in the worker launcher environment or local `.worker.env`.
