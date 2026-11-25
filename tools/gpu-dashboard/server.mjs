@@ -8,7 +8,7 @@ const loginName = value => typeof value === 'string' && /^[\w.+-]{1,100}@[\w.-]{
 
 function policy(origin, users) {
   const fixed = new URL(origin);
-  if (fixed.origin !== origin || fixed.protocol !== 'https:' || !fixed.hostname.endsWith('.ts.net') || fixed.port) {
+  if (fixed.origin !== origin || fixed.protocol !== 'https:' || !fixed.hostname.endsWith('.ts.net')) {
     throw new Error('Set the exact Tailscale HTTPS origin.');
   }
   if (!users || typeof users !== 'object' || Array.isArray(users)) throw new Error('Configure a named dashboard allowlist.');

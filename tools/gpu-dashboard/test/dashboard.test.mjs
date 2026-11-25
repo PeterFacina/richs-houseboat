@@ -130,6 +130,17 @@ test('the HTTP boundary denies writes, unlisted identities, forged roles and ada
   assert.match(asset.body, /GPU Dashboard/);
 });
 
+test('a dedicated Tailscale HTTPS port still requires the exact host and a named viewer', async t => {
+  const origin = 'https://houseboat.example.ts.net:8443';
+  const dashboard = await listening(createDashboard({ origin, users }), t);
+  const Host = new URL(origin).host;
+
+  assert.equal((await get(dashboard, '/', { ...viewer, Host })).status, 200);
+  assert.equal((await get(dashboard, '/', viewer)).status, 403);
+  assert.equal((await get(dashboard, '/', { ...viewer, Host: 'houseboat.example.ts.net:8444' })).status, 403);
+  assert.equal((await get(dashboard, '/', { Host })).status, 403);
+});
+
 test('an unavailable inbox is never created and heartbeat state expires independently of the index', t => {
   const f = fixture();
   t.after(() => rmSync(f.root, { recursive: true, force: true }));
