@@ -1,6 +1,6 @@
 extends RefCounted
 
-const EDGES = preload("res://ottawa/sidewalk_edges.json")
+const EDGES = preload("res://deep_river/sidewalk_edges.json")
 const Traffic = preload("res://deep_river_traffic_controls.gd")
 const CURB_PROFILE := [Vector2(0.0, 0.0), Vector2(.035, .78),
 	Vector2(.115, 1.0), Vector2(.265, 1.0)]

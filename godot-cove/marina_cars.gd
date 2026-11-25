@@ -3,7 +3,7 @@ extends Node3D
 const Kit = preload("res://scenery.gd")
 const RoadCar = preload("res://marina_car.gd")
 const Model = preload("res://marina_car_model.gd")
-const Map = preload("res://ottawa_map.gd")
+const Map = preload("res://deep_river_map.gd")
 # Inland from the promenade, between the access road and the launch approach.
 const LOT := Vector3(18022.6, 0, 12636.8)
 const LOT_ANGLE := .16
@@ -29,8 +29,8 @@ var collision_layer_on_foot: int
 var collision_mask_on_foot: int
 
 
-func setup(fishing_game: Node3D, map: Map, river_crew: Node) -> void:
-	game = fishing_game
+func setup(game_world: Node3D, map: Map, river_crew: Node) -> void:
+	game = game_world
 	river = map
 	crew = river_crew
 	var sound := RoadCar.engine_sample()

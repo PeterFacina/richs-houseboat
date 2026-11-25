@@ -7,6 +7,7 @@ import subprocess
 from pathlib import Path
 
 EXT = {".gd", ".tscn", ".tres", ".gdshader", ".gdshaderinc", ".godot", ".cs"}
+GAME_ROUTES = json.loads(Path(__file__).with_name("game-routes.json").read_text(encoding="utf-8"))
 DECL = re.compile(r"^\s*(?:(?:static|async)\s+)?(func|signal|class_name|class)\s+(\w+)", re.M)
 REF = re.compile(r"""["']res://([^"'\r\n]+)["']""")
 
@@ -56,6 +57,13 @@ def build(root, previous=None):
 
 
 def query(index, phrase, limit):
+    names = re.findall(r"(?<![\w.-])[\w-]+\.(?:gd|tscn)\b", phrase.lower())
+    names = [GAME_ROUTES["aliases"].get(name, name) for name in names]
+    preferred = list(dict.fromkeys(names + [
+        name for pattern, paths, _ in GAME_ROUTES["routes"] if re.search(pattern, phrase, re.I)
+        for name in paths
+    ]))
+    priority = {name: position for position, name in enumerate(preferred)}
     terms = re.findall(r"\w+", phrase.lower())
     if not terms:
         return []
@@ -71,10 +79,11 @@ def query(index, phrase, limit):
         matching = [s for score, s in matches if score]
         score = sum(4 for t in terms if t in path.lower())
         score += matches[0][0] if matches else 0
-        if score:
-            hits.append((score, path, matching[:8], item["references"][:5]))
-    hits.sort(key=lambda h: (-h[0], h[1]))
-    return [{"path": p, "symbols": s, "references": r} for _, p, s, r in hits[:limit]]
+        position = priority.get(Path(path).name, len(priority))
+        if score or position < len(priority):
+            hits.append((position, score, path, matching[:8], item["references"][:5]))
+    hits.sort(key=lambda h: (h[0], -h[1], h[2]))
+    return [{"path": p, "symbols": s, "references": r} for _, _, p, s, r in hits[:limit]]
 
 
 def freshness(root, base):

@@ -106,7 +106,7 @@ static func taper(start: Vector3, tip: Vector3, width: float) -> Transform3D:
 
 
 static func load_texture(name: String) -> ImageTexture:
-	var image := Image.load_from_file("res://ottawa/materials/" + name)
+	var image := Image.load_from_file("res://deep_river/materials/" + name)
 	image.generate_mipmaps()
 	return ImageTexture.create_from_image(image)
 

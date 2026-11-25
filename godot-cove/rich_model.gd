@@ -2,7 +2,7 @@ extends Node3D
 
 const Kit = preload("res://scenery.gd")
 const Tools = preload("res://crew_tools.gd")
-const BASE := "res://ottawa/rich/"
+const BASE := "res://deep_river/rich/"
 const HEAD_HEIGHT := .239
 
 var torso: Node3D
@@ -59,7 +59,7 @@ func build_leg(side: float, shorts: Material, skin: Material) -> void:
 	var leg := joint(self, Vector3(side * .097, 0, side * .022), "Leg")
 	legs.append(leg)
 	leg.rotation.y = side * .12
-	var foot := Kit.mesh_at(leg, preload("res://ottawa/rich/bare_leg.res"), Vector3.ZERO, skin)
+	var foot := Kit.mesh_at(leg, preload("res://deep_river/rich/bare_leg.res"), Vector3.ZERO, skin)
 	foot.name = "BareLeg"
 	foot.scale.x = side
 	shorts_legs.append(loft(leg, [
@@ -91,7 +91,7 @@ func build_arm(side: float, shirt: Material, cuff: Material, skin: StandardMater
 	arm_surfaces.append(arm)
 	var elbow := joint(upper, Vector3(0, -.277, 0), "Elbow")
 	var hand := joint(elbow, Vector3(0, -.210, .004), "Hand")
-	var hand_mesh := preload("res://ottawa/rich/grip.res") if side < 0.0 else preload("res://ottawa/rich/gesture.res")
+	var hand_mesh := preload("res://deep_river/rich/grip.res") if side < 0.0 else preload("res://deep_river/rich/gesture.res")
 	Kit.mesh_at(hand, hand_mesh, Vector3.ZERO, skin).name = "Palm"
 	upper_arms.append(upper)
 	elbows.append(elbow)

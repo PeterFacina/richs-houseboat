@@ -4,7 +4,7 @@ signal equip_requested(gear: int)
 signal open_requested
 signal dismissed
 
-const MenuTheme = preload("res://river_menu_theme.gd")
+const MenuTheme = preload("res://game_menu_theme.gd")
 const NONE := -2
 const FISTS := -1
 const ROD := 0

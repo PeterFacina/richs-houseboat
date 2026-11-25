@@ -4,11 +4,11 @@ extends Node3D
 # and finger poses. No XR plugin, controllers or runtime download is needed.
 const Kit = preload("res://scenery.gd")
 const RichModel = preload("res://rich_model.gd")
-const LEFT = preload("res://ottawa/hands/Hand_Nails_L.gltf")
-const RIGHT = preload("res://ottawa/hands/Hand_Nails_R.gltf")
-const ALBEDO = preload("res://ottawa/hands/caucasian_realistic_baseColor.png")
-const NORMAL = preload("res://ottawa/hands/hands_normal.png")
-const ORM = preload("res://ottawa/hands/hands_occlusionRoughnessMetallic.png")
+const LEFT = preload("res://deep_river/hands/Hand_Nails_L.gltf")
+const RIGHT = preload("res://deep_river/hands/Hand_Nails_R.gltf")
+const ALBEDO = preload("res://deep_river/hands/caucasian_realistic_baseColor.png")
+const NORMAL = preload("res://deep_river/hands/hands_normal.png")
+const ORM = preload("res://deep_river/hands/hands_occlusionRoughnessMetallic.png")
 const POSES := {"relaxed": "Default_pose", "fist": "Grip", "shaft": "Grip_Shaft", "carry": "Cup", "hold": "Hold", "pinch": "Pinch_Tight", "bottle": "Grip_2", "can": "Grip_3"}
 var skeleton: Skeleton3D
 var model: Node3D
@@ -76,7 +76,7 @@ func set_pose(pose: String) -> void:
 	if pose == current_pose or not is_instance_valid(skeleton):
 		return
 	current_pose = pose
-	var path := "res://ottawa/hands/%s_%s.res" % ["right" if side > 0 else "left", POSES.get(pose, "Grip_Shaft")]
+	var path := "res://deep_river/hands/%s_%s.res" % ["right" if side > 0 else "left", POSES.get(pose, "Grip_Shaft")]
 	if not pose_cache.has(path):
 		pose_cache[path] = load(path)
 	var animation: Animation = pose_cache[path]

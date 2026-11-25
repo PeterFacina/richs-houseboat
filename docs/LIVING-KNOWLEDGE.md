@@ -1,5 +1,7 @@
 # Living knowledge
 
+[Game identity](GAME-IDENTITY.md) is the canonical terminology and design reference. The source index and Prompt Studio resolve historical names to current paths during retrieval, while commit-pinned examples retain their original paths.
+
 ## Three layers
 
 - Durable knowledge: AGENTS.md, the architecture index and selected subsystem guides. Update these when contracts change, not whenever a PR opens.

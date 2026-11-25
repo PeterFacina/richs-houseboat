@@ -7,7 +7,7 @@ signal message(text: String, seconds: float)
 
 const Kit = preload("res://scenery.gd")
 const Boat = preload("res://houseboat.gd")
-const Map = preload("res://ottawa_map.gd")
+const Map = preload("res://deep_river_map.gd")
 const WaterFX = preload("res://fishing_water_fx.gd")
 const Rig = preload("res://fishing_rig.gd")
 const Hands = preload("res://river_hands.gd")

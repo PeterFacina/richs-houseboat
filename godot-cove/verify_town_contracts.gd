@@ -7,7 +7,7 @@ func run_checks() -> void:
 	if not "houseboat-xp-" in OS.get_user_data_dir().to_lower():
 		quit(2)
 		return
-	var game = load("res://fishing.tscn").instantiate()
+	var game = load("res://game_world.tscn").instantiate()
 	root.add_child(game)
 	var map = game.river
 	var signs := get_nodes_in_group(&"town_roadside_signs")

@@ -31,7 +31,7 @@ export function findGpuBrief(comments) {
 export function pilotBrief(issue, gpuBriefUrl, kind = 'notes') {
   return [
     `Work on Rich's Houseboat issue ${issue}.`,
-    'Read AGENTS.md and the issue. Check the owner and overlapping issues and PRs.',
+    'Read AGENTS.md and the issue. Use docs/GAME-IDENTITY.md for terminology and check source for implemented features. Check the owner and overlapping issues and PRs.',
     'Use the team task workflow and a separate branch from current main.',
     kind === 'gameplay'
       ? 'Investigate the reported gameplay behavior. Reproduce it where possible, verify the cause before making a focused fix, and record any checks that could not be run.'

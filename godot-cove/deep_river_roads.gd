@@ -8,13 +8,13 @@ const StreetSigns = preload("res://deep_river_street_signs.gd")
 const TrafficControls = preload("res://deep_river_traffic_controls.gd")
 const Walkways = preload("res://deep_river_walkways.gd")
 const Riverbank = preload("res://riverbank_park.gd")
-const ROAD_DETAILS = preload("res://ottawa/deep_river_road_details.json")
+const ROAD_DETAILS = preload("res://deep_river/deep_river_road_details.json")
 const MCANULTY_FEEDERS := [0, 2]
 const ROAD_LAYER := 1 << 18
 const CHUNK_SIZE := 256.0
 const JUNCTION_LIFT := .043
 
-# Indexes refer to the surveyed polylines in ottawa/river.json.
+# Indexes refer to the surveyed polylines in deep_river/river.json.
 const HIGHWAY := [13, 15, 44, 2, 8, 7, 3]
 const HIGHWAY_HALF_WIDTH := 5.65
 const SIGNALS = preload("res://deep_river_signals.gd")

@@ -44,10 +44,8 @@ To try someone else’s version, fetch and switch to their branch in GitHub Desk
 - Compare the current workspace with any newer copies on other machines and agree which Godot project is the baseline. Record how it was verified.
 - Create one private repository under the agreed owner. Seed it with the selected `godot-cove/` project and baked assets, the launcher or documented engine setup, asset credits, the team notes, and shared Codex instructions. The existing workspace also contains earlier Garry’s Mod tooling. Include it only if the team still needs it.
 - Keep Godot’s `.godot/` cache, local saves, virtual environments, Godot executables, raw GIS data, old archives, and generated graph output outside source control. Keep the Godot licenses and required asset credits with any distribution that includes them.
-- Confirm a clean clone can open `godot-cove/project.godot` with the agreed engine version. The current Windows launcher expects Godot 4.7.2 under `build/godot`, so document that local setup or ship it in a verified Windows release.
+- Confirm a clean clone can open `godot-cove/project.godot` with the agreed engine version. Use Godot 4.7.2 for local testing. The repository includes the task and Prompt Studio launchers. Open the game project in Godot or follow the command in [Build checks](BUILD-CHECKS.md).
 - Invite the team and do one small test pull request before starting parallel gameplay work. Tag the first tested baseline and attach its playable package when one is ready.
-
-The current workspace has no commits or configured Git remote. These notes are local preparation for a shared repository.
 
 ## Team task queue
 

@@ -12,7 +12,7 @@ def select(catalog, note, tasks):
     phrase = " ".join(terms)
     by_number = {item["number"]: item for item in tasks}
     related = summarize(tasks, phrase, 3)["matches"] if terms else []
-    return {"matches": query(catalog, phrase, 10), "guides": guides(terms),
+    return {"matches": query(catalog, note, 10), "guides": guides(terms),
             "tasks": [by_number[item["number"]] for item in related]}
 
 

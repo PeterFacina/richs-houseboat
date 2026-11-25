@@ -1,6 +1,6 @@
 extends RefCounted
 
-const Ottawa = preload("res://ottawa_map.gd")
+const DeepRiverMap = preload("res://deep_river_map.gd")
 const Species = preload("res://fish_species.gd")
 const SURVIVAL_CHANCE := .10
 const LAST_RUN := 9.80
@@ -8,7 +8,7 @@ const RUN_SECONDS := 1.26
 const SLICK_LIFE := 71.0
 const DRAW_RADIUS := 8.0
 
-var water: Ottawa
+var water: DeepRiverMap
 var slick := Vector3.ZERO
 var opened := -INF
 var attracted := false
@@ -18,7 +18,7 @@ var hooked := false
 var line_holds := false
 
 
-func _init(river: Ottawa) -> void:
+func _init(river: DeepRiverMap) -> void:
 	water = river
 
 

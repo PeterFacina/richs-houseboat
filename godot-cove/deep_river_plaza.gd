@@ -1,7 +1,7 @@
 extends Node3D
 
 const Kit = preload("res://scenery.gd")
-const MenuTheme = preload("res://river_menu_theme.gd")
+const MenuTheme = preload("res://game_menu_theme.gd")
 const Car = preload("res://marina_car_model.gd")
 const Graphics = preload("res://river_graphics.gd")
 const Masonry = preload("res://deep_river_plaza_masonry.gdshader")

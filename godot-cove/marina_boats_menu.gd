@@ -2,7 +2,7 @@ extends Control
 
 signal spawn_requested(boat_id: String)
 
-const Style = preload("res://river_menu_theme.gd")
+const Style = preload("res://game_menu_theme.gd")
 const BOATS := {
 	"princecraft": "Princecraft Holiday DLX",
 	"classic": "Classic",

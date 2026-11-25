@@ -1,5 +1,177 @@
 {
+  "hashes": {
+    "game_world.gd": "25d9c56ef68594fad9f0ddf818c6b0f012f1288fa86062b9c1b39d99c4df17dd",
+    "aircraft_steering.gd": "57f370f83df0b8d8baff411c953a9c5c25819a1a4e2af5b7df1c8f85ec80260c",
+    "river_helicopter.gd": "d70f3e889667b41134813d78ef046fbb68dc1684530374980501d989247b8311",
+    "boat_amenities.gd": "ea7a9e4bf30c7859288377e53412466f238c2788ce0281185aa080f68e093b71",
+    "scenery.gd": "c74de53bfd9d18e7b9a3904158e025bde39a24f8e74587e5e709fccae9664da3",
+    "crew_tools.gd": "4cd897088375d34c3931d7557a29a6c1c363db41e3e1c63ee83918e00723f70f",
+    "game_campaign.gd": "799cda6e55bb311f8efe33fea43106e8bd73881b1ab9367c82a366e4e05eae9c",
+    "boat_fuel_tank.gd": "c428e70c8a28238eb70043e17f8f63284e02d988ddbcf57c58df3f3fa5b9a5ab",
+    "houseboat.gd": "11a5d989b9d982e71559b0512b9ecc1827655079de95b5990b02cdee5aa339db",
+    "boat_helm_console.gd": "4f9f7d78dd6cedd5096da152a3051a532ec3410b858b14a71ce7bc5362679e14",
+    "boat_mooring.gd": "9ff39d9a8fa3bebe2664770c4d29fb2435c747dd2397278a6e21daa51e55119e",
+    "river_mooring.gd": "db27ba16c4e6adf817c20c4f824a5db005f08fdbee033465383ddef6bd25c5ad",
+    "brockhouse_way.gd": "36b6bbf9658ea496ba957e5c4468eb20a6f10271e2e49555e7d315a6db74f8a7",
+    "lamure_beach.gd": "297b2a1536f97739868ac9da3f63138b7373ddf0f5ccbd260bafc74ab2e1b705",
+    "marina_art.gd": "7adfa8237e6e51391de1eb4521f2d75e09437b3ae9274575abbcd75a2aa1d58c",
+    "lamure_pines.gd": "3887ddc0b66de72c8dc16bbb8e52184ac39530661f742d0e9f38e9d7adbca45f",
+    "deep_river_map.gd": "e41203d8d52798bf9d630f501e302cb957995111b6bf7e15934fdaf5fd9a9b3f",
+    "cabin_life.gd": "3e72bbce75e2e220d7ea8dc2cc1c35f8ce2513bff9acf17d0bfbef8fb828ace3",
+    "fishing_water_fx.gd": "8edc334be23c82eed64856aef2a44173f5ef35e3b38d48f0a5c669c2e038e5aa",
+    "fishing_rig.gd": "2ca038aeeccde95d55e76567f1a38e729f05502db2e2d6a990440ba136fa0569",
+    "river_hands.gd": "4932ceb689d58cc04f236fe32316efc9cbd095fe115c98884b5221f63879e918",
+    "river_hand_actions.gd": "61e5d6f47a12674aba7df2e7f9869ffce54561dcb91c3d771abc86571e4cf3b2",
+    "cabin_props.gd": "4fd407872712fcdf17960467043c2d490c62b5ca3d6c56db2868db98fcde69b6",
+    "crew_avatar.gd": "3285694376ae4c3bedd1a193cb8a630090461a539b3bd1b342d18bb08af7dbea",
+    "cove.gd": "fa85c73721cef5ce6c988699052da2cbbed12a4bf9efc18018633543b0b97dde",
+    "swell.gd": "63392ce81f3da9661b6419bcf7797a0e5034282084a0f4fb0da2605d50ca8f2b",
+    "cove.tscn": "17c7a95738f98d329259c96102a12ee88357a8de28aeac50df73f808fede3df2",
+    "river_fish.gd": "f3ef9d2cdd1f61bb5ce2241f1d7b6cb322912204ddf529b45b50ba73a5f714f6",
+    "fish_species.gd": "f15d136804ae94b7bba77617dfe6c283d60086108afc25c4b2922739058b48b8",
+    "crew_play.gd": "7a842e4a3ebbc0ae76f2ddf298b2bf888f2590c986ba2d754f66265d9aa2fbc2",
+    "multiplayer_session.gd": "6e7c07afa4b6c50448e81807b477a54f747588c741b2e31f4a52dbeb1c07f1d6",
+    "vehicle_driver.gd": "e1bc440b1203d9ead8ae184124a0f76a496a1d788f52baa12c6717fd47c65e5a",
+    "crew_camp.gd": "4d125e03138efaf829a1e3ba3a052db231b04095701cfcf1b5c9c52925e80210",
+    "game_ledger.gd": "61b5f5c69b1f88202131c57ace91f9bb976595b8ffec2a2f0d689a06690ffba0",
+    "lawn_mower.gd": "1bd03c03fc75345ea7b07f437b516a16791b80d6ea93440e83391a1396cfdc2f",
+    "marina_attendant.gd": "7d80ff338fabbcece8250e48020a76e12f4d30cfbda22ec0b35f2dcac124942d",
+    "marina_fuel_model.gd": "f596ec9d67877fe12ede04a56f17b1b96f64ebc21cb838616dea2c762f50de75",
+    "mooring_hardware.gd": "2415d7396269f7f764d57092a8e56b3f741f83437abe3fae863537f4146605cf",
+    "public_works.gd": "29799deb1e02d376c9eec08f59dd3f216a4966d528c1fd62fc9e2de259e2606e",
+    "repair_tool_view.gd": "03e57d188401f0b945017af76c1bee0b9d6fb195dac27977cb15367305a6b25d",
+    "rich_model.gd": "3dd9d5aa6ae3ad9129bf680cd9377d23e717e3996aa747bf2ccb734cb58c66b9",
+    "shannon_model.gd": "6b39074102fe5ff4f248c4a46017b58ddb3742e04f49c233ffa636d9392159b9",
+    "deep_river_buildings.gd": "1b9f4a84ec395272d6ffa3692c7e49d06588d4edaa7e4fbc8ef5a7a17919ab9d",
+    "river_graphics.gd": "d00ce7237a0411dbf5735a866299be29e1beb5396e8911972da68cc107063d80",
+    "marina_yacht_club.gd": "25d25403bd59f786c2f1b857e57c359281498b87e4642297be26dbd590399e33",
+    "deep_river_champlain.gd": "53c4e04f91d0c97051aeb339647c6b9dead5f7ce03736c1833d75db94c89a7ae",
+    "deep_river_plaza.gd": "f7fbe922c014ace970d40c478f6d8859dc136861cde91666c774107543fd400a",
+    "deep_river_residential.gd": "316cabf3a1f19cc7510e18d8cc2c85aa5f5b0334a1623aff187e2cb58183c9af",
+    "deep_river_driveways.gd": "a3f1645443cc8bf82f3241d0c4262870180187f72b4238f1f4ef2e66daa76362",
+    "deep_river_storefront_openings.gd": "5a51988943ea962cdc2670ccf1cebf71458b5714374e69c9834e5853fb7fa4c2",
+    "deep_river_champlain_shops.gd": "af0bf495d1011f5718f1717fa486509f673ced46c057895fe23dceb638a8a38f",
+    "deep_river_champlain_furniture.gd": "9fd994e9fbcfe6b0fd4cc1bb0c702fac2121a5bc30e07309db6301756b41f9c7",
+    "marina_car_model.gd": "1e5c7bf8abb556ee4e5cae278dbcd9d04ce1cc061dd92c3ae5f6f5deff1593e7",
+    "deep_river_roads.gd": "1bc8deb01d1f3c361ecd21faa60b76c439868a90509c0e825d775dafda1a8ed7",
+    "deep_river_civic_parking.gd": "41543e577ed79fbc42d4300ffee5f4b7d41043c9c71fd1c5b92190238e4683f4",
+    "marina_docks.gd": "1c4fd451d1518c280e303bcf20c8fb19e700867cc8ba4b204b2ad910625fadda",
+    "marina_launch.gd": "a09c5daf957748c7bb1048a109e79e9b40f0e96bb9db121b594cba0cb4a47867",
+    "riverbank_park.gd": "0edfd25e7304b840d3f4d457d4f2272b109ec2b478fd01bbe0ded5c30abf1c3b",
+    "swisha_dam.gd": "a323ecb3e7d4cd58429fc93e69144771ffa3ae461fdcd3a108edfc9af9d51fa1",
+    "deep_river_town_hall.gd": "ae1f8730149b6b6dcffb9773984848e207b3f685b6ce69d6b38b923299a6e331",
+    "deep_river_properties.gd": "5187d5bef0e1782bbcbb8fe1b42019fd7d7eddd37bd5472a112387945499590c",
+    "game_campaign_data.gd": "d1ccb7da5cc1184b8f617f277d1dbd80a2de8265b6b0fd52bdfde89eaa2c06ab",
+    "marina_cars.gd": "5a29f766acfb91d55e8ca42f7700d09e21626582f8a203741a67f607918141b7",
+    "river_landings.gd": "114b3b1f776bab092d04c6682dd61bd6c561645311021ff0906f8e8aa713cd8a",
+    "river_stock.gd": "d6cc66b86c4833c5159f8e4e49990ea9942815baf671dc500564894508dc0da2",
+    "river_submersible.gd": "7ea2a0d53427d77538dbe514a45a4b979a61aeba1255168bebbe3876dcbeff53",
+    "trophy_muskie.gd": "679eee0cdf4a2401d34b66efcbdccde430a28aec6db21dd8f55c2d9bcbfd0387",
+    "game_menu_theme.gd": "7fa78ed0f19f756758b2eca46d9230285cbbcf420d5f360a958d3b5cfd47327d",
+    "warehouse_property.gd": "7757882e8ba68dcc9793e58ef271cd801434237e1022e87924d9d6621d5b3271",
+    "river_regions.gd": "dec61beef92d4f8b1b6af2ee0a9fc3525ea3a3778414f867c1aa051973098550",
+    "deep_river_street_signs.gd": "711435d0e963aac1e5014ae44870358d325b7c8b72d9e368d4bed2d3d85e5f2c",
+    "deep_river_traffic_controls.gd": "bb10cde02ba1015849f8319d2172c607f0172dd1c1f6fbf6e5eb2767521d7a0d",
+    "deep_river_walkways.gd": "2565c097423f17750589b65ade80a67a3ab379fc1dd976df0ee823eb21a67fe3",
+    "deep_river_signals.gd": "bdeedde341ad108334baa8d68075527aca89a81e0a9d725d98d09d316388c2a7",
+    "river_chart.gd": "d418e95ca5ca5f24ec4de1d1ec45b6d646d93d4b990a1dc01711c69bf01ce67b",
+    "fish_finder.gd": "9364e9a0943875cabf07693f57b20184bc6823def281519c0102f70e3b5862be",
+    "fish_guide.gd": "3e395171dfd13842118f07be7076746a755328a42da71aa60aff9a932191d37e",
+    "notebook_theme.gd": "0d54dd25f82ecb80e60c626917b3e203c1d4d5e8f448ba1f00c2cf17dc610ab4",
+    "river_deck.gd": "18bc3abd977c6da7a9ee5d30bc82a630c0e911412c208efb91dc8d9af5cf73f8",
+    "river_board.gd": "1665d9b2880e75b0c5d152f72fcffafa98c570ff2209e06a9f0fb32a27bc1f30",
+    "rich_npc.gd": "86558c64ca6a1ae63536438189c27307372a200af40560834acc7f80fb053f3b",
+    "rich_story.gd": "c01cc351ae19be048431e8bac978e516a6487c920a61ee5c7750acd79236bc0d",
+    "marina_boats_menu.gd": "e5774b7e4795891670b055d37381115f70d4d6bd0f13adc5568c8d2e85645984",
+    "princecraft.gd": "668915d5eebccda902936a323b20f5b7f5846f97ffe73ee9687c9b9795f0e530",
+    "princecraft.tscn": "f7ca11e823a4b62a9033d16c6f66bf1a3422725de9021e8b2d331907e0edfdc8",
+    "marina_gas_bar.gd": "3bc9a4250811e7300f69485ebbcab8ea31731094b2c3ed06e1d7bb833c94d98f",
+    "progression.gd": "ca3029763a963fe0b8e2e76425f4b96ea7b7ae1961b69055bb8f60fd80971f44",
+    "verify_progression_network.gd": "1f891d19260e7867c6851ede6e1496fb7002cc70fdec13c4ac4a63cd6333bd23",
+    "solo_saves.gd": "36c8e0375e7353748939c8f5b8b0698c25810ff1cac78a528aa37c4715915857",
+    "solo_slot_menu.gd": "43d40cde29aaff87d84ee44fd886ce7637dc80fc04aa2d60cbcd05b2216ad6f2",
+    "verify_ledger_recovery.gd": "d2b1e9c83ba8dabe5dbeb4fe722878fc5f4ec5e1112226c88deaa0ed48648b5c",
+    "verify_progression_game.gd": "c300a7d19d3cb3bdf0b21dcece71eabb75ca47739a3999d47436f49fadb393ac",
+    "verify_solo_slots.gd": "3aece0e6c304d5dd834ad25e8446ea08317bc23b2a7d51a7c68ebc025299e532",
+    "verify_warehouse_game.gd": "ceac8848d5c3fd127f64df20a934be83ca242d58ef838822d173039da1a3d692",
+    "progression_screen.gd": "5bcb1ac93f109f9b3d6f0458e293ed830eff852843c40f47c5184167df8f6e41",
+    "property_management.gd": "c506b08c809d7a14c7035bf35bddeabbcb78fe041e22d6be08ac9ee518004900",
+    "river_backpack.gd": "b39ce2309f06b207491d093d98fb1946a2ecd90db4dd140b0f692cee63da3cc2",
+    "river_lobby.gd": "88966001c1810fe5dfa276d2d98bbe8178e7511f8b3b4cb438b4c46c23333ad4",
+    "river_pause.gd": "345d51650848a2c9c8e648b63f5b92142468f92153a84cb5f838a0f370dda923",
+    "sounding_chart.gd": "7baed39c0e0b5a6206170853fd8bbb31ff59d777cc516ccae38f8f3c5748fae6",
+    "title_screen.gd": "a6a29da23cd84b4ec73ea8310c39e17b630ae1173e9276b9e9cc66e3522cc5f2",
+    "marina_wharf.gd": "74f9d5ad9f9c11bb22db55a76bd56287607307468844ee1560a0bd6f0c28e47f",
+    "river_cheats.gd": "7cd5ffc74720f814b14b4e95cff47b6b1d170c0e05799cc73b9ed61fc70f49ab",
+    "shannon_job.gd": "3009f73434edfba26a80f4f4a2c49e9b13b437b848fcfcfd9e2467b8b2ae1063",
+    "river_safety.gd": "214dd6bbc9f728bdd149acf7d1af0f18d85a3181e0e47594ecc175ae86e63c70",
+    "player_notebook.gd": "7fa22b7addc005180007895cd5f7cc4d67ed2fd558ebb608a3b86936f4c5b4ba",
+    "npc_quest_offer.gd": "3369262b778abc40f5269ac34534b0d83e7d24f0a4f85c84c626c1f11a78860a",
+    "marina_tennis_match.gd": "fe4aee911c8116fcaa55fe8db3018900babf2dcbba44a03975caf1772b023684",
+    "progression_screen.tscn": "1acf8e67b0e308d36f88ad1af54f5779b9a4d15206974346b07259d6561adb6b",
+    "launch_houseboat.tscn": "b22ed3903e000f6f5521209dabb597237000bfbd14b863151b091e5673185052",
+    "title_screen.tscn": "dff6476b51c7b379a19cef1ce78df757c633f9eaba67f69f1f3adad37193a2ab",
+    "game_world.tscn": "3783c4c12c3ab0d7a0196273f314206e8a66366c8ddeecb8b295d524e2fe2a7d",
+    "verify_town_contracts.gd": "28de6c479bfbcaec0cd7becb6adf809e863f8e105cca7da21724b1b91dde4fb1",
+    "helicopter_instruments.gd": "205710b80a36e2abb94286ec4315450011cb14b6fc36ff9b67be6a53a44cfbf6",
+    "outboard.gd": "96c51231b4b095f5dcef6452c0fbe61bc22f94476e5c69085e6f8d7e827fb6f8",
+    "houseboat_panorama.gd": "ba7db524e62684ccbe29e6cfddaaa9b4a39b6444df40306ebdf16e0fff3e1009",
+    "rich_houseboat_model.gd": "18abe09ac5ebb394b8eae123224132b819232b05dc82ddff44c078fdf157346b",
+    "houseboat_restoration.gd": "cd37942c0f145d1e164b81253a859dc1060b34aea1d17f0e55ae5556151e2a2e",
+    "rich_story_yard.gd": "3b03866ece50c89b2391d71ede9768440d3e7d8e3aa1a559bca0b80fbdf82012",
+    "lamure_playground.gd": "d8a0cd6034b5b9a4d9c42a7d88312ae3f83480eee52bf3ca898d01b7b11cd400",
+    "marina_tennis_courts.gd": "5404787d480a5f7088c4adf574f9950bc7f1fc7784feb343b9cce9be1d856032",
+    "title_shore.gd": "a177b0644e7a190e65d80ccaee9c14852494f35e74ccce628d435729b7ecc87c",
+    "vehicle_exit.gd": "638843c3caefbe5fd46739d35dc3a4b6569e5fc7575a826f7073146a78a9d314",
+    "marina_fleet.gd": "0de7cbca4fb90552619456dc6fe396b64ddd984b5eec740a7aede1f98ef4325e",
+    "mowing_routes.gd": "bb1c9ff258fe10f745d2fb07ec99f59a9cf9ca5f1b6f067df011edf336fa91b9",
+    "marina_car.gd": "876e09d24b146fa61912cd61032ac00c03f5f0c218f37e9ab1bb3f282663f961",
+    "marina_car_interior.gd": "a903f36f7adcf62652420b93f419d8f88c7a7d2146b857e316e98f9079384b70",
+    "marina_car_badges.gd": "76d93c7d449338de641279a2927a0cb9cb93d8931a6f04625f0ef0907b899025",
+    "mooring_cleat.gd": "24135a2fda7e75460d582bfd869624886e34b4c89484413ac4069e2347d665e1",
+    "marina_fuel.gd": "ab1dfd361bb83d7c3eefdb0cb2d413491dba22f3d97862071c838502226eedb8",
+    "river_hand_instance.gd": "48581d338171adbc91d3422f3aac51c719077e629bdef202b3a08143d39607c6",
+    "mowing_road_guide.gd": "ab36bb8e17ffa4f96caa94bff6179a23a22bd4b5b0995caede026f96fcc205ab",
+    "progression_catalog.gd": "269c3ac725bde032c5d7dfd656ae1740c1c7568ec77c95a83e9f7bde774e7c81",
+    "verify_progression.gd": "a46ef31e6b7c53047b7367a4dde3fecb1f54f56d5b9c48485503ba9d087d2c7d",
+    "property_floor_overlay.gd": "74e60b32c7cba2dff6feccc835e8229985d378f8378fd3d8188b0c9d658e86ea",
+    "public_works_door.gd": "9f8fb554d716d1e607c19625a4e2d060effaa95ca81bd3b2075e8b856b510449",
+    "quest_chain.gd": "ec0c5486c9a0cde37a6034974d733a7676d8cf4ff3ec6b45ac58bca7c59072d5",
+    "shannon_voice.gd": "6a003e8938b03575c5a0840e777a5dbc7eb147f2904da05aa73fa51c56fc4303",
+    "project.godot": "f2c1d4dd26189a8ce77652cd3696e7646be3741b1bbe172209a10d38bc5442d2",
+    "verify_vehicle_exit.gd": "f41355775cb338f5a7fa88e033aac695a834e8c50d7ba4f1e37112535a4c275b"
+  },
   "links": [
+    {
+      "from": "boat_amenities.gd",
+      "to": "crew_tools.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "boat_amenities.gd",
+      "to": "scenery.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "boat_fuel_tank.gd",
+      "to": "crew_tools.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "boat_fuel_tank.gd",
+      "to": "scenery.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "boat_helm_console.gd",
+      "to": "crew_tools.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "boat_helm_console.gd",
+      "to": "scenery.gd",
+      "relation": "imports_from"
+    },
     {
       "from": "brockhouse_way.gd",
       "to": "lamure_beach.gd",
@@ -27,6 +199,11 @@
     },
     {
       "from": "cabin_life.gd",
+      "to": "deep_river_map.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "cabin_life.gd",
       "to": "fishing_rig.gd",
       "relation": "imports_from"
     },
@@ -42,7 +219,12 @@
     },
     {
       "from": "cabin_life.gd",
-      "to": "ottawa_map.gd",
+      "to": "river_hand_actions.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "cabin_life.gd",
+      "to": "river_hands.gd",
       "relation": "imports_from"
     },
     {
@@ -82,6 +264,11 @@
     },
     {
       "from": "crew_avatar.gd",
+      "to": "cabin_props.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "crew_avatar.gd",
       "to": "crew_tools.gd",
       "relation": "imports_from"
     },
@@ -92,7 +279,22 @@
     },
     {
       "from": "crew_avatar.gd",
+      "to": "fishing_rig.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "crew_avatar.gd",
       "to": "river_fish.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "crew_avatar.gd",
+      "to": "river_hand_actions.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "crew_avatar.gd",
+      "to": "river_hands.gd",
       "relation": "imports_from"
     },
     {
@@ -112,17 +314,17 @@
     },
     {
       "from": "crew_camp.gd",
+      "to": "game_ledger.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "crew_camp.gd",
       "to": "marina_art.gd",
       "relation": "imports_from"
     },
     {
       "from": "crew_camp.gd",
       "to": "river_fish.gd",
-      "relation": "imports_from"
-    },
-    {
-      "from": "crew_camp.gd",
-      "to": "river_ledger.gd",
       "relation": "imports_from"
     },
     {
@@ -157,12 +359,47 @@
     },
     {
       "from": "crew_play.gd",
+      "to": "river_fish.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "crew_play.gd",
+      "to": "river_hands.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "crew_play.gd",
       "to": "scenery.gd",
       "relation": "imports_from"
     },
     {
       "from": "crew_tools.gd",
       "to": "scenery.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "deep_river_buildings.gd",
+      "to": "deep_river_champlain.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "deep_river_buildings.gd",
+      "to": "deep_river_driveways.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "deep_river_buildings.gd",
+      "to": "deep_river_plaza.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "deep_river_buildings.gd",
+      "to": "deep_river_residential.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "deep_river_buildings.gd",
+      "to": "marina_yacht_club.gd",
       "relation": "imports_from"
     },
     {
@@ -176,13 +413,278 @@
       "relation": "imports_from"
     },
     {
+      "from": "deep_river_champlain_furniture.gd",
+      "to": "marina_car_model.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "deep_river_champlain_furniture.gd",
+      "to": "scenery.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "deep_river_champlain.gd",
+      "to": "deep_river_champlain_shops.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "deep_river_champlain.gd",
+      "to": "deep_river_storefront_openings.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "deep_river_champlain.gd",
+      "to": "scenery.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "deep_river_civic_parking.gd",
+      "to": "scenery.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "deep_river_driveways.gd",
+      "to": "deep_river_roads.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "deep_river_driveways.gd",
+      "to": "river_graphics.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "deep_river_map.gd",
+      "to": "brockhouse_way.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "deep_river_map.gd",
+      "to": "deep_river_buildings.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "deep_river_map.gd",
+      "to": "deep_river_driveways.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "deep_river_map.gd",
+      "to": "deep_river_properties.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "deep_river_map.gd",
+      "to": "deep_river_roads.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "deep_river_map.gd",
+      "to": "deep_river_town_hall.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "deep_river_map.gd",
+      "to": "game_campaign_data.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "deep_river_map.gd",
+      "to": "lamure_beach.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "deep_river_map.gd",
+      "to": "lamure_pines.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "deep_river_map.gd",
+      "to": "marina_art.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "deep_river_map.gd",
+      "to": "marina_docks.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "deep_river_map.gd",
+      "to": "marina_launch.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "deep_river_map.gd",
+      "to": "public_works.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "deep_river_map.gd",
+      "to": "river_graphics.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "deep_river_map.gd",
+      "to": "riverbank_park.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "deep_river_map.gd",
+      "to": "scenery.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "deep_river_map.gd",
+      "to": "swell.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "deep_river_map.gd",
+      "to": "swisha_dam.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "deep_river_plaza.gd",
+      "to": "deep_river_roads.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "deep_river_plaza.gd",
+      "to": "game_menu_theme.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "deep_river_plaza.gd",
+      "to": "marina_car_model.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "deep_river_plaza.gd",
+      "to": "river_graphics.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "deep_river_plaza.gd",
+      "to": "scenery.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "deep_river_properties.gd",
+      "to": "scenery.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "deep_river_properties.gd",
+      "to": "warehouse_property.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "deep_river_roads.gd",
+      "to": "deep_river_champlain_furniture.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "deep_river_roads.gd",
+      "to": "deep_river_civic_parking.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "deep_river_roads.gd",
+      "to": "deep_river_signals.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "deep_river_roads.gd",
+      "to": "deep_river_street_signs.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "deep_river_roads.gd",
+      "to": "deep_river_traffic_controls.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "deep_river_roads.gd",
+      "to": "deep_river_walkways.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "deep_river_roads.gd",
+      "to": "public_works.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "deep_river_roads.gd",
+      "to": "riverbank_park.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "deep_river_roads.gd",
+      "to": "scenery.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "deep_river_signals.gd",
+      "to": "scenery.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "deep_river_storefront_openings.gd",
+      "to": "scenery.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "deep_river_street_signs.gd",
+      "to": "scenery.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "deep_river_town_hall.gd",
+      "to": "lamure_beach.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "deep_river_town_hall.gd",
+      "to": "scenery.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "deep_river_traffic_controls.gd",
+      "to": "scenery.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "deep_river_walkways.gd",
+      "to": "deep_river_traffic_controls.gd",
+      "relation": "imports_from"
+    },
+    {
       "from": "fish_guide.gd",
       "to": "fish_species.gd",
       "relation": "imports_from"
     },
     {
       "from": "fish_guide.gd",
+      "to": "game_menu_theme.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "fish_guide.gd",
+      "to": "notebook_theme.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "fish_guide.gd",
       "to": "river_fish.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "fishing_rig.gd",
+      "to": "rich_model.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "fishing_rig.gd",
+      "to": "river_hands.gd",
       "relation": "imports_from"
     },
     {
@@ -201,83 +703,338 @@
       "relation": "imports_from"
     },
     {
-      "from": "fishing.gd",
+      "from": "game_campaign.gd",
+      "to": "boat_amenities.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "game_campaign.gd",
+      "to": "crew_play.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "game_campaign.gd",
+      "to": "game_campaign_data.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "game_campaign.gd",
+      "to": "game_ledger.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "game_campaign.gd",
+      "to": "game_menu_theme.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "game_campaign.gd",
+      "to": "houseboat.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "game_campaign.gd",
+      "to": "marina_boats_menu.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "game_campaign.gd",
+      "to": "marina_gas_bar.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "game_campaign.gd",
+      "to": "multiplayer_session.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "game_campaign.gd",
+      "to": "princecraft.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "game_campaign.gd",
+      "to": "princecraft.tscn",
+      "relation": "imports_from"
+    },
+    {
+      "from": "game_campaign.gd",
+      "to": "progression.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "game_campaign.gd",
+      "to": "rich_npc.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "game_campaign.gd",
+      "to": "rich_story.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "game_campaign.gd",
+      "to": "river_board.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "game_campaign.gd",
+      "to": "river_deck.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "game_campaign.gd",
+      "to": "river_landings.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "game_campaign.gd",
+      "to": "river_mooring.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "game_campaign.gd",
+      "to": "river_submersible.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "game_campaign.gd",
+      "to": "scenery.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "game_ledger.gd",
+      "to": "game_campaign_data.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "game_world.gd",
+      "to": "aircraft_steering.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "game_world.gd",
       "to": "cabin_life.gd",
       "relation": "imports_from"
     },
     {
-      "from": "fishing.gd",
+      "from": "game_world.gd",
+      "to": "deep_river_map.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "game_world.gd",
       "to": "fish_finder.gd",
       "relation": "imports_from"
     },
     {
-      "from": "fishing.gd",
+      "from": "game_world.gd",
       "to": "fish_guide.gd",
       "relation": "imports_from"
     },
     {
-      "from": "fishing.gd",
+      "from": "game_world.gd",
       "to": "fish_species.gd",
       "relation": "imports_from"
     },
     {
-      "from": "fishing.gd",
+      "from": "game_world.gd",
       "to": "fishing_rig.gd",
       "relation": "imports_from"
     },
     {
-      "from": "fishing.gd",
+      "from": "game_world.gd",
       "to": "fishing_water_fx.gd",
       "relation": "imports_from"
     },
     {
-      "from": "fishing.gd",
+      "from": "game_world.gd",
+      "to": "game_campaign.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "game_world.gd",
+      "to": "game_menu_theme.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "game_world.gd",
+      "to": "launch_houseboat.tscn",
+      "relation": "imports_from"
+    },
+    {
+      "from": "game_world.gd",
+      "to": "lawn_mower.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "game_world.gd",
       "to": "marina_cars.gd",
       "relation": "imports_from"
     },
     {
-      "from": "fishing.gd",
-      "to": "ottawa_map.gd",
+      "from": "game_world.gd",
+      "to": "marina_tennis_match.gd",
       "relation": "imports_from"
     },
     {
-      "from": "fishing.gd",
-      "to": "river_campaign.gd",
+      "from": "game_world.gd",
+      "to": "marina_wharf.gd",
       "relation": "imports_from"
     },
     {
-      "from": "fishing.gd",
+      "from": "game_world.gd",
+      "to": "npc_quest_offer.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "game_world.gd",
+      "to": "player_notebook.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "game_world.gd",
+      "to": "progression_screen.tscn",
+      "relation": "imports_from"
+    },
+    {
+      "from": "game_world.gd",
+      "to": "property_management.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "game_world.gd",
+      "to": "public_works.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "game_world.gd",
+      "to": "rich_story.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "game_world.gd",
+      "to": "river_backpack.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "game_world.gd",
+      "to": "river_chart.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "game_world.gd",
+      "to": "river_cheats.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "game_world.gd",
       "to": "river_fish.gd",
       "relation": "imports_from"
     },
     {
-      "from": "fishing.gd",
+      "from": "game_world.gd",
       "to": "river_graphics.gd",
       "relation": "imports_from"
     },
     {
-      "from": "fishing.gd",
+      "from": "game_world.gd",
+      "to": "river_helicopter.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "game_world.gd",
+      "to": "river_lobby.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "game_world.gd",
+      "to": "river_pause.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "game_world.gd",
+      "to": "river_regions.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "game_world.gd",
+      "to": "river_safety.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "game_world.gd",
       "to": "river_stock.gd",
       "relation": "imports_from"
     },
     {
-      "from": "fishing.gd",
+      "from": "game_world.gd",
+      "to": "shannon_job.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "game_world.gd",
+      "to": "solo_saves.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "game_world.gd",
+      "to": "title_screen.tscn",
+      "relation": "imports_from"
+    },
+    {
+      "from": "game_world.gd",
       "to": "trophy_muskie.gd",
       "relation": "imports_from"
     },
     {
-      "from": "fishing.tscn",
-      "to": "fishing.gd",
+      "from": "game_world.tscn",
+      "to": "game_world.gd",
       "relation": "attaches_script"
     },
     {
-      "from": "fishing.tscn",
-      "to": "fishing.gd",
+      "from": "game_world.tscn",
+      "to": "game_world.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "houseboat_panorama.gd",
+      "to": "scenery.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "houseboat.gd",
+      "to": "boat_fuel_tank.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "houseboat.gd",
+      "to": "boat_helm_console.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "houseboat.gd",
+      "to": "boat_mooring.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "houseboat.gd",
+      "to": "crew_tools.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "houseboat.gd",
+      "to": "houseboat_panorama.gd",
       "relation": "imports_from"
     },
     {
       "from": "houseboat.gd",
       "to": "outboard.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "houseboat.gd",
+      "to": "rich_houseboat_model.gd",
       "relation": "imports_from"
     },
     {
@@ -316,8 +1073,43 @@
       "relation": "imports_from"
     },
     {
+      "from": "launch_houseboat.tscn",
+      "to": "houseboat.gd",
+      "relation": "attaches_script"
+    },
+    {
+      "from": "launch_houseboat.tscn",
+      "to": "houseboat.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "lawn_mower.gd",
+      "to": "crew_tools.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "lawn_mower.gd",
+      "to": "scenery.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "lawn_mower.gd",
+      "to": "vehicle_driver.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "lawn_mower.gd",
+      "to": "vehicle_exit.gd",
+      "relation": "imports_from"
+    },
+    {
       "from": "marina_art.gd",
       "to": "lamure_pines.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "marina_art.gd",
+      "to": "marina_docks.gd",
       "relation": "imports_from"
     },
     {
@@ -327,12 +1119,27 @@
     },
     {
       "from": "marina_art.gd",
+      "to": "marina_gas_bar.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "marina_art.gd",
+      "to": "marina_tennis_courts.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "marina_art.gd",
       "to": "marina_wharf.gd",
       "relation": "imports_from"
     },
     {
       "from": "marina_art.gd",
-      "to": "mooring_cleat.gd",
+      "to": "marina_yacht_club.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "marina_art.gd",
+      "to": "mowing_routes.gd",
       "relation": "imports_from"
     },
     {
@@ -343,6 +1150,26 @@
     {
       "from": "marina_art.gd",
       "to": "scenery.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "marina_attendant.gd",
+      "to": "crew_tools.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "marina_attendant.gd",
+      "to": "rich_model.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "marina_attendant.gd",
+      "to": "scenery.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "marina_boats_menu.gd",
+      "to": "game_menu_theme.gd",
       "relation": "imports_from"
     },
     {
@@ -382,6 +1209,11 @@
     },
     {
       "from": "marina_cars.gd",
+      "to": "deep_river_map.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "marina_cars.gd",
       "to": "marina_car_model.gd",
       "relation": "imports_from"
     },
@@ -392,12 +1224,22 @@
     },
     {
       "from": "marina_cars.gd",
-      "to": "ottawa_map.gd",
+      "to": "scenery.gd",
       "relation": "imports_from"
     },
     {
-      "from": "marina_cars.gd",
+      "from": "marina_docks.gd",
+      "to": "mooring_cleat.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "marina_docks.gd",
       "to": "scenery.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "marina_fleet.gd",
+      "to": "marina_docks.gd",
       "relation": "imports_from"
     },
     {
@@ -406,8 +1248,68 @@
       "relation": "imports_from"
     },
     {
+      "from": "marina_fuel_model.gd",
+      "to": "crew_tools.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "marina_fuel_model.gd",
+      "to": "river_hand_instance.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "marina_fuel_model.gd",
+      "to": "scenery.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "marina_gas_bar.gd",
+      "to": "marina_attendant.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "marina_gas_bar.gd",
+      "to": "marina_fuel.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "marina_gas_bar.gd",
+      "to": "scenery.gd",
+      "relation": "imports_from"
+    },
+    {
       "from": "marina_launch.gd",
       "to": "scenery.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "marina_tennis_courts.gd",
+      "to": "lamure_beach.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "marina_tennis_courts.gd",
+      "to": "marina_tennis_match.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "marina_tennis_courts.gd",
+      "to": "scenery.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "marina_tennis_match.gd",
+      "to": "rich_model.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "marina_tennis_match.gd",
+      "to": "scenery.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "marina_wharf.gd",
+      "to": "marina_docks.gd",
       "relation": "imports_from"
     },
     {
@@ -426,63 +1328,48 @@
       "relation": "imports_from"
     },
     {
+      "from": "marina_yacht_club.gd",
+      "to": "lamure_pines.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "marina_yacht_club.gd",
+      "to": "scenery.gd",
+      "relation": "imports_from"
+    },
+    {
       "from": "mooring_cleat.gd",
       "to": "scenery.gd",
       "relation": "imports_from"
     },
     {
-      "from": "ottawa_map.gd",
-      "to": "brockhouse_way.gd",
+      "from": "mooring_hardware.gd",
+      "to": "crew_tools.gd",
       "relation": "imports_from"
     },
     {
-      "from": "ottawa_map.gd",
-      "to": "deep_river_buildings.gd",
-      "relation": "imports_from"
-    },
-    {
-      "from": "ottawa_map.gd",
-      "to": "lamure_beach.gd",
-      "relation": "imports_from"
-    },
-    {
-      "from": "ottawa_map.gd",
-      "to": "lamure_pines.gd",
-      "relation": "imports_from"
-    },
-    {
-      "from": "ottawa_map.gd",
-      "to": "marina_art.gd",
-      "relation": "imports_from"
-    },
-    {
-      "from": "ottawa_map.gd",
-      "to": "river_campaign_data.gd",
-      "relation": "imports_from"
-    },
-    {
-      "from": "ottawa_map.gd",
-      "to": "river_graphics.gd",
-      "relation": "imports_from"
-    },
-    {
-      "from": "ottawa_map.gd",
-      "to": "riverbank_park.gd",
-      "relation": "imports_from"
-    },
-    {
-      "from": "ottawa_map.gd",
+      "from": "mooring_hardware.gd",
       "to": "scenery.gd",
       "relation": "imports_from"
     },
     {
-      "from": "ottawa_map.gd",
-      "to": "swell.gd",
+      "from": "mowing_road_guide.gd",
+      "to": "public_works.gd",
       "relation": "imports_from"
     },
     {
-      "from": "ottawa_map.gd",
-      "to": "swisha_dam.gd",
+      "from": "multiplayer_session.gd",
+      "to": "crew_avatar.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "notebook_theme.gd",
+      "to": "game_menu_theme.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "npc_quest_offer.gd",
+      "to": "notebook_theme.gd",
       "relation": "imports_from"
     },
     {
@@ -491,9 +1378,139 @@
       "relation": "imports_from"
     },
     {
+      "from": "player_notebook.gd",
+      "to": "notebook_theme.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "player_notebook.gd",
+      "to": "progression.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "player_notebook.gd",
+      "to": "rich_story.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "princecraft.tscn",
+      "to": "princecraft.gd",
+      "relation": "attaches_script"
+    },
+    {
+      "from": "princecraft.tscn",
+      "to": "princecraft.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "progression_screen.gd",
+      "to": "game_menu_theme.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "progression_screen.gd",
+      "to": "progression.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "progression_screen.gd",
+      "to": "sounding_chart.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "progression_screen.tscn",
+      "to": "progression_screen.gd",
+      "relation": "attaches_script"
+    },
+    {
+      "from": "progression_screen.tscn",
+      "to": "progression_screen.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "progression.gd",
+      "to": "progression_catalog.gd",
+      "relation": "imports_from"
+    },
+    {
       "from": "project.godot",
-      "to": "fishing.tscn",
+      "to": "title_screen.tscn",
       "relation": "runs_main_scene"
+    },
+    {
+      "from": "property_floor_overlay.gd",
+      "to": "scenery.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "property_floor_overlay.gd",
+      "to": "warehouse_property.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "property_management.gd",
+      "to": "game_menu_theme.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "property_management.gd",
+      "to": "property_floor_overlay.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "property_management.gd",
+      "to": "warehouse_property.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "public_works_door.gd",
+      "to": "scenery.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "public_works.gd",
+      "to": "crew_tools.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "public_works.gd",
+      "to": "public_works_door.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "public_works.gd",
+      "to": "scenery.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "repair_tool_view.gd",
+      "to": "crew_tools.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "repair_tool_view.gd",
+      "to": "river_hands.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "repair_tool_view.gd",
+      "to": "scenery.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "rich_houseboat_model.gd",
+      "to": "houseboat_restoration.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "rich_houseboat_model.gd",
+      "to": "outboard.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "rich_houseboat_model.gd",
+      "to": "scenery.gd",
+      "relation": "imports_from"
     },
     {
       "from": "rich_model.gd",
@@ -511,63 +1528,83 @@
       "relation": "imports_from"
     },
     {
-      "from": "river_campaign.gd",
-      "to": "crew_play.gd",
+      "from": "rich_story_yard.gd",
+      "to": "houseboat_restoration.gd",
       "relation": "imports_from"
     },
     {
-      "from": "river_campaign.gd",
-      "to": "houseboat.gd",
+      "from": "rich_story_yard.gd",
+      "to": "rich_houseboat_model.gd",
       "relation": "imports_from"
     },
     {
-      "from": "river_campaign.gd",
-      "to": "rich_npc.gd",
-      "relation": "imports_from"
-    },
-    {
-      "from": "river_campaign.gd",
-      "to": "river_board.gd",
-      "relation": "imports_from"
-    },
-    {
-      "from": "river_campaign.gd",
-      "to": "river_campaign_data.gd",
-      "relation": "imports_from"
-    },
-    {
-      "from": "river_campaign.gd",
-      "to": "river_crew.gd",
-      "relation": "imports_from"
-    },
-    {
-      "from": "river_campaign.gd",
-      "to": "river_deck.gd",
-      "relation": "imports_from"
-    },
-    {
-      "from": "river_campaign.gd",
-      "to": "river_landings.gd",
-      "relation": "imports_from"
-    },
-    {
-      "from": "river_campaign.gd",
-      "to": "river_ledger.gd",
-      "relation": "imports_from"
-    },
-    {
-      "from": "river_campaign.gd",
-      "to": "river_submersible.gd",
-      "relation": "imports_from"
-    },
-    {
-      "from": "river_campaign.gd",
+      "from": "rich_story_yard.gd",
       "to": "scenery.gd",
       "relation": "imports_from"
     },
     {
-      "from": "river_crew.gd",
-      "to": "crew_avatar.gd",
+      "from": "rich_story.gd",
+      "to": "houseboat_restoration.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "rich_story.gd",
+      "to": "houseboat.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "rich_story.gd",
+      "to": "progression.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "rich_story.gd",
+      "to": "quest_chain.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "rich_story.gd",
+      "to": "repair_tool_view.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "rich_story.gd",
+      "to": "rich_story_yard.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "river_backpack.gd",
+      "to": "game_menu_theme.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "river_backpack.gd",
+      "to": "houseboat_restoration.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "river_board.gd",
+      "to": "game_menu_theme.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "river_chart.gd",
+      "to": "deep_river_roads.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "river_chart.gd",
+      "to": "game_menu_theme.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "river_chart.gd",
+      "to": "notebook_theme.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "river_deck.gd",
+      "to": "game_ledger.gd",
       "relation": "imports_from"
     },
     {
@@ -577,7 +1614,7 @@
     },
     {
       "from": "river_deck.gd",
-      "to": "river_ledger.gd",
+      "to": "mooring_hardware.gd",
       "relation": "imports_from"
     },
     {
@@ -593,6 +1630,81 @@
     {
       "from": "river_fish.gd",
       "to": "scenery.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "river_hand_actions.gd",
+      "to": "cabin_props.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "river_hand_actions.gd",
+      "to": "river_hands.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "river_hand_instance.gd",
+      "to": "rich_model.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "river_hand_instance.gd",
+      "to": "scenery.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "river_hands.gd",
+      "to": "river_hand_instance.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "river_helicopter.gd",
+      "to": "aircraft_steering.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "river_helicopter.gd",
+      "to": "boat_helm_console.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "river_helicopter.gd",
+      "to": "crew_tools.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "river_helicopter.gd",
+      "to": "helicopter_instruments.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "river_helicopter.gd",
+      "to": "houseboat.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "river_helicopter.gd",
+      "to": "scenery.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "river_landings.gd",
+      "to": "deep_river_map.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "river_landings.gd",
+      "to": "game_campaign_data.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "river_landings.gd",
+      "to": "game_ledger.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "river_landings.gd",
+      "to": "lamure_beach.gd",
       "relation": "imports_from"
     },
     {
@@ -602,17 +1714,7 @@
     },
     {
       "from": "river_landings.gd",
-      "to": "ottawa_map.gd",
-      "relation": "imports_from"
-    },
-    {
-      "from": "river_landings.gd",
-      "to": "river_campaign_data.gd",
-      "relation": "imports_from"
-    },
-    {
-      "from": "river_landings.gd",
-      "to": "river_ledger.gd",
+      "to": "mooring_cleat.gd",
       "relation": "imports_from"
     },
     {
@@ -621,8 +1723,53 @@
       "relation": "imports_from"
     },
     {
-      "from": "river_ledger.gd",
-      "to": "river_campaign_data.gd",
+      "from": "river_lobby.gd",
+      "to": "game_menu_theme.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "river_lobby.gd",
+      "to": "multiplayer_session.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "river_mooring.gd",
+      "to": "boat_mooring.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "river_mooring.gd",
+      "to": "houseboat.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "river_pause.gd",
+      "to": "game_menu_theme.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "river_pause.gd",
+      "to": "river_graphics.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "river_regions.gd",
+      "to": "deep_river_properties.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "river_regions.gd",
+      "to": "lamure_pines.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "river_regions.gd",
+      "to": "scenery.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "river_stock.gd",
+      "to": "deep_river_map.gd",
       "relation": "imports_from"
     },
     {
@@ -631,13 +1778,8 @@
       "relation": "imports_from"
     },
     {
-      "from": "river_stock.gd",
-      "to": "ottawa_map.gd",
-      "relation": "imports_from"
-    },
-    {
       "from": "river_submersible.gd",
-      "to": "ottawa_map.gd",
+      "to": "deep_river_map.gd",
       "relation": "imports_from"
     },
     {
@@ -666,8 +1808,148 @@
       "relation": "imports_from"
     },
     {
+      "from": "shannon_job.gd",
+      "to": "mowing_road_guide.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "shannon_job.gd",
+      "to": "mowing_routes.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "shannon_job.gd",
+      "to": "public_works.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "shannon_job.gd",
+      "to": "scenery.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "shannon_job.gd",
+      "to": "shannon_model.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "shannon_job.gd",
+      "to": "shannon_voice.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "shannon_model.gd",
+      "to": "crew_tools.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "shannon_model.gd",
+      "to": "scenery.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "solo_saves.gd",
+      "to": "game_ledger.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "solo_slot_menu.gd",
+      "to": "game_ledger.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "solo_slot_menu.gd",
+      "to": "game_menu_theme.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "solo_slot_menu.gd",
+      "to": "solo_saves.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "sounding_chart.gd",
+      "to": "game_menu_theme.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "sounding_chart.gd",
+      "to": "progression.gd",
+      "relation": "imports_from"
+    },
+    {
       "from": "swisha_dam.gd",
       "to": "scenery.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "title_screen.gd",
+      "to": "game_menu_theme.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "title_screen.gd",
+      "to": "houseboat.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "title_screen.gd",
+      "to": "rich_model.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "title_screen.gd",
+      "to": "river_pause.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "title_screen.gd",
+      "to": "scenery.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "title_screen.gd",
+      "to": "solo_slot_menu.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "title_screen.tscn",
+      "to": "title_screen.gd",
+      "relation": "attaches_script"
+    },
+    {
+      "from": "title_screen.tscn",
+      "to": "title_screen.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "title_screen.tscn",
+      "to": "title_shore.gd",
+      "relation": "attaches_script"
+    },
+    {
+      "from": "title_screen.tscn",
+      "to": "title_shore.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "title_shore.gd",
+      "to": "lamure_pines.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "title_shore.gd",
+      "to": "marina_art.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "title_shore.gd",
+      "to": "scenery.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "trophy_muskie.gd",
+      "to": "deep_river_map.gd",
       "relation": "imports_from"
     },
     {
@@ -676,63 +1958,114 @@
       "relation": "imports_from"
     },
     {
-      "from": "trophy_muskie.gd",
-      "to": "ottawa_map.gd",
+      "from": "vehicle_driver.gd",
+      "to": "crew_avatar.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "vehicle_driver.gd",
+      "to": "crew_tools.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "vehicle_driver.gd",
+      "to": "scenery.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "verify_ledger_recovery.gd",
+      "to": "game_ledger.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "verify_progression_game.gd",
+      "to": "game_ledger.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "verify_progression_game.gd",
+      "to": "game_world.tscn",
+      "relation": "imports_from"
+    },
+    {
+      "from": "verify_progression_game.gd",
+      "to": "progression.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "verify_progression_network.gd",
+      "to": "game_campaign.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "verify_progression_network.gd",
+      "to": "game_world.tscn",
+      "relation": "imports_from"
+    },
+    {
+      "from": "verify_progression_network.gd",
+      "to": "multiplayer_session.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "verify_progression_network.gd",
+      "to": "progression.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "verify_progression.gd",
+      "to": "progression.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "verify_solo_slots.gd",
+      "to": "game_ledger.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "verify_solo_slots.gd",
+      "to": "solo_saves.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "verify_solo_slots.gd",
+      "to": "title_screen.tscn",
+      "relation": "imports_from"
+    },
+    {
+      "from": "verify_town_contracts.gd",
+      "to": "game_world.tscn",
+      "relation": "imports_from"
+    },
+    {
+      "from": "verify_vehicle_exit.gd",
+      "to": "vehicle_exit.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "verify_warehouse_game.gd",
+      "to": "game_ledger.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "verify_warehouse_game.gd",
+      "to": "game_world.tscn",
+      "relation": "imports_from"
+    },
+    {
+      "from": "verify_warehouse_game.gd",
+      "to": "scenery.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "verify_warehouse_game.gd",
+      "to": "warehouse_property.gd",
+      "relation": "imports_from"
+    },
+    {
+      "from": "warehouse_property.gd",
+      "to": "scenery.gd",
       "relation": "imports_from"
     }
-  ],
-  "hashes": {
-    "brockhouse_way.gd": "0b7abdaa705699ae6ecf1367fc995b7310db096ef27ef31c2291787c2ad9bf53",
-    "scenery.gd": "05a3d15cfae5894071400685bf2893f2040b7d466814b632c52e4166f56196be",
-    "lamure_beach.gd": "730b3b9c299b34087873d70cf09a30dbdc457c39f37582846cf598e27751dad8",
-    "marina_art.gd": "e3324a94e7df2bf271f9f4ae33dd3ffd6857059f37958bef1bf3791df0ca0509",
-    "lamure_pines.gd": "e6ffd0c761e0543df0ce437259f85dd038ec24f66e20b14f4a983eaee76b8a68",
-    "ottawa_map.gd": "07e968879f03ed1e6d85343263bb7545e653019e1eadd08917e9e0eb2731843a",
-    "cabin_life.gd": "61db5f9497a204c9f6f6166388def644bc245debe9a1291ff17d539146e89acb",
-    "houseboat.gd": "55fecf6b85905eab8b1f3406115d4be9e285e6a33235d4d4dd6f48d91debc055",
-    "fishing_water_fx.gd": "01cafc8a027b9a9c24793f92002dc40451d16c9605fd6ba7995afe083c0036f2",
-    "fishing_rig.gd": "db9b794a8db7280c7ac58d724b2f05c0ac9628faf682a177188d66499641d1ae",
-    "cabin_props.gd": "d9efd97b2d73681498d2fdde253e89cd81fa2dc269a47418b1bb3c78fbd4123d",
-    "fishing.gd": "b3bec58f92f8e52a4d1771ee1b518a82761eac361b5ab98ec1e0bbd428f84922",
-    "cove.gd": "86f7d2b3826ba89688a9e67744d35d7666697d678836c3416a6d5e0102235864",
-    "swell.gd": "34386c2b2a6dff7c84760524c5342a2580d329182066b27ff7f99cafbadb702a",
-    "cove.tscn": "a62338759585fb53ea1b7f01711834c59e502fcc84184a9b747b77f484c0c77d",
-    "crew_avatar.gd": "518a9f9d11ef1b37bcaa829e5f275b46ecc5ad1b8595fa8fce26b85a324ada52",
-    "crew_tools.gd": "28c102e54e5334d912adb5f809aae832997f65e990f1b423735e92dd40818032",
-    "river_fish.gd": "4231a7adeb797e150b02aa64d724a8a66027ebfd594c35ad850050d84484fb79",
-    "fish_species.gd": "b3f0e226ef247f1af3ecc01124bf389a683af3938b7e3c3c3452ac5b68510708",
-    "crew_play.gd": "9205db52cfca378dbd102663553e8b2824ac9a6b4eefa05566ea69106557027e",
-    "river_crew.gd": "15c9d711d842af6efed5c65b0239ffaca4ac566904586b0597e5e3a345f2c738",
-    "crew_camp.gd": "ef4ca683c55d89d0a531a5a328ce09e7381e8abf831daa334c5f8c1c9667f268",
-    "river_ledger.gd": "6b06ec93ad341893e04de19a17f7df4eaac7aef18b350bddc761c4da52af82e9",
-    "river_campaign.gd": "2cbf5f78e2803cebcaa4188b73d78cdc1848a48f46b727ff5f8d4c82523dfa2d",
-    "rich_model.gd": "f7580401632a0d746aa89bd9c28fe92306770eb6d20123c8c9f8c221ccedee32",
-    "deep_river_buildings.gd": "0e8e13f0727765ab81ab8bdeb054400f4cea50324c1115f6e7f95935699e6547",
-    "river_graphics.gd": "281c853a59e344e9a353b3a98c922ee5f963476d82c6c6fe83c983f023c54649",
-    "fish_finder.gd": "e78b5fdf1552a3db9ea91f199f2d2fcf5a801227d33515bed556d85b5e61a941",
-    "fish_guide.gd": "1c00c784ada7e7a83aaf4452359d82d58139658a73e26341e98d454c0992f5b2",
-    "river_stock.gd": "9076fa4fa58a0562052d801131687899bfeccc7b58205d61eedc5e9f7e19fdcb",
-    "trophy_muskie.gd": "2ffc13c18deec07453d0dc03abf069889514fd447b4160aaf606ddd17c5c3da7",
-    "marina_cars.gd": "375838f6990383fd7017940b7582e6d79275a4ae378e46c13ba32e192d02013d",
-    "fishing.tscn": "efab44f154cac4faa910f4e0353e771161e2ad4518489eb0f980f360179b1269",
-    "project.godot": "a61714dd8aa079ac25fe1993e57f1282bda6d752b1f863ee5748edca6992f0a6",
-    "outboard.gd": "f3d7eb337c6479b9eb91c958f520f55b15db155bca43406eaa1d2d8fae717352",
-    "river_deck.gd": "7502bfdc488c48dfbdf8f91bcd75e5c83dbdeaece295d4fb26b90f480eb1a181",
-    "lamure_playground.gd": "afe6aed99e061eb9ce2f99bb7ba2781924d3af225857af1fa05fd1478bfd8466",
-    "riverbank_park.gd": "0c28ce576b6cb373362868b0aefb996eb3850697d281f4595fbd491751227a60",
-    "marina_wharf.gd": "8746e863224f4a1448d6f9b919e16ab53571a40a480cbde582826357ddbc4479",
-    "mooring_cleat.gd": "88109d948e35a47c276ebeae0342e6f6db9d0e4bb8fbf8cfcb9a464276fea0f2",
-    "marina_fleet.gd": "a8dec0d17527e636fe6e889dab6d0747f667ba8f1c95052c8b9ba1209e4e18c5",
-    "river_landings.gd": "70fa06628326fe603a51b05eb879126dce1da0032417035a32b74b820947e3c4",
-    "marina_car.gd": "a90b43910228f66e79fc9cec0dcfb16aa5c9eabe33140c4fbcd4168244cfd7ff",
-    "marina_car_model.gd": "953d172cf4b09ba0d77bfc125066d01050f4558639bda8beef60a2c2a0712b96",
-    "marina_car_interior.gd": "bed81f9a8a7506b94a1a87f383b12a614716e7748d53baa1cf367592a38e9578",
-    "marina_car_badges.gd": "58607617b110e0be5884c24ff9ae70ebf537eba807ce058ba1577a5c22ddce49",
-    "marina_launch.gd": "27a40184e9bdb14be497734ad21ee709e882ff251485dfb2436a292e1f5a945f",
-    "swisha_dam.gd": "7b3eb0b0513bb37ac0158871c8d78e9057bad1866364d7f36ae3aa7ab662e12c",
-    "river_campaign_data.gd": "5981a4757066b978432d1ea8404ff99883e55d490d4d3b19b59bd7dc2c96fc31",
-    "river_submersible.gd": "e3b938807929914287e96f82947dcd52b4b4fb1c1ac231493d71697ec8b3c096",
-    "rich_npc.gd": "c20f96e62f8c60838ca7c60d20b09f319fbc0e1e9138a49037d6dc53fda69ef2",
-    "river_board.gd": "e01380188aae3f6a7ce2b9f0be325ba3bf5a30de5fff70f386eb85d0194e7962"
-  }
+  ]
 }

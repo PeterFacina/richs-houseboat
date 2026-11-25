@@ -1,6 +1,6 @@
 extends SceneTree
 
-const Ledger = preload("res://river_ledger.gd")
+const Ledger = preload("res://game_ledger.gd")
 const PATH := "user://ledger_recovery_fixture.json"
 
 

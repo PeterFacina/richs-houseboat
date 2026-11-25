@@ -1,5 +1,7 @@
 # AI development workflow — status and integration boundaries
 
+Use [Game identity](GAME-IDENTITY.md) for project terminology. Prompt Studio reads the short opening paragraph from the indexed checkout and retrieves subsystem detail when relevant.
+
 ## Shared contract
 
 GitHub issues and draft PRs are the durable task records; Discord is the team interface. Use [AGENTS.md](../AGENTS.md) and [team workflow](TEAM-WORKFLOW.md) for branch isolation, overlap checks and human approval. An alternative coding agent can use the same issue brief, but must follow those rules and provide verification. Do not assume a connection to GitHub automatically enforces them.

@@ -1,10 +1,10 @@
 # Fishing and player
 
-- [fishing.gd](../../godot-cove/fishing.gd) extends cove.gd, preloads rig, water effects, fish species/stock, finder and guide, and includes movement, swimming, gear, interaction and session code. Start with `_physics_process`, `move_on_foot`, `equip_gear`, `interact` or the relevant fishing state transition.
-- [fishing_rig.gd](../../godot-cove/fishing_rig.gd), [fish_species.gd](../../godot-cove/fish_species.gd), [river_stock.gd](../../godot-cove/river_stock.gd) are directly referenced by fishing.gd.
+- [game_world.gd](../../godot-cove/game_world.gd) extends cove.gd, preloads rig, water effects, fish species/stock, finder and guide, and includes movement, swimming, gear, interaction and session code. Start with `_physics_process`, `move_on_foot`, `equip_gear`, `interact` or the relevant fishing state transition.
+- [fishing_rig.gd](../../godot-cove/fishing_rig.gd), [fish_species.gd](../../godot-cove/fish_species.gd), [river_stock.gd](../../godot-cove/river_stock.gd) are directly referenced by game_world.gd.
 - For hands and props, locate current callers of `river_hands.gd`, `river_hand_actions.gd` and `crew_avatar.gd`; check both first-person and remote representations.
 - In a solo trip, follow the marina path through the Yacht & Tennis Club gate to the court marked Tennis with Big Rich. Rich takes a break from his quest or companion duties while the player is at the court and resumes them when the player leaves. Look at him and press E. Aim with the mouse and click after the ball bounces within reach. The match plays to seven and Esc leaves the match. [The court match](../../godot-cove/marina_tennis_match.gd) owns the rally and score. The player script handles input, uses the shared HUD, and restores equipped gear at the end of the match.
-- B opens the [River Notebook](../../godot-cove/river_notebook.gd), which embeds the Fish Index and River Chart and links to Boat Services. The Notebook and [quest offer](../../godot-cove/npc_quest_offer.gd) share the existing game theme. The fishing input and Backpack remain available outside tennis matches and menus.
+- B opens the [River Notebook](../../godot-cove/player_notebook.gd), which embeds the Fish Index and River Chart and links to Boat Services. The Notebook and [quest offer](../../godot-cove/npc_quest_offer.gd) share the existing game theme. The fishing input and Backpack remain available outside tennis matches and menus.
 
 - Swim to the water side of a marina ladder and look at its rails for the E climb prompt. The player steps onto the floating dock. The Lamure swim float has its own climb interaction.
 

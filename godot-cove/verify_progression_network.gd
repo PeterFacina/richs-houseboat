@@ -1,7 +1,7 @@
 extends SceneTree
 
-const Crew = preload("res://river_crew.gd")
-const Campaign = preload("res://river_campaign.gd")
+const Crew = preload("res://multiplayer_session.gd")
+const Campaign = preload("res://game_campaign.gd")
 const XP = preload("res://progression.gd")
 var campaign: Campaign
 var snapshots := {}
@@ -46,7 +46,7 @@ func exercise() -> void:
 	if not "houseboat-xp-" in OS.get_user_data_dir().to_lower():
 		quit(2)
 		return
-	var game = load("res://fishing.tscn").instantiate()
+	var game = load("res://game_world.tscn").instantiate()
 	root.add_child(game)
 	game.process_mode = Node.PROCESS_MODE_DISABLED
 	campaign = game.campaign

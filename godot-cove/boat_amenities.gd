@@ -7,8 +7,8 @@ const TOILET := Vector3(.96, .35, 5.69)
 const TV := Vector3(1.25, 1.91, 3.42)
 const EXIT := Vector3(.01, .82, 3.45)
 const LOOP_SECONDS := 90.0
-const CLIP := "res://ottawa/tv/licensed_clip.ogv"
-const CLIP_AUDIO := "res://ottawa/tv/licensed_clip.ogg"
+const CLIP := "res://deep_river/tv/licensed_clip.ogv"
+const CLIP_AUDIO := "res://deep_river/tv/licensed_clip.ogg"
 
 var game: Node3D
 var campaign: Node3D

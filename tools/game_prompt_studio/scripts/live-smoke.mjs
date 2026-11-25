@@ -33,7 +33,7 @@ if (process.argv[2] === '--verify-restart') {
     title: 'Multiplayer hands and held props',
     note: 'My friends can’t see my hands when I fish, open the cooler, drink, take a bong toke or hit my pen. My grips look goofy. Check everybody’s third-person view from both host and guest and make sure the first-person grips still line up.',
     tier: 'detailed', priority: 'High', tags: 'multiplayer, props', author: 'Studio validation',
-    focus: ['godot-cove/crew_avatar.gd', 'godot-cove/river_crew.gd', 'godot-cove/fishing_rig.gd'].filter(path => available.has(path))
+    focus: ['godot-cove/crew_avatar.gd', 'godot-cove/multiplayer_session.gd', 'godot-cove/fishing_rig.gd'].filter(path => available.has(path))
   };
   const { id } = await request('/api/generate', 'POST', task);
   let job;

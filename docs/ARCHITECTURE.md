@@ -5,7 +5,9 @@ This is a short navigation map, not a complete specification. Source in the curr
 ## Entry points
 
 - [project.godot](../godot-cove/project.godot) configures the title scene and GL compatibility rendering; [title_screen.tscn](../godot-cove/title_screen.tscn) is the configured entry scene.
-- [fishing.gd](../godot-cove/fishing.gd) extends [cove.gd](../godot-cove/cove.gd) and includes gameplay input, vessel stepping, fishing and session integration. Do not assume its responsibility is limited to fishing.
+- The title screen starts [game_world.tscn](../godot-cove/game_world.tscn). [game_world.gd](../godot-cove/game_world.gd) extends [cove.gd](../godot-cove/cove.gd) and coordinates player movement and interaction, vehicles, activities, UI and session setup.
+- [deep_river_map.gd](../godot-cove/deep_river_map.gd) builds the town, land terrain, waterfront, river water and regional map from the [Deep River assets](../godot-cove/deep_river/). The Ottawa River chart, navigation and fish populations have their own systems.
+- [game_campaign.gd](../godot-cove/game_campaign.gd) integrates boats, regional contracts, Rich's questline and host state. [game_ledger.gd](../godot-cove/game_ledger.gd) persists that shared state and player progression. [multiplayer_session.gd](../godot-cove/multiplayer_session.gd) handles peer identity and transport. [player_notebook.gd](../godot-cove/player_notebook.gd) and [game_menu_theme.gd](../godot-cove/game_menu_theme.gd) support UI across several domains.
 
 ## Choose the relevant guide
 
@@ -17,8 +19,13 @@ This is a short navigation map, not a complete specification. Source in the curr
 | XP, jobs, economy and saves | [Progression and economy](systems/PROGRESSION-ECONOMY.md) |
 | Town, roads and vehicles | `deep_river_*.gd`, `marina_car*.gd`, `vehicle_driver.gd` (search actual callers) |
 | Mowing | `lawn_mower.gd`, `shannon_job.gd`, `mowing_routes.gd` |
+| Big Rich, Shannon Lapping, shared quest state | [Quests and character stories](systems/QUESTS.md) |
 | AI and Discord workflow | [AI workflow status](AI-WORKFLOW.md), [team workflow](TEAM-WORKFLOW.md) |
 | Tests and CI | [Build checks](BUILD-CHECKS.md), [universal XP verification](UNIVERSAL-XP.md) |
+
+## Extending the architecture
+
+See [Game identity](GAME-IDENTITY.md) for the world, narrative and progression direction. New activities can use the existing reward registry, skill catalog and host progression path. As additional quests are implemented, use the existing quest state operations and assess where the campaign dispatch and notebook currently assume a single character. The campaign also integrates a number of boat-specific responsibilities that could move to focused systems during future feature work.
 
 ## Retrieval strategy
 

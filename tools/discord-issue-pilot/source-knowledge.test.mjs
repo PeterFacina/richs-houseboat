@@ -6,7 +6,7 @@ import { dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import test from 'node:test';
 import { openDb } from '../game_prompt_studio/lib/db.mjs';
-import { findEvidence, indexedKnowledge, recentScan } from '../game_prompt_studio/lib/index.mjs';
+import { findEvidence, indexedKnowledge, projectProfile, recentScan } from '../game_prompt_studio/lib/index.mjs';
 import { processGpuIssue } from './gpu-queue.mjs';
 import { sourceKnowledge } from './source-knowledge.mjs';
 import { openTrainingInbox } from './training-inbox.mjs';
@@ -55,6 +55,8 @@ test('pinned refresh, persistent fallback, and queued brief provenance', async t
     put('docs/systems/BOAT-WATER.md', 'Passive velocity and houseboat drift [Boat](../../godot-cove/boat.gd)\n');
     put('docs/systems/PROGRESSION.md', 'Experience points and the progression ledger.\n');
     put('godot-cove/ottawa/generated.gd', 'func generated_terrain():\n  pass\n');
+    put('godot-cove/deep_river/generated.gd', 'func generated_terrain():\n  pass\n');
+    put('docs/GAME-IDENTITY.md', "# Game identity\n\nRich's Houseboat is the working title of a life simulation in Deep River.\n");
     const first = commit();
     db = openDb(storage);
     let knowledge = sourceKnowledge({ ...options, db });
@@ -62,6 +64,17 @@ test('pinned refresh, persistent fallback, and queued brief provenance', async t
     assert.equal(knowledge.refresh(), concurrent);
     assert.equal((await concurrent).commit, first);
     assert.equal(indexedKnowledge(db).files['godot-cove/ottawa/generated.gd'], undefined);
+    assert.equal(indexedKnowledge(db).files['godot-cove/deep_river/generated.gd'], undefined);
+    assert.match(projectProfile(db).find(item => item.path === 'docs/GAME-IDENTITY.md').fact, /Deep River/);
+    const cache = join(storage, 'source');
+    git(cache, 'config', 'houseboat.knowledgeLayout', '1');
+    git(cache, 'sparse-checkout', 'set', '--no-cone', '--', '/docs/ARCHITECTURE.md', '/godot-cove/*.gd', '/godot-cove/project.godot');
+    const oldManifest = indexedKnowledge(db);
+    delete oldManifest.sourceLayout;
+    db.prepare("UPDATE settings SET value=? WHERE name='source-knowledge'").run(JSON.stringify(oldManifest));
+    assert.equal((await knowledge.refresh()).commit, first);
+    assert.equal(indexedKnowledge(db).sourceLayout, '2');
+    assert.ok(projectProfile(db).some(item => item.path === 'docs/GAME-IDENTITY.md'));
     assert.equal(findEvidence(db, note, [], 4000, { manifest: indexedKnowledge(db),
       selection: await knowledge.select(note, []) })[0].title, 'passive_water_velocity');
     assert.equal(recentScan(db).revision, first);

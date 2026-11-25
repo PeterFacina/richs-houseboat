@@ -1,10 +1,10 @@
 extends RefCounted
 
 const Kit = preload("res://scenery.gd")
-const CONTROLS = preload("res://ottawa/municipal_traffic_controls.json")
-const SCHOOL_SIGN = preload("res://ottawa/school_crossing_wc2.svg")
-const STOP_SIGN = preload("res://ottawa/stop_ra1.svg")
-const SIGN_FONT = preload("res://ottawa/BarlowCondensed-SemiBold.ttf")
+const CONTROLS = preload("res://deep_river/municipal_traffic_controls.json")
+const SCHOOL_SIGN = preload("res://deep_river/school_crossing_wc2.svg")
+const STOP_SIGN = preload("res://deep_river/stop_ra1.svg")
+const SIGN_FONT = preload("res://deep_river/BarlowCondensed-SemiBold.ttf")
 # May 2025 imagery places these crosswalks across Laurier and the east leg of Deep River Rd.
 const LAURIER_CROSSING := Vector4(17653.77, 12928.52, -.0906, .9959)
 const DEEP_RIVER_CROSSING := Vector4(18143.57, 13325.72, .9996, -.0295)

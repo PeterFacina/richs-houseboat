@@ -17,7 +17,7 @@ var elapsed := 0.0
 func setup(scene: Node3D) -> void:
 	game = scene
 	name = "RegionalTravel"
-	data = JSON.parse_string(FileAccess.get_file_as_string("res://ottawa/regional_access.json"))
+	data = JSON.parse_string(FileAccess.get_file_as_string("res://deep_river/regional_access.json"))
 	init_helipad()
 	var outline: Array = data.cemetery
 	var center := Vector2.ZERO
