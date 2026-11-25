@@ -1,0 +1,84 @@
+{
+  "lessons": [
+    {
+      "id": "issue-69-pr-70",
+      "report": {
+        "number": 69,
+        "title": "HUD Layout Improvements"
+      },
+      "implementation": {
+        "pull": 70,
+        "revision": "9097d61064bd0db0330832d1f355cb595bb0f5f7"
+      },
+      "scope": [
+        "HUD layout",
+        "FPS",
+        "F3",
+        "calendar",
+        "date",
+        "time",
+        "interaction hint",
+        "viewport",
+        "performance indicators",
+        "waypoint distance",
+        "objective empty row"
+      ],
+      "failure": "Right alignment alone did not establish bounds at narrow sizes. Removing location text also removed a position used for waypoint distance.",
+      "success": "Use a shared top-right layout container, keep the clock above FPS, hide an empty objective, and retain the position used by distance updates.",
+      "feedback": "PR #70 review identified that alignment alone left FPS overflow unverified. It requested measured bounds across presets, F3 checks, and preservation of mission and action hints.",
+      "verification": "Merged source confirms wiring. Measure bounds during play and across toggle states and window sizes. Test normal HUD behavior separately from any mode-specific HUD.",
+      "provenance": [
+        {
+          "kind": "original-report",
+          "source": "https://github.com/PeterFacina/richs-houseboat/issues/69"
+        },
+        {
+          "kind": "review-findings",
+          "source": "https://github.com/PeterFacina/richs-houseboat/pull/70"
+        },
+        {
+          "kind": "initial-attempt",
+          "revision": "360de28fdd58ca03b32f903b169ae5d8748877b9"
+        },
+        {
+          "kind": "waypoint-restoration",
+          "revision": "9d2044ec5e526230efff868da31494c61e17af67"
+        },
+        {
+          "kind": "container-correction",
+          "revision": "8b9de59bbc19165da77f47fbc2752c98101ed523"
+        },
+        {
+          "kind": "clock-order",
+          "revision": "808b8690005fd1738b6ed87177e5d64fbabcc077"
+        },
+        {
+          "kind": "empty-objective-correction",
+          "revision": "ef4d5203776a0ec6c630fd88baa256e311299e4a"
+        },
+        {
+          "kind": "current-source-revalidation",
+          "revision": "ba9f0319bcabddc7a2862be9ce7414e07ad7fffc"
+        }
+      ],
+      "anchors": [
+        {
+          "path": "godot-cove/cove.gd",
+          "name": "build_hud",
+          "sha256": "7a3e4c70a0d518c4791f63a44b4f583389b7633914d81f4e5a459521142e5407"
+        },
+        {
+          "path": "godot-cove/fishing.gd",
+          "name": "update_hud",
+          "sha256": "ca2b46beb86c1f8c5f4996f24b16c8a507a8805fd60a9340546c08c646f1da7b"
+        },
+        {
+          "path": "godot-cove/shannon_job.gd",
+          "name": "setup",
+          "sha256": "50f9d45fba107a8ed864787c7b0ee3775c24a9c4a7aed73da08c4d8b59c8e24a"
+        }
+      ],
+      "trainingApproval": null
+    }
+  ]
+}

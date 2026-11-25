@@ -11,6 +11,7 @@ import { processGpuIssue } from './gpu-queue.mjs';
 import { sourceKnowledge } from './source-knowledge.mjs';
 import { openTrainingInbox } from './training-inbox.mjs';
 import { workerGeneration } from './worker-generation.mjs';
+import { candidateBrief, candidateRetrieval, originalRetrieval, retrievalConfig, verificationGuidance } from './production-retrieval.mjs';
 import { gpuBriefMarker, gpuPendingMarker, reportHeader, reportKinds } from './workflow.mjs';
 
 const note = 'Why does passive water velocity drift affect the houseboat?';
@@ -93,16 +94,22 @@ test('pinned refresh, persistent fallback, and queued brief provenance', async t
     const issue = { number: 110, state: 'open', html_url: 'https://example.invalid/issues/110', body:
       reportHeader('gameplay') + note + '\n\nDiscord report: https://discord.com/channels/11/22/33\n\n## Done when\n\n' +
       reportKinds.gameplay.done + '\n\n' + gpuPendingMarker + '\n<!-- discord-pilot:33 -->' };
+    const canaryIssue = { ...issue, number: 115, html_url: 'https://example.invalid/issues/115',
+      body: issue.body.replace(reportHeader('gameplay'), reportHeader('notes')).replace(reportKinds.gameplay.done, reportKinds.notes.done) };
     const comments = [];
+    const canaryComments = [];
     const github = async (path, method, payload) => {
       if (path === '/issues/110') return issue;
+      if (path === '/issues/115') return canaryIssue;
       if (path.startsWith('/issues?')) return [{ number: 111, title: 'Houseboat drift telemetry' }];
       if (path.startsWith('/pulls?')) return [{ number: 112, draft: true, title: 'Passive water velocity review' }];
-      assert.match(path, /^\/issues\/110\/comments/);
-      if (method !== 'POST') return comments;
-      assert.match(payload.body, new RegExp('^' + gpuBriefMarker + '\\n\\nGame knowledge revision ' + second));
-      const comment = { ...payload, author_association: 'COLLABORATOR', html_url: issue.html_url + '#comment' };
-      comments.push(comment);
+      assert.match(path, /^\/issues\/(110|115)\/comments/);
+      const isCanary = path.startsWith('/issues/115/');
+      const posts = isCanary ? canaryComments : comments;
+      if (method !== 'POST') return posts;
+      assert.match(payload.body, new RegExp('^' + gpuBriefMarker + '\\n\\nGame knowledge revision ' + (isCanary ? third : second)));
+      const comment = { ...payload, author_association: 'COLLABORATOR', html_url: (isCanary ? canaryIssue : issue).html_url + '#comment' };
+      posts.push(comment);
       return comment;
     };
     inbox = openTrainingInbox(join(root, 'training.sqlite'));
@@ -113,7 +120,8 @@ test('pinned refresh, persistent fallback, and queued brief provenance', async t
     let request;
     const section = ['Check houseboat drift using [S1].'];
     let unsafe = false;
-    generation = await workerGeneration({ storage, model, knowledge, github, inbox, async fetchOllama(url, init) {
+    generation = await workerGeneration({ storage, model, knowledge, github, inbox,
+      retrieval: retrievalConfig(candidateRetrieval, '115'), async fetchOllama(url, init) {
       if (url.endsWith('/api/tags')) return Response.json({ models: [{ name: model, digest: 'model-fixture' }] });
       assert.ok(url.endsWith('/api/chat'));
       request = JSON.parse(init.body);
@@ -145,6 +153,7 @@ test('pinned refresh, persistent fallback, and queued brief provenance', async t
     assert.equal(capture.input.model, model);
     assert.equal(capture.input.modelDigest, 'model-fixture');
     assert.deepEqual(capture.input.request, request);
+    assert.ok(!request.messages[0].content.includes(verificationGuidance));
     assert.equal(capture.input.metrics.promptTokens, 520);
     const evidence = capture.input.retrievedContext;
     assert.ok(evidence.some(item => item.path === 'docs/systems/BOAT-WATER.md'));
@@ -163,6 +172,25 @@ test('pinned refresh, persistent fallback, and queued brief provenance', async t
     const stale = await generation.generate(note, { ...issue, number: 114 });
     assert.match(stale.brief, /\(stale, main refresh failed\)/);
     assert.equal(inbox.read(114).captures[0].input.commit, third);
+    assert.equal((await processGpuIssue(canaryIssue, github, generation.generate, inbox.link)).status, 'posted');
+    assert.equal((await processGpuIssue(canaryIssue, github, generation.generate, inbox.link)).status, 'already posted');
+    assert.equal(canaryComments.length, 1);
+    const [candidateCapture] = inbox.read(115).captures;
+    assert.equal(candidateCapture.published, canaryComments[0].html_url);
+    const candidate = candidateCapture.input;
+    assert.equal(candidate.knowledge.retrieval.effective, candidateRetrieval);
+    assert.equal(candidate.knowledge.retrieval.briefVersion, candidateBrief);
+    assert.ok(candidate.request.messages[0].content.includes(verificationGuidance));
+    assert.equal(candidate.knowledge.stale, true);
+    assert.ok(candidate.retrievedContext.some(item => item.path === 'godot-cove/drift.gd'));
+    writeFileSync(join(storage, 'source', 'godot-cove', 'boat.gd'), 'func dirty_unverified_text():\n  pass\n');
+    await generation.generate(note, { ...issue, number: 115 });
+    const fallback = inbox.read(115).captures.at(-1).input;
+    assert.equal(fallback.knowledge.retrieval.requested, candidateRetrieval);
+    assert.equal(fallback.knowledge.retrieval.effective, originalRetrieval);
+    assert.equal(fallback.knowledge.retrievalFallback, true);
+    assert.ok(!fallback.request.messages[0].content.includes(verificationGuidance));
+    assert.ok(!JSON.stringify(fallback.retrievedContext).includes('dirty_unverified_text'));
   } finally {
     await generation?.close();
     inbox?.close();

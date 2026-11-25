@@ -8,6 +8,38 @@ import { buildDraft, checkExport } from '../game_prompt_studio/lib/model.mjs';
 export const trainingPath = () => join(process.env.LOCALAPPDATA || homedir(),
   'HouseboatPromptTraining', 'examples.sqlite');
 const digest = value => createHash('sha256').update(value).digest('hex');
+const outcomeMetrics = ['developmentSeconds', 'reviewSeconds', 'correctionSeconds', 'inputTokens',
+  'cachedInputTokens', 'outputTokens', 'reasoningTokens', 'incorrectAssumptions', 'unnecessarySourceSteps', 'humanCorrections'];
+
+function completedOutcome(review, capture) {
+  if (!capture?.published) throw new Error('Outcome needs the ID of a published capture.');
+  if (typeof review.reviewer !== 'string' || !review.reviewer.trim()) throw new Error('Name the outcome reviewer.');
+  if (!/^https:\/\/github\.com\/PeterFacina\/richs-houseboat\/pull\/[1-9]\d*(?:#[-\w]+)?$/.test(review.prUrl ?? '')) {
+    throw new Error('Link the completed Houseboat PR.');
+  }
+  const { firstAttempt, verification } = review;
+  if (!['passed', 'failed', 'unverified'].includes(firstAttempt) ||
+      !['passed', 'failed', 'partial', 'unverified'].includes(verification)) {
+    throw new Error('Record firstAttempt and verification with explicit results.');
+  }
+  const metrics = Object.fromEntries(outcomeMetrics.flatMap(key => {
+    const value = review[key];
+    if (value == null) return [];
+    if (!Number.isFinite(value) || value < 0 || (!key.endsWith('Seconds') && !Number.isSafeInteger(value))) {
+      throw new Error('Invalid outcome metric ' + key + '.');
+    }
+    return [[key, value]];
+  }));
+  if (metrics.cachedInputTokens > metrics.inputTokens) throw new Error('Cached input cannot exceed total input.');
+  if (firstAttempt === 'passed' && (verification !== 'passed' || metrics.humanCorrections > 0)) {
+    throw new Error('First-attempt success requires passed verification without corrections.');
+  }
+  const { status, reviewer, prUrl, summary, captureId } = review;
+  return { status, reviewer, prUrl, summary, captureId, firstAttempt, verification, ...metrics,
+    retrieval: capture.input.knowledge?.retrieval?.effective ?? 'unrecorded',
+    briefVersion: capture.input.knowledge?.retrieval?.briefVersion ?? 'unrecorded',
+  };
+}
 
 export function openTrainingInbox(path = trainingPath()) {
   mkdirSync(dirname(path), { recursive: true });
@@ -44,19 +76,34 @@ export function openTrainingInbox(path = trainingPath()) {
       const record = this.read(issue);
       if (!record.captures.length) throw new Error('No original model input captured for this issue.');
       if (typeof review.summary !== 'string' || !review.summary.trim()) throw new Error('Add a short review summary.');
+      if (review.status === 'outcome') {
+        review = completedOutcome(review, record.captures.find(row => row.id === review.captureId));
+      }
       if (review.status === 'approved') {
         const capture = record.captures.find(row => row.id === review.captureId && row.published);
         if (!capture) throw new Error('Approval needs the ID of a published capture.');
         if (typeof review.reviewer !== 'string' || !review.reviewer.trim()) throw new Error('Name the reviewer.');
         const original = JSON.parse(capture.input.request.messages.find(message => message.role === 'user').content);
+        const evidence = capture.input.exportEvidence ?? original.untrustedRetrievedEvidence;
         const brief = buildDraft(review.target, 'Reviewed brief', original.verifiedProjectFacts,
-          original.untrustedRetrievedEvidence, original.currentRequest.note);
-        const findings = checkExport(brief, original.untrustedRetrievedEvidence, original.verifiedProjectFacts);
+          evidence, original.currentRequest.note);
+        const findings = checkExport(brief, evidence, original.verifiedProjectFacts);
         if (findings.length) throw new Error('Target export rejected: ' + findings.join(', '));
-      } else if (review.status !== 'feedback') {
-        throw new Error('Use status feedback or approved.');
+      } else if (!['feedback', 'outcome'].includes(review.status)) {
+        throw new Error('Use status feedback, outcome or approved.');
       }
       db.prepare('INSERT INTO reviews VALUES (?,?,?)').run(issue, new Date().toISOString(), JSON.stringify(review));
+    },
+    outcomes() {
+      const rows = db.prepare(`SELECT issue, data FROM reviews WHERE rowid IN (
+        SELECT MAX(rowid) FROM reviews WHERE json_extract(data, '$.status')='outcome' GROUP BY issue
+      ) ORDER BY issue`).all();
+      return rows.map(({ issue, data }) => {
+        const review = JSON.parse(data);
+        const { retrieval, briefVersion, firstAttempt, verification } = review;
+        return { issue, retrieval, briefVersion, firstAttempt, verification,
+          ...Object.fromEntries(outcomeMetrics.filter(key => review[key] != null).map(key => [key, review[key]])) };
+      });
     },
     close() { db.close(); },
   };
