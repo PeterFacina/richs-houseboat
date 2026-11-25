@@ -1,0 +1,8 @@
+{
+  "pr": 106,
+  "player_facing": true,
+  "bullets": [
+    "Player-facing PRs now need a valid, PR-specific release note to pass CI.",
+    "What’s New keeps older updates visible when PRs merge out of order."
+  ]
+}

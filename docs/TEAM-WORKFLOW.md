@@ -29,6 +29,12 @@ To playtest from a task folder, import its `godot-cove/project.godot` in your in
 
 When the work is ready, tell Codex **“Test this, then publish my task branch as a draft PR into main.”** Everyone receives the merged changes the next time they start a fresh task. A GitHub login with write access is needed to publish. The starter itself only fetches and creates local work.
 
+### Player-facing release notes
+
+Every PR that changes player-facing files under `godot-cove/` must include `godot-cove/release-notes/pr-<PR number>.json`. Include the matching integer `pr`, `"player_facing": true`, and a non-empty `bullets` array of clear player-facing strings totaling fewer than 450 characters. The `Release notes / Validate player-facing release note` check tests the validator and reports the missing file or invalid field. It skips Markdown/text documentation, internal tooling, test-folder and `.godot` cache changes. Keep one file per PR so parallel branches do not overwrite a shared changelog. Infrastructure-only PRs should not add a release note.
+
+To make enforcement mandatory, open a PR so the check appears in GitHub’s status-check list, then add **`Release notes / Validate player-facing release note`** to the required checks for the `main` branch in repository branch protection or its ruleset. Until a maintainer configures that rule, the check reports failures but does not block merging.
+
 ### GitHub Desktop alternative
 
 1. **Get current.** In GitHub Desktop, switch to `main`, fetch, and pull. Create a new branch from that version. Leave unfinished work on its existing branch.
