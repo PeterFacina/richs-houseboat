@@ -13,5 +13,6 @@ export function resolveGameRoutes(note) {
   if (currentAssetDirectory.test(lookup)) {
     matched.push({ paths: ['deep_river_map.gd'], guidePath: 'docs/ARCHITECTURE.md' });
   }
-  return { lookup, filenames, paths: matched.flatMap(route => route.paths), guides: matched.map(route => route.guidePath) };
+  return { lookup, filenames, paths: matched.flatMap(route => route.paths),
+    primaryPaths: matched.map(route => route.paths[0]), guides: matched.map(route => route.guidePath) };
 }

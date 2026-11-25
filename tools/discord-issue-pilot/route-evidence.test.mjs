@@ -21,7 +21,8 @@ test('canonical file passages survive deterministic ranking and resolve legacy n
     files[path] = { sha256: createHash('sha256').update(text).digest('hex'), symbols, references: [] };
   }
 
-  const names = [...Object.values(routes.aliases), 'quest_chain.gd', 'npc_quest_offer.gd', 'progression.gd', 'progression_catalog.gd'];
+  const names = [...Object.values(routes.aliases), 'quest_chain.gd', 'npc_quest_offer.gd', 'progression.gd',
+    'progression_catalog.gd', 'rich_story.gd', 'houseboat_restoration.gd', 'shannon_job.gd', 'shannon_model.gd'];
   for (const name of names) {
     if (name.endsWith('.tscn')) write('godot-cove/' + name, '[gd_scene]\n[node name="World" type="Node3D"]\n');
     else write('godot-cove/' + name, 'extends Node\n\nfunc implement_system() -> void:\n\tpass\n',
@@ -54,6 +55,12 @@ test('canonical file passages survive deterministic ranking and resolve legacy n
   }
   assert.match(resolveGameRoutes('res://ottawa/terrain.f32').lookup, /^res:\/\/deep_river\//);
   assert.ok(!collectGameEvidence(index, 'Find Universal XP').some(item => item.path === 'docs/GAME-IDENTITY.md'));
+  const combined = collectGameEvidence(index,
+    'Trace the game world controller, Big Rich, Shannon Lapping, multiple NPC quests and the future research tree.');
+  for (const name of ['game_world.gd', 'rich_story.gd', 'shannon_job.gd', 'quest_chain.gd', 'progression.gd']) {
+    assert.ok(combined.slice(0, 5).some(item => item.path === 'godot-cove/' + name));
+  }
+  assert.ok(combined.some(item => item.path === 'docs/GAME-IDENTITY.md' && item.excerpt.includes('future research tree')));
   writeFileSync(join(root, 'godot-cove/game_world.gd'), '# changed after indexing\n');
   assert.throws(() => collectGameEvidence(index, 'Locate fishing.gd'), /Evidence changed/);
 });

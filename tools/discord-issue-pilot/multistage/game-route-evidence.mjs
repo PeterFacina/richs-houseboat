@@ -12,14 +12,18 @@ function pinnedPassage(index, path, query, limit) {
 }
 
 export function collectGameEvidence(index, note, extra = []) {
-  const { lookup, filenames, paths, guides } = resolveGameRoutes(note.slice(0, 6500));
+  const { lookup, filenames, paths, primaryPaths, guides } = resolveGameRoutes(note.slice(0, 6500));
   const query = index.query(lookup);
-  const requested = [...new Set([...filenames, ...paths])];
-  const sources = requested.filter(name => index.files.has('godot-cove/' + name)).slice(0, 4)
-    .map(name => pinnedPassage(index, 'godot-cove/' + name, query, 425)).filter(Boolean);
-  const guide = guides.map(path => pinnedPassage(index, path, query, 340)).find(Boolean);
-  const routed = guide ? [...sources, guide] : sources;
-  const ranked = { ...index, docs: index.docs.filter(item => item.path !== 'docs/GAME-IDENTITY.md') };
+  const requested = [...new Set([...filenames, ...primaryPaths, ...paths])];
+  const sources = requested.filter(name => index.files.has('godot-cove/' + name)).slice(0, 5)
+    .map(name => pinnedPassage(index, 'godot-cove/' + name, query, 375)).filter(Boolean);
+  const identity = 'docs/GAME-IDENTITY.md';
+  const architecture = 'docs/ARCHITECTURE.md';
+  const guideOrder = new Set([identity, ...guides.filter(path => path !== architecture), architecture]);
+  const selectedGuides = [...guideOrder].filter(path => guides.includes(path) && index.files.has(path)).slice(0, 2)
+    .map(path => pinnedPassage(index, path, query, 300)).filter(Boolean);
+  const routed = [...sources, ...selectedGuides];
+  const ranked = { ...index, docs: index.docs.filter(item => item.path !== identity) };
   if (!routed.length) return collectEvidence(ranked, lookup, extra);
 
   const evidence = collectEvidence(ranked, lookup, [...routed, ...extra]);
