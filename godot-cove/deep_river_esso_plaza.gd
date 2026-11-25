@@ -5,15 +5,17 @@ const Graphics = preload("res://river_graphics.gd")
 const Roads = preload("res://deep_river_roads.gd")
 const SIGN_FONT = preload("res://deep_river/BarlowCondensed-SemiBold.ttf")
 
-const REPLACED_FOOTPRINTS := ["1336267290", "378664819", "1336267295"]
+const REPLACED_FOOTPRINTS := ["1336267290", "378664819", "1336267295", "243973052"]
 # Local +Z faces Highway 17. +X runs along the storefronts from Pizza to Subway.
 const ORIGIN := Roads.SIGNALS.JUNCTION
 const ALONG := Vector2(-0.79388, -0.60807)
 const FRONT := Vector2(0.60807, -0.79388)
 const LOT := Rect2(-51, -51, 48, 43)
+const RESTAURANT_LOT := Rect2(5.5, -67, 32, 58)
 const ROAD_EDGE := -Roads.HIGHWAY_HALF_WIDTH
 const PIZZA_LEFT := -47.0
 const ASPHALT_LIFT := .075
+const PAVEMENT_LAYERS := Roads.ROAD_LAYER | 1
 
 var ground: Callable
 var solid: StaticBody3D
@@ -27,10 +29,11 @@ var glazing := Kit.paint(Color("#4f5955"), .26)
 
 static func clears_tree(point: Vector2) -> bool:
 	var offset := point - ORIGIN
-	return LOT.grow(1.6).has_point(Vector2(offset.dot(ALONG), offset.dot(FRONT)))
+	var local := Vector2(offset.dot(ALONG), offset.dot(FRONT))
+	return LOT.grow(1.6).has_point(local) or RESTAURANT_LOT.grow(1.6).has_point(local)
 
 
-func build(elevation: Callable, asphalt: Texture2D, paving: Texture2D) -> void:
+func build(elevation: Callable, asphalt: Texture2D, paving: Texture2D, brick: Texture2D) -> void:
 	name = "DeepRiverEssoPlaza"
 	ground = elevation
 	position = Vector3(ORIGIN.x, ground.call(ORIGIN.x, ORIGIN.y), ORIGIN.y)
@@ -40,7 +43,11 @@ func build(elevation: Callable, asphalt: Texture2D, paving: Texture2D) -> void:
 	concrete = Kit.paint(Color("#bcb5a5"))
 	concrete.albedo_texture = paving
 
-	build_forecourt(asphalt)
+	var pavement := ShaderMaterial.new()
+	pavement.shader = preload("res://deep_river_esso_asphalt.gdshader")
+	pavement.set_shader_parameter("asphalt_scan", asphalt)
+	build_forecourt(pavement)
+	build_restaurant_lot(pavement, brick)
 	var siding := siding_material()
 	build_shops(siding)
 	build_pizzeria(siding)
@@ -62,23 +69,18 @@ func block(at: Vector3, size: Vector3, material: Material, collides := false) ->
 		Kit.collider(solid, at, size)
 
 
-func build_forecourt(scan: Texture2D) -> void:
-	var asphalt := ShaderMaterial.new()
-	asphalt.shader = preload("res://deep_river_esso_asphalt.gdshader")
-	asphalt.set_shader_parameter("asphalt_scan", scan)
-	surface(LOT, ASPHALT_LIFT, ASPHALT_LIFT, asphalt, true)
-	for opening in [Vector2(-45, -34), Vector2(-22, -12)]:
-		surface(Rect2(opening.x, LOT.end.y, opening.y - opening.x, ROAD_EDGE - LOT.end.y),
-			ASPHALT_LIFT, .045, asphalt, true)
-	# Set the right entry back from the existing junction signal.
-	for curb in [Vector2(-51, -45), Vector2(-34, -22), Vector2(-12, -3)]:
+func build_forecourt(asphalt: Material) -> void:
+	surface(LOT, ASPHALT_LIFT, ASPHALT_LIFT, asphalt, PAVEMENT_LAYERS)
+	# The two entries and the former grass strip share one graded asphalt apron.
+	surface(Rect2(-45, LOT.end.y, 33, ROAD_EDGE - LOT.end.y),
+		ASPHALT_LIFT, .045, asphalt, PAVEMENT_LAYERS)
+	for curb in [Vector2(-51, -45), Vector2(-12, -3)]:
 		surface(Rect2(curb.x, -8.85, curb.y - curb.x, .85), .20, .20, concrete)
 		surface(Rect2(curb.x, -8, curb.y - curb.x, .42), .20, .02, concrete)
 	surface(Rect2(-30, -35, 24, 2.6), .20, .20, concrete)
 	surface(Rect2(PIZZA_LEFT, -39, 14, 2.4), .20, .20, concrete)
 
-
-func surface(area: Rect2, back: float, front: float, material: Material, drivable := false) -> void:
+func surface(area: Rect2, back: float, front: float, material: Material, collision_layer := 1) -> void:
 	var mesh := SurfaceTool.new()
 	mesh.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var cols := ceili(area.size.x)
@@ -97,10 +99,10 @@ func surface(area: Rect2, back: float, front: float, material: Material, drivabl
 	mesh.generate_normals()
 	var item := Kit.mesh_at(self, mesh.commit(), Vector3.ZERO, material)
 	item.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	item.create_trimesh_collision()
-	if drivable:
+	if collision_layer != 0:
+		item.create_trimesh_collision()
 		var body := item.get_child(0) as StaticBody3D
-		body.collision_layer |= Roads.ROAD_LAYER
+		body.collision_layer = collision_layer
 
 
 func siding_material() -> StandardMaterial3D:
@@ -199,20 +201,124 @@ func build_canopy() -> void:
 
 func build_price_sign() -> void:
 	var z := -12.0
-	var y := grade(PIZZA_LEFT, z)
-	block(Vector3(PIZZA_LEFT, y + .19, z), Vector3(2.75, .38, 1.4), concrete, true)
+	var sign := StaticBody3D.new()
+	sign.name = "EssoPriceSign"
+	add_child(sign)
+	sign.position = Vector3(PIZZA_LEFT, grade(PIZZA_LEFT, z), z)
+	sign.rotation.y = PI * .5
+	var footing := Vector3(0, .19, 0)
+	var footing_size := Vector3(2.75, .38, 1.4)
+	Kit.box_at(sign, footing, footing_size, concrete)
+	Kit.collider(sign, footing, footing_size)
 	for offset in [-1.05, 1.05]:
-		block(Vector3(PIZZA_LEFT + offset, y + 2.66, z), Vector3(.13, 5.2, .17), white, true)
+		var post := Vector3(offset, 2.66, 0)
+		var post_size := Vector3(.13, 5.2, .17)
+		Kit.box_at(sign, post, post_size, white)
+		Kit.collider(sign, post, post_size)
 	var blue := Kit.paint(Color("#244777"))
 	var green := Kit.paint(Color("#14723c"))
 	for side: float in [-1.0, 1.0]:
 		var angle := 0.0 if side > 0 else PI
-		var face := z + side * .15
-		sign_panel("Esso", Vector3(PIZZA_LEFT, y + 4.68, face), 2.16, 1.02, white, Color("#b72428"), angle)
-		sign_panel("172.9", Vector3(PIZZA_LEFT, y + 3.86, face), 2.16, .58, blue, Color("#ff7359"), angle)
-		sign_panel("Convenience", Vector3(PIZZA_LEFT, y + 3.31, face), 2.16, .47, blue, Color.WHITE, angle)
-		sign_panel("SUBWAY", Vector3(PIZZA_LEFT, y + 2.78, face), 2.16, .53, green, Color("#f4dd60"), angle)
+		var face := side * .15
+		sign_panel("Esso", Vector3(0, 4.68, face), 2.16, 1.02, white, Color("#b72428"), angle, sign)
+		sign_panel("172.9", Vector3(0, 3.86, face), 2.16, .58, blue, Color("#ff7359"), angle, sign)
+		sign_panel("Convenience", Vector3(0, 3.31, face), 2.16, .47, blue, Color.WHITE, angle, sign)
+		sign_panel("SUBWAY", Vector3(0, 2.78, face), 2.16, .53, green, Color("#f4dd60"), angle, sign)
 
+func build_restaurant_lot(asphalt: Material, brick_scan: Texture2D) -> void:
+	surface(RESTAURANT_LOT, ASPHALT_LIFT, ASPHALT_LIFT, asphalt, PAVEMENT_LAYERS)
+	surface(Rect2(14, RESTAURANT_LOT.end.y, 10, ROAD_EDGE - RESTAURANT_LOT.end.y),
+		ASPHALT_LIFT, .045, asphalt, PAVEMENT_LAYERS)
+	for space in 10:
+		var z := -61.0 + float(space) * 2.65
+		surface(Rect2(30.5, z, 5.1, .095), .087, .087, white, 0)
+	surface(Rect2(35.55, -61.0, .095, 23.9), .087, .087, white, 0)
+
+	# This footprint replaces the mapped office stand-in at 243973052.
+	var x := 15.55
+	var front_z := -35.38
+	var back_z := -64.24
+	var center_z := (front_z + back_z) * .5
+	var floor_y := maxf(grade(9.35, front_z), grade(21.74, front_z)) + .20
+	var foundation := minf(grade(9.35, back_z), grade(21.74, back_z)) - .3
+	var eave := floor_y + 3.0
+	var brick := Kit.paint(Color("#b58d72"))
+	brick.albedo_texture = brick_scan
+	brick.uv1_triplanar = true
+	brick.uv1_scale = Vector3.ONE * .55
+	block(Vector3(x, (foundation + eave) * .5, center_z), Vector3(12.39, eave - foundation, 28.86), brick, true)
+	block(Vector3(x, floor_y, front_z + .65), Vector3(12.65, .28, 1.3), concrete, true)
+	var blue := Kit.paint(Color("#213e78"))
+	var fascia := Kit.paint(Color("#a6262c"))
+	var roof_center := Vector3(x, eave, center_z)
+	build_restaurant_eaves(roof_center, blue)
+	block(roof_center + Vector3.UP * 1.23, Vector3(11.45, .25, 27.9), fascia)
+	block(roof_center + Vector3.UP * 1.40, Vector3(11.32, .14, 27.78), dark)
+
+	for offset: float in [-4.38, -2.18, .05, 2.25, 4.45]:
+		var door := is_equal_approx(offset, 2.25)
+		restaurant_glass(Vector3(x + offset, floor_y + 1.47, front_z), 1.95, 2.17 if door else 1.59)
+	for z: float in [-37.35, -39.60, -41.85, -44.10, -46.35]:
+		restaurant_glass(Vector3(21.74, floor_y + 1.46, z), 2.01, 1.59, PI * .5)
+	sign_panel("BURGER KING", Vector3(x, eave + .54, front_z + .69), 4.2, .65, blue, Color("#fff0d2"))
+	sign_panel("BURGER KING", Vector3(22.40, eave + .54, -40.1), 4.2, .65, blue, Color("#fff0d2"), PI * .5)
+	build_restaurant_sign(fascia, blue)
+
+
+func build_restaurant_eaves(center: Vector3, material: Material) -> void:
+	var lower := [Vector2(-6.97, -15.12), Vector2(6.97, -15.12), Vector2(6.97, 15.12), Vector2(-6.97, 15.12)]
+	var upper := [Vector2(-5.72, -13.95), Vector2(5.72, -13.95), Vector2(5.72, 13.95), Vector2(-5.72, 13.95)]
+	var mesh := SurfaceTool.new()
+	mesh.begin(Mesh.PRIMITIVE_TRIANGLES)
+	for i in 4:
+		var j := (i + 1) % 4
+		var a := Vector3(lower[i].x, 0, lower[i].y)
+		var b := Vector3(lower[j].x, 0, lower[j].y)
+		var c := Vector3(upper[i].x, 1.18, upper[i].y)
+		var d := Vector3(upper[j].x, 1.18, upper[j].y)
+		for p in [a, b, c, b, d, c]:
+			mesh.add_vertex(p)
+	mesh.generate_normals()
+	Kit.mesh_at(self, mesh.commit(), center, material)
+	block(center - Vector3.UP * .08, Vector3(13.94, .16, 30.24), material)
+
+
+func restaurant_glass(at: Vector3, width: float, height: float, heading := 0.0) -> void:
+	var trim := Kit.box_at(self, at, Vector3(width, height, .14), white)
+	trim.rotation.y = heading
+	Kit.box_at(trim, Vector3(0, 0, .084), Vector3(width - .12, height - .13, .05), glazing)
+	Kit.box_at(trim, Vector3(0, 0, .12), Vector3(.065, height, .045), white)
+
+
+func build_restaurant_sign(fascia: Material, blue: Material) -> void:
+	var x := 27.8
+	var z := -10.5
+	var y := grade(x, z)
+	block(Vector3(x, y + 2.55, z), Vector3(.22, 5.1, .28), blue, true)
+	var cream_face := Kit.paint(Color("#f2e7d3"))
+	var orange := Kit.paint(Color("#de8f3d"))
+	var at := Vector3(x, y + 4.96, z)
+	restaurant_sign_disc(at, 1.0, .20, blue)
+	for side: float in [-1.0, 1.0]:
+		var angle := PI * .5 * side
+		restaurant_sign_disc(at + Vector3.RIGHT * side * .114, .91, .034, cream_face)
+		restaurant_sign_disc(at + Vector3.RIGHT * side * .139, .73, .021, orange)
+		var logo := sign_label("BURGER\nKING", 1.55, 1.32, Color("#a6262c"))
+		add_child(logo)
+		logo.position = at + Vector3.RIGHT * side * .157
+		logo.rotation.y = angle
+		sign_panel("DRIVE THRU", Vector3(x + side * .15, y + 3.54, z), 2.75, .38, fascia, Color.WHITE, angle)
+
+
+func restaurant_sign_disc(at: Vector3, radius: float, depth: float, material: Material) -> void:
+	var disc := CylinderMesh.new()
+	disc.top_radius = radius
+	disc.bottom_radius = radius
+	disc.height = depth
+	disc.radial_segments = 24
+	var face := Kit.mesh_at(self, disc, at, material)
+	face.rotation.z = PI * .5
+	face.scale = Vector3(1.19, 1, 1.34)
 
 func build_utilities() -> void:
 	var timber := Kit.paint(Color("#645b4f"))
@@ -237,17 +343,23 @@ func build_utilities() -> void:
 
 
 func sign_panel(title: String, at: Vector3, width: float, height: float, finish: Material,
-		ink: Color, angle := 0.0) -> void:
-	var panel := Kit.box_at(self, at, Vector3(width, height, .12), finish)
+		ink: Color, angle := 0.0, parent: Node3D = null) -> void:
+	var panel := Kit.box_at(self if parent == null else parent, at, Vector3(width, height, .12), finish)
 	panel.rotation.y = angle
+	var label := sign_label(title, width, height, ink)
+	label.position.z = .066
+	panel.add_child(label)
+
+
+func sign_label(title: String, width: float, height: float, ink: Color) -> Label3D:
 	var label := Label3D.new()
 	label.text = title
 	label.font = SIGN_FONT
 	label.font_size = 56
-	label.pixel_size = minf(height * .62 / label.font_size,
-		width * .88 / label.font.get_string_size(title, HORIZONTAL_ALIGNMENT_LEFT, -1, label.font_size).x)
+	var line_height := label.font.get_height(label.font_size) * (title.count("\n") + 1)
+	label.pixel_size = minf(height * .83 / line_height,
+		width * .88 / label.font.get_multiline_string_size(title, HORIZONTAL_ALIGNMENT_CENTER, -1, label.font_size).x)
 	label.outline_size = 0
 	label.modulate = ink
 	label.double_sided = false
-	label.position.z = .066
-	panel.add_child(label)
+	return label

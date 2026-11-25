@@ -687,8 +687,9 @@ func build_town(paving_texture: Texture2D, terrain: Material) -> BuildingsDrivew
 	var roads := RoadNetwork.new()
 	roads.build(self, meta, ground_height, marina_paving, detail_areas,
 		ROAD_SCAN, ROAD_NORMAL, concrete_scan, asphalt_scan, GRAVEL_SCAN, GRAVEL_NORMAL, paving_texture)
+	var brick := scanned_surface("brick")
 	buildings.build(self, footprints, textures, ground_height, meta.distance_scale,
-		scanned_surface("brick"), asphalt_scan, wood_scan, roads.paved, meta.streets,
+		brick, asphalt_scan, wood_scan, roads.paved, meta.streets,
 		regional_streets, meta.buildings, concrete_scan)
 	town_walkways = roads.build_walkways(buildings.driveways, concrete_scan, asphalt_scan, terrain)
 	windows = buildings.windows
@@ -699,7 +700,7 @@ func build_town(paving_texture: Texture2D, terrain: Material) -> BuildingsDrivew
 	bind_day_sky(town_hall.glass_alt)
 	var esso := EssoPlaza.new()
 	add_child(esso)
-	esso.build(ground_height, asphalt_scan, concrete_scan)
+	esso.build(ground_height, asphalt_scan, concrete_scan, brick)
 	return buildings.driveways
 
 
