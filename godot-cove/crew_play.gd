@@ -139,6 +139,18 @@ func fit(vessel: Boat) -> void:
 		Kit.box_at(rack, at + Vector3(-.052, .043, .0), Vector3(.025, .11, .06), brass)
 	var cooler_mark := home("cooler")
 	Kit.box_at(rack, cooler_mark + Vector3(0, -.022, 0), Vector3(.68, .043, .45), iron)
+	lamp = null
+	lamp_glass = null
+	spotlight = null
+	brightness = 0.0
+	lamp_set = Vector2(0, -.21)
+	game.river.set_bow_light(Vector3.ZERO, Vector3.FORWARD, 0.0)
+	if boat.has_bow_spotlight():
+		build_bow_light(iron, brass)
+	reset_gear()
+
+
+func build_bow_light(iron: Material, brass: Material) -> void:
 	var base := lamp_origin()
 	Kit.box_at(rack, base + Vector3.DOWN * .13, Vector3(.29, .12, .23), iron)
 	Tools.tube(rack, base + Vector3.DOWN * .129, base, .039, .036, brass)
@@ -163,7 +175,6 @@ func fit(vessel: Boat) -> void:
 	spotlight.spot_attenuation = .75
 	spotlight.spot_angle_attenuation = .77
 	spotlight.hide()
-	reset_gear()
 
 
 func home(item: String) -> Vector3:
@@ -291,7 +302,7 @@ func interact() -> bool:
 			campaign.request("crew_drop", true)
 			return true
 		return false
-	if game.aboard() and campaign.aiming(boat.to_global(lever_at()), 1.70, .96):
+	if lamp != null and game.aboard() and campaign.aiming(boat.to_global(lever_at()), 1.70, .96):
 		campaign.request("crew_lamp", null)
 		return true
 	var selected := aimed_item()
@@ -431,7 +442,7 @@ func act(peer: int, action: String, argument: Variant, person: Dictionary) -> vo
 				var secured: bool = argument == true and can_reach(person, boat.to_global(home(item)), 2.45)
 				drop(peer, item, person, secured)
 		"crew_lamp":
-			if not person.onboard:
+			if lamp == null or not person.onboard:
 				return
 			if lamp_operator == peer:
 				lamp_operator = 0
@@ -602,8 +613,8 @@ func welcome(peer: int) -> void:
 @rpc("authority", "call_remote", "reliable")
 func gear_changed(items: Dictionary, lit: bool, operator: int, evening_enabled: bool, grill: Dictionary, fish_in_hands: Dictionary) -> void:
 	gear = items
-	lamp_on = lit
-	lamp_operator = operator
+	lamp_on = lit and lamp != null
+	lamp_operator = operator if lamp != null else 0
 	dusk = evening_enabled
 	camp.unpack(grill)
 	carried_fish = fish_in_hands
@@ -616,7 +627,7 @@ func moving_parts() -> Dictionary:
 func update_moving_parts(data: Dictionary) -> void:
 	if data.has("chest") and gear.cooler.get("space", "boat") == "boat" and not gear.cooler.secured and gear.cooler.owner == 0:
 		gear.cooler.at = data.chest
-	if data.has("lamp"):
+	if lamp != null and data.has("lamp"):
 		lamp_target = data.lamp
 
 
@@ -635,15 +646,16 @@ func tick(delta: float) -> void:
 	evening = move_toward(evening, 1.0 if dusk else 0.0, delta * .76)
 	game.river.set_evening(evening)
 	camp.animate(game.clock, evening)
-	lamp_set = lamp_set.lerp(lamp_target, 1.0 - exp(-delta * 15.0))
-	lamp.rotation = Vector3(lamp_set.y, lamp_set.x, 0)
-	var desired_light: float = smoothstep(.004, .065, campaign.ledger.state.charge) if lamp_on else 0.0
-	brightness = move_toward(brightness, desired_light, delta * 4.1)
-	lamp_glass.emission_enabled = brightness > .008
-	lamp_glass.emission_energy_multiplier = .91 * brightness
-	spotlight.visible = brightness > .008
-	spotlight.light_energy = 4.1 * brightness
-	game.river.set_bow_light(spotlight.global_position, -spotlight.global_basis.z, brightness)
+	if lamp != null:
+		lamp_set = lamp_set.lerp(lamp_target, 1.0 - exp(-delta * 15.0))
+		lamp.rotation = Vector3(lamp_set.y, lamp_set.x, 0)
+		var desired_light: float = smoothstep(.004, .065, campaign.ledger.state.charge) if lamp_on else 0.0
+		brightness = move_toward(brightness, desired_light, delta * 4.1)
+		lamp_glass.emission_enabled = brightness > .008
+		lamp_glass.emission_energy_multiplier = .91 * brightness
+		spotlight.visible = brightness > .008
+		spotlight.light_energy = 4.1 * brightness
+		game.river.set_bow_light(spotlight.global_position, -spotlight.global_basis.z, brightness)
 	update_fish_visuals(delta)
 	draw_crew_fish()
 	if snapshot_requested:

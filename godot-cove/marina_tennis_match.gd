@@ -11,6 +11,7 @@ const COATING_LIFT := .085
 const PLAYER_START := Vector2(0, 8.6)
 const RICH_START := Vector2(0, -8.7)
 const CHALLENGE_SPOT := Vector2(3.9, 2.45)
+const COURT_VISIT_RANGE := 40.0
 const POINT_BREAK := 2.1
 const SWING_TIME := .32
 
@@ -32,6 +33,7 @@ var rich_swing := 0.0
 var swing_pending := false
 var rich_distance := 0.0
 var rich: RichModel
+var court_sign: Label3D
 var racket: Node3D
 var ball: MeshInstance3D
 var shadow: MeshInstance3D
@@ -55,6 +57,16 @@ func build(height: Callable, half_span: float, net_height: Callable) -> void:
 	add_child(rich)
 	rich.build(false)
 	rich.hide()
+	court_sign = Label3D.new()
+	court_sign.name = "TennisCourtSign"
+	court_sign.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	court_sign.font_size = 44
+	court_sign.outline_size = 10
+	court_sign.pixel_size = .006
+	court_sign.modulate = Color("#f7d56f")
+	court_sign.visibility_range_end = 95.0
+	add_child(court_sign)
+	court_sign.position = feet_at(CHALLENGE_SPOT) + Vector3.UP * 2.5
 	build_racket(rich.wrists[1], Vector3(0, -.04, .08)).rotation.x = -1.45
 	var sphere := SphereMesh.new()
 	sphere.radius = BALL_RADIUS
@@ -83,7 +95,14 @@ func prepare_player(camera: Camera3D) -> void:
 
 
 func near_challenge(at: Vector3) -> bool:
-	return to_global(feet_at(CHALLENGE_SPOT)).distance_squared_to(at) < 16.0 * 16.0
+	return court_sign.global_position.distance_squared_to(at) < COURT_VISIT_RANGE * COURT_VISIT_RANGE
+
+
+func update_guide(solo: bool) -> void:
+	court_sign.visible = not active
+	var title := "Tennis with Big Rich" if solo else "Tennis · Solo trips"
+	if court_sign.text != title:
+		court_sign.text = title
 
 
 func focused(camera: Camera3D, player: CharacterBody3D) -> bool:

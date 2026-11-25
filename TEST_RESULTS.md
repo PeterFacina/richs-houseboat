@@ -1,5 +1,9 @@
 # Test results
 
+## Court availability and boat controls follow-up
+
+A focused Godot 4.7.2 scene check passed on Windows. It opened tennis during an accepted quest, returned Rich to the yard, untied both Princecraft lines, took the helm, checked throttle retention and neutral, lowered and raised the anchor, and tied the lines again to earn quest credit. The restored houseboat also spawned with both lines rigged. This follow-up used a headless solo fixture.
+
 ## Big Rich restoration and tennis integration
 
 Godot 4.7.2 on Windows, with fresh local test profiles. The integration started at `9097d61` and was updated to `5313409` after the road and park changes landed. It uses the tennis implementation in PR #81 and the restoration from playtest commit `3528f7d`. The new roads, park grading, HUD layout and shared game theme were retained.

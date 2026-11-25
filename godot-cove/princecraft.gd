@@ -41,6 +41,12 @@ func _ready() -> void:
 	name = "PrincecraftHolidayDLX"
 
 
+func fit_mooring() -> void:
+	mooring.fit([Vector3(0, .570, -1.88), Vector3(-.843, .552, 2.18), Vector3(.843, .552, 2.18)],
+		[Vector3(0, .637, -2.38), Vector3(-1.013, .580, 2.14), Vector3(1.013, .580, 2.14)],
+		["Bow", "Stern port", "Stern starboard"], Vector3(.841, .626, -1.43))
+
+
 func helm_anchor() -> Vector3:
 	return Vector3(.49, FLOOR + .04, .27)
 
@@ -71,6 +77,10 @@ func motor_mount() -> Vector3:
 
 func motor_size() -> float:
 	return .74
+
+
+func has_bow_spotlight() -> bool:
+	return false
 
 
 func uses_battery() -> bool:

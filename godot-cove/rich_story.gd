@@ -16,11 +16,11 @@ const RETIREMENT := "She’s yours, boys. Insurance, gas, maintenance — all yo
 const KEEP_ROD := "Ah, just keep the rod, bud. I’ve got about six of the bloody things at home. But I want my boat back."
 const QUESTS := [
 	{"id": "story_fish", "title": "Gone Fishing", "cash": 18, "target": 5.0,
-		"text": "Take my Princecraft and the old rod. I want three fish caught and the boat back at the marina. Bring me whichever excuse you’ve got left.",
+		"text": "Take my Princecraft and the old rod. I want three fish caught and the boat tied back up at the marina. Mind the ropes on your way out.",
 		"steps": [["borrow_boat", "Borrow the Princecraft and old rod at Rich’s workbench."],
-			["river_trip", "Take the Princecraft out under power. Hold E at the key, then W to drive."],
-			["fish", "Land three fish from the Princecraft. Stop to cast with R."],
-			["boat_return", "Return to the marina and tie up with L."],
+			["river_trip", "Untie the bow and stern lines with E. Take the helm, start the engine, and use W to add throttle."],
+			["fish", "Press Space for neutral, leave the helm and land three fish with the old rod."],
+			["boat_return", "Tie the bow and stern lines to marina cleats with E, then step ashore."],
 			["checkin", "Talk to Rich to return the Princecraft."]]},
 	{"id": "story_parts", "title": "New Legs", "cash": 16, "target": 5.0,
 		"text": "There’s a set of used floats up Pier Road. Take the red Mazda5, bring them back and fit them under her. The seller threw in the scratches.",
@@ -61,9 +61,9 @@ const QUESTS := [
 		"text": "I’m coming with you. Take her past the marina, catch us a fish and bring her back here with the same number of holes.",
 		"steps": [["launch", "Launch the restored houseboat from the yard workbench."],
 			["rich_aboard", "Board at the public launch and meet Rich aboard."],
-			["river_trip", "Drive out to fishing water beyond the marina."],
+			["river_trip", "Untie both dock lines and drive out to fishing water beyond the marina."],
 			["fish", "Land one fish aboard the houseboat."],
-			["boat_return", "Return to the marina and tie up with L."],
+			["boat_return", "Tie the bow and stern lines to marina cleats with E, then step ashore."],
 			["checkin", "Check in with Rich at the yard."]]},
 	{"id": "story_retire", "title": "Rich’s Retirement Plan", "cash": 25, "target": 1.0,
 		"text": "I still like going out in a boat. I just don’t like being the poor bugger who owns it. Got a minute?",
@@ -224,12 +224,7 @@ func named_craft() -> bool:
 
 
 func companion_aboard() -> bool:
-	return state().companion and named_craft() and campaign.rich.hull == game.vessel
-
-
-func can_play_tennis() -> bool:
-	return not state().companion and campaign.rich.hull == yard.rich_stand \
-		and status() in [Chain.Status.AVAILABLE, Chain.Status.FINISHED]
+	return state().companion and not rich_at_tennis and named_craft() and campaign.rich.hull == game.vessel
 
 
 func set_rich_at_tennis(courtside: bool) -> void:
@@ -474,7 +469,7 @@ func ladder_focus(at: Vector3, other: float) -> bool:
 	return campaign.aiming(at, 3.9, .67) and (at - game.eye.global_position).normalized().dot(game.eye.global_basis.z) < other
 
 
-func hint() -> String:
+func hint(include_ownership := true) -> String:
 	if can_open():
 		return "E  Talk to Big Rich" if status() != Chain.Status.READY else "E  Check in with Big Rich"
 	var action := target_action()
@@ -502,7 +497,7 @@ func hint() -> String:
 		"launch": return "E  Launch the houseboat"
 		"recover_princecraft", "recover_houseboat": return "E  Ask Rich to recover the boat to the launch"
 		"upgrades": return "E  View houseboat upgrades"
-	if game.aboard() and state().loans.has("princecraft") and game.vessel == campaign.princecraft:
+	if include_ownership and game.aboard() and state().loans.has("princecraft") and game.vessel == campaign.princecraft:
 		return "Princecraft · Property of Big Rich"
 	return ""
 

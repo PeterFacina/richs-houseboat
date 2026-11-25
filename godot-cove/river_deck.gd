@@ -3,6 +3,8 @@ extends Node3D
 const Kit = preload("res://scenery.gd")
 const Boat = preload("res://houseboat.gd")
 const Ledger = preload("res://river_ledger.gd")
+const Hardware = preload("res://mooring_hardware.gd")
+const ROPE_SEGMENTS := 8
 
 var vessel: Boat
 var tools: Node3D
@@ -18,7 +20,12 @@ var object: Node3D
 var marker: Label3D
 var drum: Node3D
 var cable: MeshInstance3D
-var moor_lines: Array[MeshInstance3D] = []
+var moor_lines: Array[Array] = []
+var line_coils: Array[MeshInstance3D] = []
+var anchor_line: MeshInstance3D
+var deck_anchor: Node3D
+var moving_anchor: Node3D
+var anchor_visual_progress := 0.0
 var rescue_tow: Node3D
 var steel := Kit.paint(Color("#64777b"), .47, .29)
 var bronze := Kit.paint(Color("#bb955c"), .58, .21)
@@ -33,9 +40,16 @@ var cargo_kind := ""
 func _ready() -> void:
 	cable = rope(self, .021, dark)
 	cable.hide()
-	for i in 2:
-		moor_lines.append(rope(self, .027, bronze))
-		moor_lines.back().hide()
+	for i in 4:
+		var segments: Array[MeshInstance3D] = []
+		for segment in ROPE_SEGMENTS:
+			segments.append(rope(self, .027, bronze))
+			segments.back().hide()
+		moor_lines.append(segments)
+	anchor_line = Kit.mesh_at(self, Hardware.rode(), Vector3.ZERO, steel)
+	anchor_line.hide()
+	moving_anchor = Hardware.anchor(self, steel, dark)
+	moving_anchor.hide()
 
 
 func rope(parent: Node3D, thickness: float, material: Material) -> MeshInstance3D:
@@ -48,6 +62,39 @@ func fit(boat: Boat) -> void:
 	vessel = boat
 	tools = Node3D.new()
 	boat.add_child(tools)
+	line_coils.clear()
+	for segments in moor_lines:
+		for segment: MeshInstance3D in segments:
+			segment.hide()
+	moving_anchor.hide()
+	anchor_line.hide()
+	anchor_visual_progress = 0.0
+	var coil_material: StandardMaterial3D = bronze.duplicate()
+	coil_material.vertex_color_use_as_albedo = true
+	coil_material.cull_mode = BaseMaterial3D.CULL_DISABLED
+	var tackle := boat.mooring
+	for slot in tackle.stations.size():
+		var station := tackle.stations[slot]
+		var lead := tackle.leads[slot]
+		var coil := Kit.mesh_at(tools, Hardware.coil(), station, coil_material)
+		coil.name = tackle.labels[slot].replace(" ", "") + "RopeCoil"
+		if boat.skiff:
+			coil.scale = Vector3(.78, .82, .92)
+			if not boat.uses_battery() and lead.z > 0.0:
+				Hardware.coil_tray(tools, station, dark)
+		elif lead.z > 0.0:
+			coil.scale.z = .69
+		coil.rotation.y = atan2(-(lead.z - station.z), lead.x - station.x)
+		line_coils.append(coil)
+		Hardware.cleat(tools, lead, steel, dark)
+	var anchor_size := .60 if boat.skiff else 1.0
+	Hardware.roller(tools, tackle.roller, anchor_size, steel, dark)
+	deck_anchor = Hardware.anchor(tools, steel, dark)
+	deck_anchor.name = "StowedAnchor"
+	deck_anchor.position = tackle.anchor_lead()
+	deck_anchor.rotation.y = PI * .5
+	deck_anchor.scale = Vector3.ONE * anchor_size
+	moving_anchor.scale = deck_anchor.scale
 	winch = Node3D.new()
 	tools.add_child(winch)
 	winch.position = Vector3(.60, .34, -1.25) if boat.skiff else Vector3(.68, .75, -2.31)
@@ -214,18 +261,46 @@ func dock_lines(a: Vector3, b: Vector3, line: MeshInstance3D) -> void:
 	line.show()
 
 
-func mooring(landing: Dictionary) -> void:
-	if landing.is_empty():
-		for line in moor_lines:
-			line.hide()
-		return
-	var knot: Vector3 = landing.transfer + Vector3.UP * .08
-	var direction: Vector3 = landing.forward
-	for i in moor_lines.size():
-		var seam := float(i * 2 - 1)
-		var attach := vessel.to_global(Vector3(-.92, .51, seam * 1.42)) if vessel.skiff else \
-			vessel.to_global(Vector3(-1.37, .81, seam * 2.14))
-		dock_lines(attach, knot + direction * (seam * 1.18 + 1.13), moor_lines[i])
+func draw_mooring(actor: Callable, delta: float) -> void:
+	var tackle := vessel.mooring
+	deck_anchor.visible = not tackle.anchor.is_finite()
+	moving_anchor.visible = tackle.anchor.is_finite()
+	if moving_anchor.visible:
+		anchor_visual_progress = move_toward(anchor_visual_progress, tackle.anchor_progress, delta * 1.35)
+		var motion := smoothstep(0.0, 1.0, anchor_visual_progress)
+		var bed_ring := tackle.anchor + Vector3.UP * .595 * deck_anchor.scale.y
+		moving_anchor.global_position = deck_anchor.global_position.lerp(bed_ring, motion)
+		moving_anchor.global_rotation = Vector3(0, vessel.heading + PI * .5, 0)
+		dock_lines(vessel.to_global(tackle.anchor_lead()),
+			moving_anchor.global_position + Vector3.UP * .052 * deck_anchor.scale.y, anchor_line)
+	else:
+		anchor_visual_progress = 0.0
+		anchor_line.hide()
+	for slot in tackle.lines.size():
+		var line := tackle.lines[slot]
+		var segments := moor_lines[slot]
+		line_coils[slot].visible = line.is_empty()
+		var endpoint: Vector3 = line.get("end", Vector3.INF)
+		var lead := vessel.to_global(tackle.leads[slot])
+		var sag := .25
+		if tackle.attached(slot):
+			lead = vessel.to_global(line.get("lead", tackle.leads[slot]))
+			var horizontal := Vector2(lead.x - endpoint.x, lead.z - endpoint.z).length()
+			sag = clampf((float(line.length) - horizontal) * 1.15, .018, .42)
+		elif line.has("holder"):
+			var person: Dictionary = actor.call(line.holder)
+			if not person.is_empty():
+				endpoint = Vector3(person.at) + Vector3.UP * .98
+		if not endpoint.is_finite():
+			for segment: MeshInstance3D in segments:
+				segment.hide()
+			continue
+		var previous := lead
+		for i in segments.size():
+			var fraction := float(i + 1) / segments.size()
+			var point := lead.lerp(endpoint, fraction) - Vector3.UP * (4.0 * sag * fraction * (1.0 - fraction))
+			dock_lines(previous, point, segments[i])
+			previous = point
 
 
 func animate_tow(craft: Node3D, offset: float, tow_length: float, delta: float, clock: float) -> void:

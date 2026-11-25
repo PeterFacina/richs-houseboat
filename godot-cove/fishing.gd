@@ -597,6 +597,14 @@ func _unhandled_input(event: InputEvent) -> void:
 				elif aboard() and not chart.visible:
 					sonar_overlay.visible = not sonar_overlay.visible
 				return
+			Boat.Mooring.ANCHOR_KEY:
+				if driving and play_input():
+					campaign.request("boat_anchor", null)
+					return
+			KEY_SPACE:
+				if driving and play_input():
+					vessel.neutral_throttle()
+					return
 			KEY_E:
 				interact_pressed = Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and not chart.visible
 				return
@@ -678,6 +686,8 @@ func _physics_process(delta: float) -> void:
 			yaw = mower.yaw
 			pitch = -.10
 			update_view()
+		elif campaign.climb_dock_ladder():
+			pass
 		elif can_board_from_water():
 			campaign.keep_player_on_deck(vessel, vessel.board_anchor())
 			set_swimming(false)
@@ -760,9 +770,10 @@ func can_challenge_rich() -> bool:
 
 
 func update_tennis(delta: float, has_input: bool) -> void:
-	var courtside := campaign.crew.mode == "solo" and not aboard() and campaign.story.can_play_tennis() \
-		and (tennis.active or tennis.near_challenge(player.global_position))
+	var solo := campaign.crew.mode == "solo"
+	var courtside := solo and not aboard() and (tennis.active or tennis.near_challenge(player.global_position))
 	campaign.story.set_rich_at_tennis(courtside)
+	tennis.update_guide(solo)
 	tennis.tick(delta, clock, player, eye, courtside, has_input)
 
 
@@ -856,7 +867,8 @@ func hands_available() -> bool:
 
 func can_use_fuel() -> bool:
 	return not flying and mower.rider == null and marina_cars.active < 0 and not swimming and not driving and not cabin.hands_in_use() and not campaign.dive.active \
-		and campaign.preview_id.is_empty() and not campaign.crewplay.hands_busy() and not campaign.amenities.seated() and not in_aircraft()
+		and campaign.preview_id.is_empty() and not campaign.crewplay.hands_busy() and not campaign.amenities.seated() and not in_aircraft() \
+		and vessel.mooring.held_by(campaign.crew.my_id()) < 0
 
 
 func move_on_foot(delta: float, walk: Vector3, jump: bool) -> void:
@@ -2088,7 +2100,7 @@ func update_hud() -> void:
 	elif cabin.hands_in_use() or cabin.focus >= 0:
 		instruction.text = ""
 	elif driving:
-		instruction.text = "Hold W/S  Drive/reverse   R/F  Set throttle   A/D  Steer   X  Center wheel"
+		instruction.text = "W/S  Adjust throttle   Space  Neutral   A/D  Steer   G  Anchor"
 		if not ignition_prompt.visible:
 			instruction.text += "   E  Leave helm"
 	elif fishing == Fishing.CASTING:
@@ -2127,7 +2139,9 @@ func update_hud() -> void:
 			and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and not campaign.dive.active:
 		instruction.text = action
 	if swimming and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
-		if can_board_from_water():
+		if not campaign.dock_ladder().is_empty():
+			instruction.text = "E  Climb dock ladder"
+		elif can_board_from_water():
 			instruction.text = "E  Climb aboard at the bow"
 		elif river.lamure.at_swim_ladder(player.global_position, eye):
 			instruction.text = "E  Climb onto the swim float"

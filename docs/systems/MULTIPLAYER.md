@@ -5,4 +5,6 @@
 - [UNIVERSAL-XP.md](../UNIVERSAL-XP.md) documents the host-side progression and persistence contract and a loopback network test.
 - Restoration progress and equipment loans use the existing host campaign and per-peer snapshots. Multiple crewmates can repair separate components at once. Tennis remains a solo minigame, so crew trips keep Rich available to the shared story or aboard as a recruited companion.
 
+- The host validates anchor and rope requests against the player's last position and the actual boat and cleats. Guests receive the active anchor, line holders and cleat endpoints with the ship pose. Disconnecting releases a carried line. Tied lines stay with the boat.
+
 For network changes inspect actual RPC annotations, sender validation, ownership, state revisions and disconnect/reconnect handling. Do not assume a client-side visual fix replicates. Playtest with host and guest, including role changes and rejoining; verify state convergence and no duplicated rewards where relevant. Use isolated test saves. Record which endpoints were actually exercised.

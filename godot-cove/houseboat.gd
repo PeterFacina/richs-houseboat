@@ -8,6 +8,7 @@ const RestorationModel = preload("res://rich_houseboat_model.gd")
 const FuelTank = preload("res://boat_fuel_tank.gd")
 const HelmConsole = preload("res://boat_helm_console.gd")
 const Tools = preload("res://crew_tools.gd")
+const Mooring = preload("res://boat_mooring.gd")
 const STARTER = preload("res://ottawa/princecraft/starter.wav")
 const CATCH = preload("res://ottawa/princecraft/catch.wav")
 const START_TIME := .75
@@ -16,7 +17,10 @@ const START_VOLUME := -13.0
 const THROTTLE_STEP := .05
 const THROTTLE_REPEAT_DELAY := .22
 const CURRENT_SAMPLE_INTERVAL := 2.8
-const MAX_WIND_DRIFT := 1.8
+const MAX_WIND_DRIFT := .16
+const CURRENT_DRIFT_SHARE := .30
+const MAX_PASSIVE_DRIFT := .32
+const DRIFT_RESPONSE := .70
 enum Ignition { OFF, START, RUN }
 const BERTH := Vector3(0.0, 0.0, 12.0)
 const HELM := Vector3(0.0, 0.80, -1.44)
@@ -30,6 +34,7 @@ var heading := 0.0
 var speed := 0.0
 var throttle := 0.0
 var departed := false
+var mooring := Mooring.new()
 var top_speed := 5.2
 var water_check: Callable
 var marina_check: Callable
@@ -41,7 +46,8 @@ var current_rng := RandomNumberGenerator.new()
 var current_sample_left := 0.0
 var wind_target := Vector2.ZERO
 var wind_drift := Vector2.ZERO
-var current_engagement := 0.0
+var drift_velocity := Vector3.ZERO
+var drift_remainder := Vector3.ZERO
 var wave_sampler: Callable
 var wave_pose := Vector3.ZERO
 var helm_wheel: Node3D
@@ -59,9 +65,7 @@ var helm_console: HelmConsole
 var ignition := Ignition.OFF
 var wheel_angle := 0.0
 var requested_throttle := 0.0
-var lever_throttle := 0.0
 var throttle_repeat := 0.0
-var lever_blocked := false
 var crank_time := 0.0
 var crank_confirmed := false
 var shutdown_left := 0.0
@@ -83,6 +87,7 @@ func _ready() -> void:
 	name = "Houseboat"
 	sync_to_physics = false
 	geometry()
+	fit_mooring()
 	if river_engine:
 		if uses_battery():
 			yaw_rate = .80
@@ -148,6 +153,10 @@ func status_panel_mount() -> Vector3:
 	return Vector3(.54, 1.204, -.07) if skiff else Vector3(-.63, 1.66, -2.36)
 
 
+func has_bow_spotlight() -> bool:
+	return true
+
+
 func uses_battery() -> bool:
 	return skiff
 
@@ -174,7 +183,30 @@ func launch_half_beam() -> float:
 	return 1.02 if skiff else 1.55
 
 
+func fit_mooring() -> void:
+	if skiff:
+		mooring.fit([Vector3(-.44, .38, -1.39), Vector3(-.64, .36, 1.54)],
+			[Vector3(-.87, .49, -1.39), Vector3(-.91, .49, 1.54)],
+			["Bow", "Stern"], Vector3(.82, .56, -1.28))
+		return
+	var bow := -3.28 if restoration_design else -2.85
+	var stern := 6.57 if restoration_design else 3.03
+	var bow_inset := 1.09 if restoration_design else .72
+	var stern_inset := .91 if restoration_design else .82
+	var bow_edge := 1.54 if restoration_design else 1.04
+	var stern_edge := 1.54 if restoration_design else 1.10
+	mooring.fit(
+		[Vector3(-bow_inset, .75, bow), Vector3(bow_inset, .75, bow),
+			Vector3(-stern_inset, .75, stern), Vector3(stern_inset, .75, stern)],
+		[Vector3(-bow_edge, .84, bow), Vector3(bow_edge, .84, bow),
+			Vector3(-stern_edge, .84, stern), Vector3(stern_edge, .84, stern)],
+		["Bow port", "Bow starboard", "Stern port", "Stern starboard"],
+		Vector3(1.57 if restoration_design else 1.39, .86, -2.31))
+
+
 func berth_at(at: Vector3, yaw: float) -> void:
+	mooring.clear()
+	clear_passive_drift()
 	center = at
 	heading = yaw
 	speed = 0.0
@@ -258,12 +290,14 @@ func sail(delta: float, clock: float, driving: bool, rudder: float) -> void:
 	transform = Transform3D(Basis.from_euler(tilt), center + Vector3.UP * heave)
 
 
-func clear_helm() -> void:
+func neutral_throttle() -> void:
 	throttle = 0.0
 	requested_throttle = 0.0
-	lever_throttle = 0.0
 	throttle_repeat = 0.0
-	lever_blocked = false
+
+
+func clear_helm() -> void:
+	neutral_throttle()
 	if ignition == Ignition.START:
 		set_ignition(Ignition.OFF)
 
@@ -317,35 +351,30 @@ func tick_ignition(delta: float) -> void:
 
 
 func nudge_throttle(direction: float) -> void:
-	if ignition == Ignition.RUN and not lever_blocked:
+	if ignition == Ignition.RUN and not mooring.secured():
 		change_throttle(direction, THROTTLE_STEP)
 		throttle_repeat = THROTTLE_REPEAT_DELAY
 
 
-func hold_throttle(delta: float, adjustment: float, pedal: float) -> void:
-	if ignition != Ignition.RUN:
-		requested_throttle = 0.0
+func hold_throttle(delta: float, adjustment: float, helm_input: float) -> void:
+	if ignition != Ignition.RUN or mooring.secured():
+		neutral_throttle()
 		return
-	if pedal != 0.0:
-		if not lever_blocked:
-			requested_throttle = 0.0
-		lever_blocked = true
-		lever_throttle = 0.0
+	if helm_input != 0.0:
+		change_throttle(helm_input, delta * .90)
 		throttle_repeat = 0.0
-		requested_throttle = move_toward(requested_throttle, 1.0 if pedal > 0.0 else -.32, delta * .90)
-		return
-	if adjustment == 0.0:
-		lever_blocked = false
+	elif adjustment == 0.0:
 		throttle_repeat = 0.0
-	elif not lever_blocked:
+	else:
 		var delay := throttle_repeat
 		throttle_repeat = maxf(0.0, delay - delta)
 		change_throttle(adjustment, maxf(0.0, delta - delay) * throttle_rate)
-	requested_throttle = lever_throttle
 
 
 func change_throttle(direction: float, amount: float) -> void:
-	lever_throttle = move_toward(lever_throttle, 1.0 if direction > 0.0 else 0.0, amount)
+	var next := move_toward(requested_throttle, 1.0 if direction > 0.0 else -.32, amount)
+	# Pass through the neutral detent before crossing between gears.
+	requested_throttle = 0.0 if next * requested_throttle < 0.0 else next
 
 
 func advance_steering(delta: float, direction: float, center_wheel: bool) -> void:
@@ -379,22 +408,34 @@ func sail_river(delta: float, clock: float) -> void:
 	speed = lerpf(speed, wanted, 1.0 - exp(-delta * (drive_response if motor.gear != 0 else coast_response)))
 	var steer_force := minf(1.0, absf(speed) * .19 + motor.thrust * .48)
 	var reverse := -1.0 if (speed < -.18 or (absf(speed) <= .18 and throttle < 0.0)) else 1.0
-	var turn := wrapf(heading - motor.steering * steer_force * yaw_rate * delta * reverse, -PI, PI)
+	var secured := mooring.secured()
+	var turn := heading if secured else \
+		wrapf(heading - motor.steering * steer_force * yaw_rate * delta * reverse, -PI, PI)
 	var length := .65 if skiff else 1.0
 	var beam := .68 if skiff else 1.0
 	if departed:
 		var current := passive_water_velocity(delta, clock, power != 0.0)
 		var course := Vector3(-sin(turn), 0, -cos(turn))
-		var next := center + (course * speed + current) * delta
+		var driven_position := center + course * (speed * delta)
+		var drift_step := current * delta + drift_remainder
+		var free_position := driven_position + drift_step
+		var next := mooring.constrain(free_position, turn) if secured else free_position
 		if can_place(next, turn):
+			# Keep sub-millimetre steps on the metre-grid map. Discard motion
+			# stopped by a taut line or the anchor rather than carrying it into release.
+			if next == free_position:
+				drift_remainder = drift_step - (next - driven_position)
+			else:
+				clear_passive_drift()
 			center = next
 			heading = turn
 		else:
+			clear_passive_drift()
 			speed *= .53
 			if not marina_check.is_valid() or marina_check.call(waterline(center, turn), .49 if skiff else .88):
 				heading = turn
 	else:
-		current_engagement = 0.0
+		clear_passive_drift()
 	var fore := Vector3(-sin(heading), 0, -cos(heading))
 	var right := fore.cross(Vector3.UP)
 	var port := sample(center - right * 1.21 * beam, clock)
@@ -419,14 +460,20 @@ func passive_water_velocity(delta: float, clock: float, under_power: bool) -> Ve
 		var strength := clampf(current_rng.randfn(.55, .18), 0.0, 1.0)
 		var direction := current_rng.randf_range(-.85, .85)
 		wind_target = Vector2.from_angle(direction) * strength * MAX_WIND_DRIFT
-	var blend := 1.0 - exp(-delta * 1.6)
-	wind_drift = wind_drift.lerp(wind_target, blend)
+	wind_drift = wind_drift.lerp(wind_target, 1.0 - exp(-delta * 1.6))
 	if under_power or not water_flow.is_valid():
-		current_engagement = 0.0
+		clear_passive_drift()
 		return Vector3.ZERO
-	current_engagement = lerpf(current_engagement, 1.0, blend)
 	var flow: Vector3 = water_flow.call(center, clock)
-	return Vector3(flow.x + wind_drift.x, 0.0, flow.z + wind_drift.y) * current_engagement
+	var target := Vector3(flow.x * CURRENT_DRIFT_SHARE + wind_drift.x, 0.0,
+		flow.z * CURRENT_DRIFT_SHARE + wind_drift.y).limit_length(MAX_PASSIVE_DRIFT)
+	drift_velocity = drift_velocity.lerp(target, 1.0 - exp(-delta * DRIFT_RESPONSE))
+	return drift_velocity
+
+
+func clear_passive_drift() -> void:
+	drift_velocity = Vector3.ZERO
+	drift_remainder = Vector3.ZERO
 
 
 func in_channel(candidate: Vector3) -> bool:
