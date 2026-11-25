@@ -1,7 +1,7 @@
 extends Control
 
 const SAVE := "user://river_preferences.cfg"
-const MenuTheme = preload("res://river_menu_theme.gd")
+const MenuTheme = preload("res://game_menu_theme.gd")
 const MIST := MenuTheme.MUTED
 const TEAL := MenuTheme.BLUE
 const Graphics = preload("res://river_graphics.gd")

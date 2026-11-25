@@ -1,13 +1,19 @@
 import { lstatSync, readdirSync, readFileSync, realpathSync } from 'node:fs';
 import { dirname, join, relative, sep } from 'node:path';
 import { now, sha, transaction } from './db.mjs';
+import gameRoutes from '../../knowledge/game-routes.json' with { type: 'json' };
 
 const allowed = new Set(['gd', 'tscn', 'tres', 'godot', 'gdshader', 'gdshaderinc', 'md', 'txt']);
-const rootDocs = ['AGENTS.md', 'GAME GUIDE AND ASSET CREDITS.md', 'START HERE.txt', 'Play Ottawa River.cmd'];
-const guide = /^docs\/(?:ARCHITECTURE|systems\/[\w-]+)\.md$/;
+const rootDocs = ['AGENTS.md', 'GAME GUIDE AND ASSET CREDITS.md', 'START HERE.txt'];
+const identity = 'docs/GAME-IDENTITY.md';
+const coreGuides = [identity, 'docs/ARCHITECTURE.md', 'docs/UNIVERSAL-XP.md'];
+const guide = /^docs\/(?:GAME-IDENTITY|ARCHITECTURE|UNIVERSAL-XP|systems\/[\w-]+)\.md$/;
+const bakedAssets = /^godot-cove\/(?:ottawa|deep_river)(?:\/|$)/i;
+const sourceFilename = /(?<![\w.-])[\w-]+\.(?:gd|tscn)\b/gi;
+const routes = gameRoutes.routes.map(([pattern, paths]) => [new RegExp(pattern, 'i'), paths]);
 const historic = ['Ethan House Boat and UI Update.txt', 'Richs Houseboat - Feature List for Peter.txt'];
 const maxBytes = 500_000;
-const privateName = /(?:^|[/_.-])(?:\.git|\.godot|node_modules|\.venv|ottawa|build|cache|exports?|secrets?|credentials?|tokens?|passwords?|private|keys?|env)(?:[/_.-]|$)/i;
+const privateName = /(?:^|[/_.-])(?:\.git|\.godot|node_modules|\.venv|build|cache|exports?|secrets?|credentials?|tokens?|passwords?|private|keys?|env)(?:[/_.-]|$)/i;
 const sensitive = /-----BEGIN [^\n]{0,40}PRIVATE KEY-----|(?:^|\n)\s*(?:export\s+)?(?:[A-Z0-9_]*(?:PASSWORD|API_KEY|ACCESS_TOKEN|SECRET_KEY)|SECRET)\s*[:=]\s*["']?[A-Za-z0-9_+/=-]{8,}/i;
 const stop = new Set('a an and are as at be but by can do for from get had has have how i in is it its me my of on or our so than that the their them then there these they this to use was we were what when where which who will with would you your fix make want need game should must'.split(' '));
 
@@ -33,7 +39,7 @@ export function candidateFiles(project, exclusions = [], tracked = null) {
     if (depth > 8 || files.length >= 650) return skip(path, 'scan limit');
     if (exclusions.some(rule => path.toLowerCase() === rule.toLowerCase() ||
         path.toLowerCase().startsWith(rule.toLowerCase() + '/'))) return skip(path, 'configured exclusion');
-    if (path !== 'godot-cove/project.godot' && privateName.test(path)) return skip(path, 'generated, private or cache path');
+    if (bakedAssets.test(path) || (path !== 'godot-cove/project.godot' && privateName.test(path))) return skip(path, 'generated, private or cache path');
     try {
       const status = safeStat(root, path);
       if (!status) return skip(path, 'missing or linked path');
@@ -52,7 +58,7 @@ export function candidateFiles(project, exclusions = [], tracked = null) {
   }
   const paths = tracked ? tracked.filter(path => rootDocs.includes(path) || guide.test(path) ||
     (path.startsWith('godot-cove/') && allowed.has(path.split('.').at(-1).toLowerCase()))) :
-    [...rootDocs, 'docs/ARCHITECTURE.md', 'docs/systems', 'godot-cove'];
+    [...rootDocs, ...coreGuides, 'docs/systems', 'godot-cove'];
   for (const path of paths) visit(path, 0);
   return { root, files, ignored };
 }
@@ -150,18 +156,17 @@ export function projectProfile(db) {
       if (!match) continue;
       const line = Number(row.line) + row.excerpt.slice(0, match.index).split('\n').length - 1;
       const indexedReference = referencedPath && db.prepare("SELECT path FROM files WHERE path=?").get(referencedPath);
-      facts.push({ fact, path, line, ...(indexedReference ? { referencedPath } : {}) });
+      facts.push({ fact: fact ?? match[0], path, line, ...(indexedReference ? { referencedPath } : {}) });
       break;
     }
   };
-  find('godot-cove/project.godot', /config\/name="Rich.s Houseboat/, 'The Godot project identifies itself as Rich’s Houseboat — Ottawa River.');
+  find(identity, /(?<=^# Game identity\n\n)[^\n]+/);
   const mainScene = db.prepare("SELECT excerpt FROM chunks WHERE path='godot-cove/project.godot' ORDER BY line").all()
     .map(row => /^run\/main_scene="res:\/\/([\w/.\-]+\.tscn)"/m.exec(row.excerpt)).find(Boolean)?.[1];
   if (mainScene && db.prepare('SELECT 1 FROM files WHERE path=?').get('godot-cove/' + mainScene)) {
     find('godot-cove/project.godot', /run\/main_scene="res:\/\//, 'The configured main scene is res://' + mainScene + '.', 'godot-cove/' + mainScene);
   }
   find('godot-cove/project.godot', /renderer\/rendering_method="gl_compatibility"/, 'The project config selects the Compatibility renderer.');
-  find('Play Ottawa River.cmd', /Godot_v4\.7\.2-stable_win64\.exe/, 'The launcher specifies the bundled Godot 4.7.2 executable.');
   return facts;
 }
 
@@ -180,7 +185,8 @@ const terms = text => [...new Set(text.replace(/([a-z])([A-Z])/g, '$1 $2').toLow
   .split(/[\W_]+/u).filter(word => word.length > 2 && !stop.has(word)))];
 
 export function findEvidence(db, note, focus, budget, { manifest, selection = {} } = {}) {
-  const tokens = terms(note + ' ' + focus.join(' ')).slice(0, 32);
+  const lookup = note.replace(sourceFilename, name => gameRoutes.aliases[name.toLowerCase()] ?? name);
+  const tokens = terms(lookup + ' ' + focus.join(' ')).slice(0, 32);
   const query = tokens.map(word => '"' + word + '"*').join(' OR ');
   const rows = query ? db.prepare(
     'SELECT path,line,excerpt,bm25(chunks,3,0,1) AS score FROM chunks WHERE chunks MATCH ? ORDER BY score,path,line LIMIT 80'
@@ -203,6 +209,16 @@ export function findEvidence(db, note, focus, budget, { manifest, selection = {}
     'SELECT path,line,excerpt,bm25(chunks,3,0,1) AS score FROM chunks WHERE chunks MATCH ? AND path=? ORDER BY score,line LIMIT 1'
   ).get(query, path)) || db.prepare('SELECT path,line,excerpt FROM chunks WHERE path=? ORDER BY line LIMIT 1').get(path);
 
+  const names = [...lookup.matchAll(sourceFilename)].map(match => match[0].toLowerCase());
+  const preferred = new Set([...names, ...routes.flatMap(([pattern, paths]) => pattern.test(lookup) ? paths : [])]);
+  for (const name of preferred) {
+    if (sourceCount() >= 3) break;
+    const path = 'godot-cove/' + name;
+    if (result.some(item => item.path === path)) continue;
+    const row = bestChunk(path);
+    if (row) add({ ...row, kind: 'source', reason: 'Matching game system' }, 630);
+  }
+
   const atLine = db.prepare('SELECT path,line,excerpt FROM chunks WHERE path=? AND line<=? ORDER BY line DESC LIMIT 1');
   for (const { path, symbols: [symbol] } of selection.matches ?? []) {
     if (sourceCount() >= 3) break;
@@ -219,7 +235,7 @@ export function findEvidence(db, note, focus, budget, { manifest, selection = {}
       reason: 'Related current GitHub task' }, 200);
   }
   const selected = result.filter(item => item.kind === 'source').map(item => item.path);
-  const guides = db.prepare("SELECT path FROM files WHERE path LIKE 'docs/systems/%' ORDER BY path").all().map(row => row.path);
+  const guides = db.prepare('SELECT path FROM files ORDER BY path').all().map(row => row.path).filter(path => guide.test(path));
   for (const path of new Set([...(selection.guides ?? []).filter(path => guides.includes(path)), ...guides])) {
     if (result.filter(item => item.kind === 'guide').length >= 2) break;
     if (result.some(item => item.path === path)) continue;
@@ -238,9 +254,9 @@ export function findEvidence(db, note, focus, budget, { manifest, selection = {}
     }
   }
   const areas = [
-    [/\b(?:fish(?:ing)?|rods?|reel|lure|bobber)\b/i, ['fishing_rig.gd', 'fishing.gd']],
+    [/\b(?:fish(?:ing)?|rods?|reel|lure|bobber)\b/i, ['fishing_rig.gd', 'game_world.gd']],
     [/\b(?:hands?|grips?|avatar|held|props?)\b/i, ['crew_avatar.gd', 'crew_play.gd']],
-    [/\b(?:multiplayer|host|guest|remote|replicat\w*|friends)\b/i, ['river_crew.gd', 'crew_avatar.gd']],
+    [/\b(?:multiplayer|host|guest|remote|replicat\w*|friends)\b/i, ['multiplayer_session.gd', 'crew_avatar.gd']],
     [/\b(?:rich|face|limb|neck|topology)\b/i, ['rich_model.gd', 'rich_npc.gd']],
     [/\b(?:cooler|bong|drink|vape|cabin)\b/i, ['cabin_props.gd', 'cabin_life.gd']]
   ];

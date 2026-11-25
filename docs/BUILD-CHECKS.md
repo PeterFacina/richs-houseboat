@@ -1,8 +1,12 @@
 # Godot startup checks
 
-The **Godot startup** check runs when a pull request into `main` opens, reopens, or receives new commits. It uses Godot 4.7.2 to import the assets and run the configured main scene headlessly. The engine version should match the supported version when the newest game is added. A pass means startup worked for the first 60 iterations. Use a human playtest for visuals, controls, saves, and multiplayer.
+The **Godot startup** check runs when a pull request into `main` opens, reopens, or receives new commits. It uses Godot 4.7.2 to import the assets and run the configured main scene headlessly. A pass means startup worked for the first 60 iterations. Use a human playtest for visuals, controls, saves, and multiplayer.
 
-Until the game baseline is committed, changes without `godot-cove/project.godot` skip the startup portion. A PR that removes a project present in its base fails.
+On Windows, open the project's Godot file from your task worktree or run the game with the installed executable.
+
+```powershell
+& $engine --path godot-cove
+```
 
 ## Get alerts in Discord
 

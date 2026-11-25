@@ -1,0 +1,88 @@
+{
+  "aliases": {
+    "ottawa_map.gd": "deep_river_map.gd",
+    "fishing.gd": "game_world.gd",
+    "fishing.tscn": "game_world.tscn",
+    "river_campaign.gd": "game_campaign.gd",
+    "river_campaign_data.gd": "game_campaign_data.gd",
+    "river_ledger.gd": "game_ledger.gd",
+    "river_notebook.gd": "player_notebook.gd",
+    "river_menu_theme.gd": "game_menu_theme.gd",
+    "river_crew.gd": "multiplayer_session.gd"
+  },
+  "routes": [
+    [
+      "\\b(?:deep river (?:world(?: map)?|map|terrain)|world map)\\b",
+      [
+        "deep_river_map.gd",
+        "game_world.gd"
+      ]
+    ],
+    [
+      "\\b(?:municipal traffic|traffic controls?)\\b",
+      [
+        "deep_river_traffic_controls.gd",
+        "deep_river_street_signs.gd"
+      ]
+    ],
+    [
+      "\\bdeep river (?:roads?|street network)\\b",
+      [
+        "deep_river_roads.gd",
+        "deep_river_map.gd"
+      ]
+    ],
+    [
+      "\\b(?:big rich|houseboat restoration)\\b",
+      [
+        "rich_story.gd",
+        "houseboat_restoration.gd"
+      ]
+    ],
+    [
+      "\\bshannon(?: lapping)?\\b",
+      [
+        "shannon_job.gd",
+        "shannon_model.gd"
+      ]
+    ],
+    [
+      "\\b(?:(?:multiple|shared|generic) (?:npc |character )?quests?|quest framework|quest chain)",
+      [
+        "quest_chain.gd",
+        "npc_quest_offer.gd",
+        "player_notebook.gd"
+      ]
+    ],
+    [
+      "\\b(?:mowing|lawn care) (?:jobs?|progression|xp)\\b",
+      [
+        "shannon_job.gd",
+        "lawn_mower.gd",
+        "progression.gd"
+      ]
+    ],
+    [
+      "\\b(?:universal xp|skill tree|research tree|fishing progression|driving progression|player progression|shared economy)\\b",
+      [
+        "progression.gd",
+        "progression_catalog.gd",
+        "game_ledger.gd"
+      ]
+    ],
+    [
+      "\\bottawa river fish\\b",
+      [
+        "river_stock.gd",
+        "fish_species.gd"
+      ]
+    ],
+    [
+      "\\bottawa river (?:water|hydrology)\\b",
+      [
+        "deep_river_map.gd",
+        "water.gdshader"
+      ]
+    ]
+  ]
+}

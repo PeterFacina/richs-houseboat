@@ -2,8 +2,8 @@ extends Control
 
 signal dismissed
 
-const MenuTheme = preload("res://river_menu_theme.gd")
-const Crew = preload("res://river_crew.gd")
+const MenuTheme = preload("res://game_menu_theme.gd")
+const Crew = preload("res://multiplayer_session.gd")
 
 var crew: Crew
 var connection_fields: VBoxContainer

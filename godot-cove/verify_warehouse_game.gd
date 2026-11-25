@@ -1,7 +1,7 @@
 extends SceneTree
 
 const Warehouse = preload("res://warehouse_property.gd")
-const Ledger = preload("res://river_ledger.gd")
+const Ledger = preload("res://game_ledger.gd")
 
 var failed := false
 
@@ -18,7 +18,7 @@ func exercise() -> void:
 	if not "houseboat-warehouse-" in OS.get_user_data_dir().to_lower() or FileAccess.file_exists(Ledger.SAVE):
 		quit(2)
 		return
-	var game = load("res://fishing.tscn").instantiate()
+	var game = load("res://game_world.tscn").instantiate()
 	root.add_child(game)
 	var build = game.properties
 	var ledger = game.campaign.ledger

@@ -9,12 +9,13 @@ const run = promisify(execFile);
 const indexer = fileURLToPath(new URL('../knowledge/index.py', import.meta.url));
 const selector = fileURLToPath(new URL('../knowledge/studio_context.py', import.meta.url));
 const revisionPattern = /^[a-f0-9]{40}$/;
+const layout = '2';
 const sparsePaths = [
-  '/AGENTS.md', '/GAME GUIDE AND ASSET CREDITS.md', '/START HERE.txt', '/Play Ottawa River.cmd',
-  '/docs/ARCHITECTURE.md', '/docs/systems/*.md',
+  '/AGENTS.md', '/GAME GUIDE AND ASSET CREDITS.md', '/START HERE.txt',
+  '/docs/GAME-IDENTITY.md', '/docs/ARCHITECTURE.md', '/docs/UNIVERSAL-XP.md', '/docs/systems/*.md',
   ...['gd', 'tscn', 'tres', 'gdshader', 'gdshaderinc', 'godot', 'cs', 'md', 'txt']
     .map(ext => '/godot-cove/**/*.' + ext),
-  '!/godot-cove/ottawa/**'
+  '!/godot-cove/ottawa/**', '!/godot-cove/deep_river/**'
 ];
 
 export function sourceKnowledge({ db, storage, remote, python = 'python', log = console }) {
@@ -56,8 +57,13 @@ export function sourceKnowledge({ db, storage, remote, python = 'python', log = 
       await git('config', 'core.longpaths', 'true');
       await git('config', 'remote.origin.promisor', 'true');
       await git('config', 'remote.origin.partialclonefilter', 'blob:none');
-      await git('sparse-checkout', 'set', '--no-cone', '--', ...sparsePaths);
       await git('config', 'houseboat.knowledgeCache', '1');
+    }
+    const config = await git('config', '--local', '--get-regexp', '^houseboat\\.');
+    if (!config.split(/\r?\n/).includes('houseboat.knowledgelayout ' + layout)) {
+      if ((await git('status', '--porcelain', '--untracked-files=all')).trim()) throw new Error('Source cache has local changes.');
+      await git('sparse-checkout', 'set', '--no-cone', '--', ...sparsePaths);
+      await git('config', 'houseboat.knowledgeLayout', layout);
     }
   }
 
@@ -70,7 +76,7 @@ export function sourceKnowledge({ db, storage, remote, python = 'python', log = 
       step = 'read GitHub main';
       target = (await git('ls-remote', '--exit-code', 'origin', 'refs/heads/main')).split(/\s+/)[0];
       if (!revisionPattern.test(target)) throw new Error('Invalid main revision.');
-      if (target === previous?.revision) return { commit: target, target, stale: false };
+      if (target === previous?.revision && previous.sourceLayout === layout) return { commit: target, target, stale: false };
 
       step = 'verify clean cache';
       if ((await git('status', '--porcelain', '--untracked-files=all')).trim()) throw new Error('Source cache has local changes.');
@@ -92,6 +98,7 @@ export function sourceKnowledge({ db, storage, remote, python = 'python', log = 
           !manifest.files['godot-cove/project.godot']) throw new Error('Source index does not match the pinned checkout.');
       const tracked = (await git('ls-files', '-z')).split('\0').filter(Boolean);
       if ((await git('status', '--porcelain', '--untracked-files=all')).trim()) throw new Error('Pinned checkout has local changes.');
+      manifest.sourceLayout = layout;
       const stats = scan(db, source, [], false, { manifest, tracked });
       log.info(`Knowledge ${target} indexed in ${Math.round(performance.now() - start)} ms ` +
         `(${stats.indexed} files, ${stats.changed} changed, ${stats.removed} removed).`);

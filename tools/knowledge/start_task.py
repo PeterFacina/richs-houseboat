@@ -9,10 +9,12 @@ from index import build, git, query
 from github_context import pages, summarize
 
 ROUTES = (
+    ("world map terrain town roads municipal traffic identity architecture", "docs/ARCHITECTURE.md"),
+    ("rich shannon quest questline npc restoration", "docs/systems/QUESTS.md"),
     ("boat helm water drift wave thrust wind river dock moor ignition", "docs/systems/BOAT-WATER.md"),
     ("multiplayer host guest peer replication sync network", "docs/systems/MULTIPLAYER.md"),
     ("fishing fish player input tool inventory", "docs/systems/FISHING-PLAYER.md"),
-    ("xp skill job economy save progression", "docs/systems/PROGRESSION-ECONOMY.md"),
+    ("xp skill job economy save progression research mowing", "docs/systems/PROGRESSION-ECONOMY.md"),
     ("ai discord worker prompt retrieval agent", "docs/AI-WORKFLOW.md"),
     ("test ci build verification", "docs/BUILD-CHECKS.md"),
 )
@@ -56,13 +58,14 @@ def bootstrap(root, task, fetch_pages=pages, offline=False):
         cached_main = git(root, "rev-parse", "--verify", "refs/remotes/origin/main").decode().strip()
     except subprocess.CalledProcessError:
         cached_main = None
-    matches = query(catalog, " ".join(terms), 4)
+    matches = query(catalog, task, 4)
     for match in matches:
         match["symbols"] = match["symbols"][:4]
         match["references"] = match["references"][:3]
     return {"revision": catalog["revision"], "branch": branch, "worktree_dirty": dirty,
             "cached_origin_main": cached_main, "remote_main_freshness": "not checked; fetch separately when required",
             "keywords": terms, "read_first": ["AGENTS.md", "docs/ARCHITECTURE.md"],
+            "identity": "docs/GAME-IDENTITY.md",
             "suggested_guides": guides(terms), "source_matches": matches,
             "github": {"status": "skipped", "warning": "Offline; overlap unknown"} if offline else live(" ".join(terms), fetch_pages),
             "next": ["Read relevant guides and applicable nested instructions.",

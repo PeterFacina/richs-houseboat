@@ -1,7 +1,11 @@
 config_version=5
 
 [application]
-config/name="Rich's Houseboat — Ottawa River"
+config/name="Rich's Houseboat — Deep River"
+config/use_custom_user_dir=true
+config/custom_user_dir_name="Godot/app_userdata/Rich's Houseboat — Ottawa River"
+config/custom_user_dir_name.linux="godot/app_userdata/Rich's Houseboat — Ottawa River"
+config/custom_user_dir_name.bsd="godot/app_userdata/Rich's Houseboat — Ottawa River"
 run/main_scene="res://title_screen.tscn"
 config/features=PackedStringArray("4.3", "GL Compatibility")
 

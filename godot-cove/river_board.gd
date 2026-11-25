@@ -3,7 +3,7 @@ extends Control
 signal chosen(action: String, value: Variant)
 signal dismissed
 
-const MenuTheme = preload("res://river_menu_theme.gd")
+const MenuTheme = preload("res://game_menu_theme.gd")
 const GROUPS := {
 	"Trip": [["River", "river"], ["Jobs", "jobs"]],
 	"Boat": [["Build", "build"], ["Workshop", "tools"]],

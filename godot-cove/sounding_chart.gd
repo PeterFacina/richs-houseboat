@@ -2,7 +2,7 @@ extends Control
 
 signal inspected(id: String)
 const XP = preload("res://progression.gd")
-const Atlas = preload("res://river_menu_theme.gd")
+const Atlas = preload("res://game_menu_theme.gd")
 const MARKS = preload("res://sounding_marks.svg")
 const WATER = preload("res://sounding_water.svg")
 const FISH := ["steady_hands", "experienced_angler", "quick_reel", "fish_finder", "lucky_catch", "trophy_hunter", "master_angler"]

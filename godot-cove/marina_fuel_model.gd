@@ -3,9 +3,9 @@ extends StaticBody3D
 const Kit = preload("res://scenery.gd")
 const Tools = preload("res://crew_tools.gd")
 const Hand = preload("res://river_hand_instance.gd")
-const FLOW = preload("res://ottawa/marina_fuel/flow.wav")
-const CLICK = preload("res://ottawa/marina_fuel/click.wav")
-const DING = preload("res://ottawa/marina_fuel/ding.wav")
+const FLOW = preload("res://deep_river/marina_fuel/flow.wav")
+const CLICK = preload("res://deep_river/marina_fuel/click.wav")
+const DING = preload("res://deep_river/marina_fuel/ding.wav")
 const PRICE_CENTS := 180
 const HOSE_REACH := 12.0
 const SEGMENTS := 32

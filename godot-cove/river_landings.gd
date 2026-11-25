@@ -2,9 +2,9 @@ extends Node3D
 
 const Kit = preload("res://scenery.gd")
 const Cleat = preload("res://mooring_cleat.gd")
-const Data = preload("res://river_campaign_data.gd")
-const Ledger = preload("res://river_ledger.gd")
-const Ottawa = preload("res://ottawa_map.gd")
+const Data = preload("res://game_campaign_data.gd")
+const Ledger = preload("res://game_ledger.gd")
+const DeepRiverMap = preload("res://deep_river_map.gd")
 const Marina = preload("res://marina_art.gd")
 const Beach = preload("res://lamure_beach.gd")
 const DECK := .73
@@ -12,7 +12,7 @@ const PLOT_RADIUS := 10.0
 const CHALK_LANDING := 4
 const LOOKOUT_TRAIL_Z := -8.0
 
-var river: Ottawa
+var river: DeepRiverMap
 var ledger: Ledger
 var sites: Array[Dictionary] = []
 var built: Dictionary = {}
@@ -35,7 +35,7 @@ var shale: Material
 var gravel: StandardMaterial3D
 
 
-func setup(map: Ottawa, account: Ledger) -> void:
+func setup(map: DeepRiverMap, account: Ledger) -> void:
 	river = map
 	ledger = account
 	wood = finish(Color("#ab8866"), true)

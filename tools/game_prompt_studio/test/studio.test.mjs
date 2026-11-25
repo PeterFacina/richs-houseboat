@@ -35,8 +35,8 @@ function fixture(t) {
   const game = join(project, 'godot-cove');
   const storage = join(root, 'data');
   mkdirSync(game, { recursive: true });
-  writeFileSync(join(game, 'project.godot'), 'run/main_scene="res://fishing.tscn"\nrenderer/rendering_method="gl_compatibility"');
-  writeFileSync(join(game, 'fishing.tscn'), '[gd_scene format=3]');
+  writeFileSync(join(game, 'project.godot'), 'run/main_scene="res://game_world.tscn"\nrenderer/rendering_method="gl_compatibility"');
+  writeFileSync(join(game, 'game_world.tscn'), '[gd_scene format=3]\n\n[node name="GameWorld" type="Node3D"]');
   writeFileSync(join(game, 'fishing_rig.gd'), 'extends Node3D\nvar rod = Node3D.new()\n# fishing rod anchor');
   const servers = [];
   t.after(async () => {
@@ -123,17 +123,39 @@ test('index preserves the game folder, skips credentials, private copies and ove
   assert.ok(candidates.files.some(file => file.path === 'godot-cove/fishing_rig.gd'));
   const db = openDb(paths.storage);
   try {
-    const expected = ['godot-cove/fishing.tscn', 'godot-cove/fishing_rig.gd', 'godot-cove/project.godot'];
+    const expected = ['godot-cove/fishing_rig.gd', 'godot-cove/game_world.tscn', 'godot-cove/project.godot'];
     assert.equal(scan(db, paths.project).indexed, 3);
     assert.deepEqual(db.prepare('SELECT path FROM files ORDER BY path').all().map(row => row.path), expected);
     assert.equal(scan(db, paths.project).changed, 0);
-    assert.ok(projectProfile(db).some(fact => fact.referencedPath === 'godot-cove/fishing.tscn'));
+    assert.ok(projectProfile(db).some(fact => fact.referencedPath === 'godot-cove/game_world.tscn'));
     const sources = findEvidence(db, note, [], 4000);
     assert.ok(sources.some(item => item.path === 'godot-cove/fishing_rig.gd'));
     assert.ok(sources.some(item => item.kind === 'reported'));
     rmSync(join(paths.game, 'fishing_rig.gd'));
-    assert.equal(scan(db, paths.project, ['godot-cove/fishing.tscn']).indexed, 1);
+    assert.equal(scan(db, paths.project, ['godot-cove/game_world.tscn']).indexed, 1);
     assert.ok(!findEvidence(db, note, [], 4000).some(item => item.path === 'godot-cove/fishing_rig.gd'));
+  } finally { db.close(); }
+});
+
+test('identity and historical world names resolve from the current checkout', t => {
+  const paths = fixture(t);
+  mkdirSync(join(paths.project, 'docs'));
+  const identity = "Rich's Houseboat is the working title of a multiplayer open-world life simulation in Deep River.";
+  writeFileSync(join(paths.project, 'docs/GAME-IDENTITY.md'), '# Game identity\n\n' + identity + '\n\nLong design notes.');
+  writeFileSync(join(paths.game, 'deep_river_map.gd'), 'extends Node3D\nfunc build_town():\n  pass');
+  mkdirSync(join(paths.game, 'deep_river'));
+  writeFileSync(join(paths.game, 'deep_river', 'ignored.gd'), 'func baked_asset():\n  pass');
+  const db = openDb(paths.storage);
+  try {
+    scan(db, paths.project);
+    const fact = projectProfile(db).find(item => item.path === 'docs/GAME-IDENTITY.md');
+    assert.equal(fact.fact, identity);
+    assert.equal(fact.line, 3);
+    assert.ok(!candidateFiles(paths.project).files.some(file => file.path.endsWith('ignored.gd')));
+    for (const query of ['Deep River world map', 'Inspect res://ottawa_map.gd']) {
+      assert.equal(findEvidence(db, query, [], 4000)[0].path, 'godot-cove/deep_river_map.gd');
+    }
+    assert.equal(findEvidence(db, 'Find fishing.tscn', [], 4000)[0].path, 'godot-cove/game_world.tscn');
   } finally { db.close(); }
 });
 
@@ -306,7 +328,7 @@ test('provider reports offline, HTTP error and invalid JSON using a loopback-onl
 
 test('filename generation and review guard handle paths, suspicious directives and Unicode control characters', () => {
   assert.equal(exportName({ title: '../C:\\con “é”', id: 7, created_at: '2026-11-22T00:00:00Z' }), '2026-11-22_007_c_con_e.txt');
-  assert.deepEqual(checkExport('Inspect fishing_rig.gd, then run Play Ottawa River.cmd. [S1]', [
+  assert.deepEqual(checkExport('Inspect fishing_rig.gd and verify the indexed source. [S1]', [
     { id: 'S1', path: 'godot-cove/fishing_rig.gd' }
   ]), []);
   assert.ok(checkExport('h\u200bttps://elsewhere.invalid', []).length);

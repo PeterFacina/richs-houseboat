@@ -460,7 +460,7 @@ func build_terraces(park: Node3D, stone: Material) -> void:
 	turf.set_normal(Vector3.UP)
 	var grass := ShaderMaterial.new()
 	grass.shader = preload("res://riverbank_grass.gdshader")
-	grass.set_shader_parameter("grass_scan", ImageTexture.create_from_image(Image.load_from_file("res://ottawa/materials/grass.jpg")))
+	grass.set_shader_parameter("grass_scan", ImageTexture.create_from_image(Image.load_from_file("res://deep_river/materials/grass.jpg")))
 	for row in TIER_COUNT:
 		for side: float in [-1.0, 1.0]:
 			for column in 7:
@@ -499,7 +499,7 @@ func build_terraces(park: Node3D, stone: Material) -> void:
 						turf.add_vertex(Vector3(point.x, height, point.y))
 	var limestone := stone.duplicate() as StandardMaterial3D
 	limestone.albedo_color = Color("#c7c4b9")
-	limestone.albedo_texture = ImageTexture.create_from_image(Image.load_from_file("res://ottawa/materials/concrete.jpg"))
+	limestone.albedo_texture = ImageTexture.create_from_image(Image.load_from_file("res://deep_river/materials/concrete.jpg"))
 	Kit.new().scatter(amphitheatre, BoxMesh.new(), blocks, limestone).name = "StoneSeating"
 	var floor := Kit.mesh_at(amphitheatre, turf.commit(), Vector3.ZERO, grass)
 	floor.name = "GrassyTiers"

@@ -1,9 +1,10 @@
+import re
 import subprocess
 import tempfile
 import unittest
 from pathlib import Path
 
-from index import build, freshness, inspect_source, query
+from index import GAME_ROUTES, build, freshness, inspect_source, query
 
 
 class IndexTest(unittest.TestCase):
@@ -11,6 +12,32 @@ class IndexTest(unittest.TestCase):
         symbols, refs = inspect_source(b'# header\nstatic func sail():\n  preload("res://swell.gd")\nsignal changed\n')
         self.assertEqual([(s["name"], s["line"]) for s in symbols], [("sail", 2), ("changed", 4)])
         self.assertEqual(refs, ["godot-cove/swell.gd"])
+
+    def test_game_identity_routes(self):
+        files = {f"godot-cove/{name}": {"symbols": [], "references": []}
+                 for name in ("deep_river_map.gd", "rich_story.gd", "quest_chain.gd",
+                              "shannon_job.gd", "progression.gd", "river_stock.gd")}
+        index = {"files": files}
+        for phrase, expected in (
+            ("Deep River world map", "deep_river_map.gd"),
+            ("res://ottawa_map.gd", "deep_river_map.gd"),
+            ("Big Rich questline", "rich_story.gd"),
+            ("Shared quest framework", "quest_chain.gd"),
+            ("Future Shannon Lapping questline", "shannon_job.gd"),
+            ("Future research tree architecture", "progression.gd"),
+            ("Ottawa River fish populations", "river_stock.gd"),
+        ):
+            with self.subTest(phrase=phrase):
+                self.assertEqual(query(index, phrase, 1)[0]["path"], f"godot-cove/{expected}")
+
+    def test_current_godot_paths_use_canonical_names(self):
+        project = Path(__file__).resolve().parents[2] / "godot-cove"
+        obsolete = re.compile(r"res://ottawa/|(?<![\w.-])(?:" + "|".join(
+            re.escape(name) for name in GAME_ROUTES["aliases"]) + r")(?![\w.-])")
+        for path in project.iterdir():
+            if path.is_file() and path.suffix in {".gd", ".tscn", ".tres", ".cfg", ".godot"}:
+                self.assertIsNone(obsolete.search(path.read_text(encoding="utf-8-sig")), str(path))
+        self.assertFalse((project / "ottawa").exists())
 
     def test_real_repository(self):
         with tempfile.TemporaryDirectory() as tmp:

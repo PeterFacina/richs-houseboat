@@ -1,6 +1,6 @@
 extends RefCounted
 
-const FILE := "res://ottawa/fish_species.json"
+const FILE := "res://deep_river/fish_species.json"
 const RIGS := ["worm", "minnow", "bottom", "micro"]
 const RIG_LABELS := ["Worm under float", "Minnow on slip float", "Deep slip float", "Micro jig under float"]
 const PATTERNS := ["plain", "bars", "stripe", "speckle", "pike", "musky", "mottle", "saddle", "scales", "silver",

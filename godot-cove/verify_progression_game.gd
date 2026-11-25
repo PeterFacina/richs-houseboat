@@ -1,6 +1,6 @@
 extends SceneTree
 const XP = preload("res://progression.gd")
-const Ledger = preload("res://river_ledger.gd")
+const Ledger = preload("res://game_ledger.gd")
 
 func _initialize() -> void:
 	call_deferred("exercise")
@@ -16,7 +16,7 @@ func exercise() -> void:
 	var legacy := FileAccess.open(Ledger.SAVE, FileAccess.WRITE)
 	legacy.store_string(JSON.stringify({"format": 1, "sites": {}, "cash": 71}))
 	legacy.close()
-	var game = load("res://fishing.tscn").instantiate()
+	var game = load("res://game_world.tscn").instantiate()
 	root.add_child(game)
 	var screen = game.skill_screen
 	var campaign = game.campaign

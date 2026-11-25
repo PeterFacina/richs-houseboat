@@ -4,7 +4,7 @@ signal closed
 
 const Species = preload("res://fish_species.gd")
 const Fish = preload("res://river_fish.gd")
-const MenuTheme = preload("res://river_menu_theme.gd")
+const MenuTheme = preload("res://game_menu_theme.gd")
 const NotebookStyle = preload("res://notebook_theme.gd")
 var embedded := false
 

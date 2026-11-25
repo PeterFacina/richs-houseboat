@@ -2,18 +2,18 @@
 
 During play, press **K** or the controller Back button to open the tree. Escape, Back, or the Close button returns to play. Select a branch, pan or zoom its prerequisite graph, select a rank, then purchase it with a skill point. The host keeps simulating the game while the menu is open.
 
-## Integration audit
+## Current integration
 
-The worktree starts at GitHub main commit 29e4677. The overlap check found no existing universal XP change. The plaza, equipment, campaign cash and team job board all have existing owners in the game code.
+[Progression and economy](systems/PROGRESSION-ECONOMY.md) explains the shared advancement, economy and save boundaries. See [Game identity](GAME-IDENTITY.md) for future research and activity terminology.
 
 | Source under godot-cove | Integration |
 | --- | --- |
-| fishing.gd, river_stock.gd, crew_play.gd | Local fishing simulation owns species selection and the landing transition. A guest can also help net a host-verified catch. |
+| game_world.gd, river_stock.gd, crew_play.gd | Local fishing simulation owns species selection and the landing transition. A guest can also help net a host-verified catch. |
 | river_backpack.gd, progression_screen.tscn, progression_screen.gd, skill_hex.gd | The HUD uses the backpack hotbar offset. A separate canvas layer hosts the tree and nonblocking level banner. |
 | shannon_job.gd, lawn_mower.gd | The mower emits a signal for a newly cut tuft. Shannon verifies the active route and turn-in. The base game limits this job to the host. Commercial Contractor unlocks an optional second daily route covering two mowing areas. |
-| river_campaign.gd, river_campaign_data.gd | The host advances boat motion, contracts, dock discovery, power and payouts. Three additional contracts use the existing survey and freight activities. |
+| game_campaign.gd, game_campaign_data.gd | The host advances boat motion, contracts, dock discovery, power and payouts. Three additional contracts use the existing survey and freight activities. |
 | marina_cars.gd, marina_car.gd | The host steps each occupied car. Travel XP, steering and collision recovery use the driver’s own ranks. |
-| river_crew.gd, river_ledger.gd | Registered peers request purchases. The host saves progression in the active solo or multiplayer campaign and sends each peer its own summary. |
+| multiplayer_session.gd, game_ledger.gd | Registered peers request purchases. The host saves progression in the active solo or multiplayer campaign and sends each peer its own summary. |
 | progression.gd, progression_catalog.gd, progression_skills.json | The reward registry, level curve and data-driven catalog define skill ranks, level gates, numeric effects and graph positions. |
 
 ## Progression and persistence
