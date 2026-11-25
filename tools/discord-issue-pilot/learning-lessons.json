@@ -59,6 +59,10 @@
         {
           "kind": "current-source-revalidation",
           "revision": "ba9f0319bcabddc7a2862be9ce7414e07ad7fffc"
+        },
+        {
+          "kind": "current-source-revalidation",
+          "revision": "1de4200df828300b2153db1181125fc31d9f5093"
         }
       ],
       "anchors": [
@@ -68,14 +72,14 @@
           "sha256": "7a3e4c70a0d518c4791f63a44b4f583389b7633914d81f4e5a459521142e5407"
         },
         {
-          "path": "godot-cove/fishing.gd",
+          "path": "godot-cove/game_world.gd",
           "name": "update_hud",
           "sha256": "ca2b46beb86c1f8c5f4996f24b16c8a507a8805fd60a9340546c08c646f1da7b"
         },
         {
           "path": "godot-cove/shannon_job.gd",
           "name": "setup",
-          "sha256": "50f9d45fba107a8ed864787c7b0ee3775c24a9c4a7aed73da08c4d8b59c8e24a"
+          "sha256": "611f80c41f1c5109f9a108a6ccb3cd619f45428efe9d84690fc980845bded44d"
         }
       ],
       "trainingApproval": null

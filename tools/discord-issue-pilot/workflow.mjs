@@ -32,7 +32,7 @@ export function pilotBrief(issue, gpuBriefUrl, kind = 'notes') {
   return [
     `Work on Rich's Houseboat issue ${issue}.`,
     'Read AGENTS.md and the issue. Use docs/GAME-IDENTITY.md for terminology and check source for implemented features. Check the owner and overlapping issues and PRs.',
-    'Use the team task workflow and a separate branch from current main.',
+    'Fetch current origin/main and create a separate task worktree with tools/Start-GameTask.ps1 before investigating or editing gameplay. Reopen the existing task worktree when resuming.',
     kind === 'gameplay'
       ? 'Investigate the reported gameplay behavior. Reproduce it where possible, verify the cause before making a focused fix, and record any checks that could not be run.'
       : 'Implement the notes-only pilot task described in the issue and verify the diff.',
@@ -51,12 +51,16 @@ export function codexLink(issue, gpuBriefUrl, kind = 'notes') {
   })}`;
 }
 
-export function pullStatus(pulls, issueNumber) {
+export function linkedPull(pulls, issueNumber) {
   const marker = new RegExp(`^Fixes #${issueNumber}\\s*$`, 'im');
-  const linked = pulls.filter(pull => pull.base.ref === 'main' && marker.test(pull.body ?? ''));
-  const pull = linked.find(pull => pull.merged_at)
+  const linked = pulls.filter(pull => pull.base?.ref === 'main' && marker.test(pull.body ?? ''));
+  return linked.find(pull => pull.merged_at)
     ?? linked.find(pull => pull.state === 'open')
     ?? linked[0];
+}
+
+export function pullStatus(pulls, issueNumber) {
+  const pull = linkedPull(pulls, issueNumber);
   if (!pull) return null;
   const status = pull.merged_at ? 'Merged into `main`'
     : pull.state === 'closed' ? 'PR closed without merge'

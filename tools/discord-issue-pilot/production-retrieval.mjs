@@ -1,7 +1,9 @@
 import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { buildCodeIndex } from './multistage/code-index.mjs';
 import { collectEvidence } from './multistage/retrieval.mjs';
 import { lessonStatus, relevantLesson } from './learning/lessons.mjs';
+import { trainingPath } from './training-inbox.mjs';
 
 export const originalRetrieval = 'original';
 export const candidateRetrieval = 'deterministic-v1';
@@ -13,11 +15,13 @@ export const verificationGuidance = [
   'For diagnosis or documentation, acceptance is recording what happened, including a failed observation. Do not turn it into a behavior change or require a result that the report leaves open.',
   'Keep tests in the requested roles and modes. For a shared behavior change, use the authoritative side, affected client, and an unaffected observer where relevant. Prefer the existing focused regression test.',
   'Keep uncertain implementation details as inspection questions. Never turn a reported symptom into a confirmed cause or substitute a broader smoke test for a missing acceptance check.',
+  'Cite a source ID next to each technical claim. When a claim needs a missing implementation detail, ask Codex to follow the named call or dependency and verify it before editing.',
 ].join(' ');
 const defaultLessons = new URL('./learning-lessons.json', import.meta.url);
 
 export function retrievalConfig(mode = originalRetrieval, canary = '') {
   if (![originalRetrieval, candidateRetrieval].includes(mode)) throw new Error('Unknown HOUSEBOAT_RETRIEVAL_MODE.');
+  if (mode === candidateRetrieval && canary === 'all') return { mode, issue: null, forIssue: () => mode };
   const issue = Number(canary);
   if (mode === candidateRetrieval ? !/^[1-9]\d*$/.test(canary) || !Number.isSafeInteger(issue) : canary !== '') {
     throw new Error('Set HOUSEBOAT_RETRIEVAL_CANARY_ISSUES to exactly one issue in deterministic-v1 mode, or leave it unset in original mode.');
@@ -34,7 +38,7 @@ function verifiedEvidence(lesson) {
     excerpt: ['Prior task only.', failed, succeeded, feedback, verification].join(' ') };
 }
 
-export function deterministicRetriever(knowledge, { lessons = defaultLessons } = {}) {
+export function deterministicRetriever(knowledge, { lessons = defaultLessons, reviewed = join(dirname(trainingPath()), 'reviewed-lessons.json') } = {}) {
   let cached;
   const snapshot = JSON.parse(readFileSync(lessons, 'utf8'));
   return (commit, note, issue, selection) => knowledge.withVerifiedCheckout(commit, (root, manifest, tracked) => {
@@ -45,7 +49,12 @@ export function deterministicRetriever(knowledge, { lessons = defaultLessons } =
     const { index } = cached;
     const extra = (selection?.tasks ?? []).slice(0, 3).map(({ number, title, label }) =>
       ({ kind: 'github', title: label + ' #' + number, excerpt: title.slice(0, 200) }));
-    const lesson = relevantLesson(cached.lessons, note, [], new Set(['issue/' + issue]));
+    let approved = [];
+    try {
+      const local = JSON.parse(readFileSync(reviewed, 'utf8'));
+      approved = lessonStatus({ lessons: (local.lessons ?? []).filter(item => item.review?.by && item.review?.at) }, index);
+    } catch (error) { if (error.code !== 'ENOENT') throw error; }
+    const lesson = relevantLesson([...approved, ...cached.lessons], note, [], new Set(['issue/' + issue]));
     const item = lesson && verifiedEvidence(lesson);
     if (item) {
       index.verify(lesson.anchors);

@@ -1,13 +1,28 @@
 import assert from 'node:assert/strict';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import test from 'node:test';
 import { buildDraft, checkExport } from '../game_prompt_studio/lib/model.mjs';
+import { buildCodeIndex } from './multistage/code-index.mjs';
 import { candidateRetrieval, originalRetrieval, retrievalConfig } from './production-retrieval.mjs';
+
+test('deterministic retrieval normalizes legacy filenames with the shared game routes', t => {
+  const root = mkdtempSync(join(tmpdir(), 'houseboat-retrieval-aliases-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const index = buildCodeIndex(root, { files: {} }, []);
+  assert.deepEqual(
+    index.query('Check fishing.gd, FISHING.tscn, ottawa_map.gd and river_crew.gd'),
+    index.query('Check game_world.gd, game_world.tscn, deep_river_map.gd and multiplayer_session.gd'),
+  );
+});
 
 test('original is the default and candidate deployment can be limited to specific issues', () => {
   assert.equal(retrievalConfig().forIssue(69), originalRetrieval);
   const canary = retrievalConfig(candidateRetrieval, '113');
   assert.equal(canary.forIssue(113), candidateRetrieval);
   assert.equal(canary.forIssue(69), originalRetrieval);
+  assert.equal(retrievalConfig(candidateRetrieval, 'all').forIssue(69), candidateRetrieval);
   for (const [mode, issues] of [['new', ''], ['original', '69'], [candidateRetrieval, ''], [candidateRetrieval, '1,2'], [candidateRetrieval, '0']]) {
     assert.throws(() => retrievalConfig(mode, issues), /HOUSEBOAT_RETRIEVAL/);
   }

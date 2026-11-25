@@ -67,6 +67,9 @@ function card(report, status) {
 
 async function submit(message, kind) {
   const source = message.id;
+  const screenshots = [...message.attachments.values()].filter(attachment =>
+    attachment.contentType?.startsWith('image/') || /\.(?:png|jpe?g|webp|gif)$/i.test(attachment.name ?? '')).length;
+  const attachmentNote = screenshots ? `\n\nThe original Discord report contains ${screenshots} image attachment${screenshots === 1 ? '' : 's'}. Inspect them in Discord when reproducing the report.` : '';
   // Generate before reserving an issue so a failed export or busy model can be retried.
   const brief = generateBrief && !find.get(source) ? await generateBrief(message.content) : null;
   const reservation = db.prepare('INSERT OR IGNORE INTO reports (source, created) VALUES (?, ?)')
@@ -78,7 +81,7 @@ async function submit(message, kind) {
     if (reservation.changes) {
       issue = await github('/issues', 'POST', {
         title: reportKinds[kind].titlePrefix + message.content.trim().split('\n')[0].slice(0, 150),
-        body: reportHeader(kind) + message.content + '\n\n'
+        body: reportHeader(kind) + message.content + attachmentNote + '\n\n'
           + 'Discord report: ' + message.url + '\n\n'
           + '## Done when\n\n' + reportKinds[kind].done + '\n\n'
           + (brief ? '## Game Prompt Studio brief\n\n' + brief + '\n\n' : '')

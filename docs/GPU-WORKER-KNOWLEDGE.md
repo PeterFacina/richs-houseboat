@@ -2,6 +2,8 @@
 
 The [controlled rollout runbook](GPU-CONTROLLED-ROLLOUT.md) covers the single-issue candidate, preview, rollback and private development outcomes.
 
+The [read-only GPU dashboard](GPU-DASHBOARD.md) reads this worker index and private capture metadata through an authorized adapter. It has no scanner or generation endpoint. The dashboard can display older captures without runtime telemetry.
+
 ## How briefs get their context
 
 1. The existing Discord bot queues an issue on GitHub. The GPU worker skips reports that already have a marked brief and accepts one generation at a time.
@@ -9,6 +11,12 @@ The [controlled rollout runbook](GPU-CONTROLLED-ROLLOUT.md) covers the single-is
 3. `tools/knowledge/index.py` reuses declarations and literal references for files with the same SHA-256. Studio updates changed chunks, removes deleted paths, and commits both the search index and the source revision in one SQLite transaction. The worker reuses the persisted index after a restart. A failed update leaves that transaction intact. Briefs using the last verified revision carry a stale notice. If no verified index exists, the issue stays pending.
 4. Studio includes the opening paragraph of [Game identity](GAME-IDENTITY.md) from the pinned revision. It combines matching declarations, excerpts, subsystem guides, direct literal resource references and related open GitHub issue or PR titles. It retrieves at most three live tasks and uses a 5,800-character evidence excerpt budget at the worker's default context setting. It retrieves current issue and PR lists independently of the source revision. Missing or truncated GitHub task lists are recorded as incomplete. Context is untrusted evidence, and Studio applies its normal structured output and export checks.
 5. The worker writes the post-guard brief and private model provenance into the training inbox by issue number. It checks for issue edits and existing marked briefs before posting. A rejected draft stays in the private inbox. Human review and approval follow the [training record procedure](../tools/discord-issue-pilot/README.md#training-records).
+
+The worker also checks `main` while idle every five minutes. Enable the function-aware retriever for every queued issue with `HOUSEBOAT_RETRIEVAL_MODE=deterministic-v1` and `HOUSEBOAT_RETRIEVAL_CANARY_ISSUES=all`. A single issue number still selects a canary. With either mode the worker checks freshness before generation and records when a verified older index or the original retrieval path was used.
+
+The function-aware retriever ranks identifiers and related terms, retains complete short functions, selects contiguous lines for longer code, and follows lexical calls or callers. The published brief includes named source evidence and still passes the export guard. Issue #84 is a regression case for matching parking fence terminology to the call that constructs the railing and the function that builds it.
+
+For captured briefs with a linked merged PR, the worker periodically saves changed paths, check results, review submissions and inline corrections in the existing private inbox. GitHub review metadata and human playtest outcomes are recorded separately. The worker’s GitHub credential needs Issues read/write and read access to pull requests and checks for this collection.
 
 The standalone Studio continues to use the user's configured workspace and has subsystem guide search. The worker's managed Studio follows `main`. Dynamic Godot calls and runtime dependencies are outside the literal reference index. GitHub task retrieval reads up to 100 open issues and 100 open PRs and omits bodies and diffs from the model request. Review overlap and relevant diffs before acting on a brief.
 
