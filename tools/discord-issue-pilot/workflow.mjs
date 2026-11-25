@@ -1,4 +1,5 @@
 export const repository = 'PeterFacina/richs-houseboat';
+export const reportCharacterLimit = 6500;
 export const remote = `https://github.com/${repository}.git`;
 
 export const gpuBriefMarker = '<!-- houseboat-gpu-brief:v1 -->';
