@@ -3,6 +3,10 @@ extends Node3D
 const Kit = preload("res://scenery.gd")
 const IDLE_RPM := 760.0
 const WIDE_OPEN_RPM := 5700.0
+const NOMINAL_IDLE_RPM := 750.0
+const NOMINAL_LOAD_RPM := 3750.0
+
+enum AudioState { OFF, STARTUP, IDLE, ACCELERATION, CRUISE, DECELERATION, SHUTDOWN, REVERSE }
 
 var swivel := Node3D.new()
 var leg := Node3D.new()
@@ -13,6 +17,8 @@ var thrust := 0.0
 var gear := 0
 var electric := false
 var sound: AudioStreamPlayer3D
+var load_sound: AudioStreamPlayer3D
+var audio_state := AudioState.OFF
 var cooling: CPUParticles3D
 
 
@@ -75,12 +81,22 @@ func _ready() -> void:
 	sound.position = Vector3(0, .13, .32)
 	sound.unit_size = 5.1
 	sound.max_distance = 87.0
-	sound.stream = engine_loop()
+	sound.stream = engine_loop(false)
+	sound.volume_db = -80.0
 	add_child(sound)
+	load_sound = AudioStreamPlayer3D.new()
+	load_sound.name = "OutboardLoadSound"
+	load_sound.position = sound.position
+	load_sound.unit_size = sound.unit_size
+	load_sound.max_distance = sound.max_distance
+	load_sound.doppler_tracking = AudioStreamPlayer3D.DOPPLER_TRACKING_DISABLED
+	load_sound.stream = engine_loop(true)
+	load_sound.volume_db = -80.0
+	add_child(load_sound)
 	add_cooling_water()
 
 
-func run(delta: float, throttle: float, rudder: float, started: bool, underway: float, sound_gain := 1.0) -> void:
+func run(delta: float, throttle: float, rudder: float, started: bool, underway: float, sound_gain := 1.0, startup_progress := -1.0) -> void:
 	gear = 0 if absf(throttle) < .045 else (1 if throttle > 0.0 else -1)
 	var load := clampf(absf(throttle), 0.0, 1.0)
 	var idle := 0.0 if electric else IDLE_RPM
@@ -93,14 +109,61 @@ func run(delta: float, throttle: float, rudder: float, started: bool, underway: 
 	prop.rotate_z(rpm * (TAU / 60.0 / 2.31) * gear * delta)
 	cooling.emitting = not electric and rpm > 430.0
 	cooling.initial_velocity_max = 1.09 + rpm / WIDE_OPEN_RPM * .44
-	if rpm > 165.0 and sound_gain > 0.0:
-		if not sound.playing:
-			sound.play()
-		sound.pitch_scale = clampf(rpm / (2820.0 if electric else 1320.0), .60, 4.2)
-		sound.volume_db = lerpf(-30.0 if electric else -23.0, -16.0 if electric else -7.0,
-			smoothstep(idle, WIDE_OPEN_RPM, rpm)) + linear_to_db(sound_gain)
-	elif sound.playing:
-		sound.stop()
+	var audio_rpm := rpm
+	var audio_started := started
+	var audio_wanted := wanted
+	if startup_progress >= 0.0:
+		audio_started = true
+		audio_wanted = IDLE_RPM
+		audio_rpm = IDLE_RPM * smoothstep(0.0, .43, startup_progress)
+	update_engine_audio(delta, throttle, audio_started, audio_wanted, sound_gain, audio_rpm, startup_progress)
+
+
+func update_engine_audio(delta: float, throttle: float, started: bool, wanted: float, sound_gain: float, audio_rpm: float, startup_progress: float) -> void:
+	if not started:
+		audio_state = AudioState.SHUTDOWN if audio_rpm > 165.0 else AudioState.OFF
+	elif gear < 0:
+		audio_state = AudioState.REVERSE
+	elif absf(throttle) < .045:
+		audio_state = AudioState.IDLE if absf(audio_rpm - IDLE_RPM) < 105.0 else AudioState.DECELERATION
+	elif audio_rpm < wanted - 120.0:
+		audio_state = AudioState.ACCELERATION
+	elif audio_rpm > wanted + 120.0:
+		audio_state = AudioState.DECELERATION
+	else:
+		audio_state = AudioState.CRUISE
+	var audible := audio_rpm > 165.0 and sound_gain > 0.0
+	if not audible:
+		fade_engine_layer(sound, -80.0, delta)
+		fade_engine_layer(load_sound, -80.0, delta)
+		if audio_rpm <= 115.0:
+			sound.stop()
+			load_sound.stop()
+		return
+	if not sound.playing:
+		sound.play()
+	if not load_sound.playing:
+		load_sound.play()
+	var demanded_load := smoothstep(IDLE_RPM, WIDE_OPEN_RPM, wanted) if started else 0.0
+	var load_blend := demanded_load * .82
+	var gain_db := linear_to_db(clampf(sound_gain, .0001, 1.0))
+	var idle_level := -19.0 if electric else -18.0
+	var load_level := -21.0 if electric else -16.0
+	var idle_volume := (idle_level + linear_to_db(maxf(.0001, 1.0 - load_blend))) + gain_db
+	var load_volume := (load_level + linear_to_db(maxf(.0001, load_blend))) + gain_db
+	var transition_rate := 144.0 if startup_progress >= 0.0 else 48.0
+	fade_engine_layer(sound, idle_volume, delta, transition_rate)
+	fade_engine_layer(load_sound, load_volume, delta, transition_rate)
+	if electric:
+		sound.pitch_scale = clampf(audio_rpm / 1080.0, .86, 1.22)
+		load_sound.pitch_scale = clampf(audio_rpm / 2500.0, .86, 1.30)
+	else:
+		sound.pitch_scale = clampf(audio_rpm / NOMINAL_IDLE_RPM, .92, 1.20)
+		load_sound.pitch_scale = clampf(audio_rpm / NOMINAL_LOAD_RPM, .84, 1.34)
+
+
+func fade_engine_layer(player: AudioStreamPlayer3D, target_db: float, delta: float, rate_db := 48.0) -> void:
+	player.volume_db = move_toward(player.volume_db, target_db, delta * rate_db)
 
 
 func wash_direction() -> Vector3:
@@ -184,24 +247,36 @@ func tube(parent: Node3D, start: Vector3, end: Vector3, r0: float, r1: float, ma
 	instance.quaternion = Quaternion(Vector3.UP, (end - start).normalized())
 
 
-func engine_loop() -> AudioStreamWAV:
+func engine_loop(loaded: bool) -> AudioStreamWAV:
 	const RATE := 22050
+	const DURATION := 2
 	var pcm := PackedByteArray()
-	pcm.resize(RATE * 2)
-	for frame in RATE:
+	pcm.resize(RATE * DURATION * 2)
+	var firing_hz := 125.0 if loaded else 25.0
+	for frame in RATE * DURATION:
 		var t := float(frame) / RATE
-		var pulse := sin(44.0 * TAU * t)
-		var compression := pow(maxf(0.0, pulse), 4.0)
-		var valve := sin(TAU * (132.0 * t + .088 * sin(6.0 * TAU * t)))
-		var exhaust := .50 * pulse + .14 * sin(TAU * 88.0 * t + .9) + .15 * (compression - .18)
-		var value := exhaust + valve * (.062 + .050 * compression) + .023 * sin(265.0 * TAU * t)
+		var phase := TAU * firing_hz * t
+		var pulse := sin(phase + .09 * sin(TAU * 7.0 * t))
+		var compression := pow(maxf(0.0, pulse), 4.0 if loaded else 5.0)
+		var exhaust := .43 * pulse + .21 * sin(phase * 2.0 + .72) + .115 * sin(phase * 3.0 + 1.37)
+		var mechanical_level := .055 if loaded else .08
+		var valve_level := .020 if loaded else .035
+		var compression_level := .035 if loaded else .060
+		var mechanical := mechanical_level * sin(TAU * (firing_hz * 4.0 * t + .03 * sin(TAU * 3.0 * t)))
+		var valve := sin(TAU * (firing_hz * 5.0 * t + .035 * sin(TAU * 6.0 * t)))
+		var value := exhaust + mechanical + valve * (valve_level + compression_level * compression) + .09 * (compression - .08)
+		if loaded:
+			var firing_variation := 1.0 + .035 * sin(TAU * .5 * t) + .018 * sin(TAU * 1.5 * t)
+			value *= firing_variation
 		if electric:
-			value = .38 * sin(TAU * 120.0 * t) + .16 * sin(TAU * 240.0 * t) + .04 * sin(TAU * 360.0 * t)
-		pcm.encode_s16(frame * 2, roundi(value * 24500.0))
+			var motor_hz := 88.0 if loaded else 54.0
+			value = .38 * sin(TAU * motor_hz * t) + .18 * sin(TAU * motor_hz * 2.0 * t) \
+				+ .07 * sin(TAU * motor_hz * 4.0 * t)
+		pcm.encode_s16(frame * 2, roundi(clampf(value, -1.0, 1.0) * 22000.0))
 	var stream := AudioStreamWAV.new()
 	stream.format = AudioStreamWAV.FORMAT_16_BITS
 	stream.mix_rate = RATE
 	stream.data = pcm
 	stream.loop_mode = AudioStreamWAV.LOOP_FORWARD
-	stream.loop_end = RATE
+	stream.loop_end = RATE * DURATION
 	return stream
