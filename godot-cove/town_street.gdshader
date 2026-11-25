@@ -10,16 +10,22 @@ const int BROCKHOUSE_SURFACE = 1;
 const int CEDAR_SURFACE = 2;
 const int YARD_DRIVE_SURFACE = 3;
 const float STANDARD_SURFACE = 4.0;
+const vec4 SILVIE_APPROACH = vec4(18475.5, 13812.15, -.8252, .5649);
 
 uniform vec2 champlain_access = vec2(0.0);
 uniform vec4 champlain_bays = vec4(24.0, 3.25, .59, 3.5);
 uniform bool parking_lot = false;
 uniform vec4 parking_bays = vec4(0.0);
 uniform vec2 parking_aisle = vec2(0.0);
+// xy is the center of the marking. zw is its unit axis along the road.
+uniform vec4 laurier_crossing = vec4(0.0);
+uniform vec4 deep_river_crossing = vec4(0.0);
 varying vec2 world_xz;
+varying vec3 verge_and_wear;
 
 void vertex() {
 	world_xz = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xz;
+	verge_and_wear = CUSTOM0.rgb;
 }
 
 float paint_line(float value, float half_width) {
@@ -30,6 +36,27 @@ float paint_line(float value, float half_width) {
 
 float road_section(float station, float start, float end, float taper) {
 	return smoothstep(start, start + taper, station) * (1.0 - smoothstep(end - taper, end, station));
+}
+
+vec2 crossing_coordinates(vec2 world, vec4 crossing) {
+	vec2 from_center = world - crossing.xy;
+	vec2 axis = crossing.zw;
+	return vec2(dot(from_center, vec2(-axis.y, axis.x)), dot(from_center, axis));
+}
+
+float reference_repairs(vec2 world) {
+	// May 2025 views show a meandering seam across Silvie and a longitudinal repair on Laurier.
+	if (distance(world, SILVIE_APPROACH.xy) < 5.0) {
+		vec2 at = crossing_coordinates(world, SILVIE_APPROACH);
+		float bend = (road_noise(world * 2.8) - .5) * .22 + at.x * .34;
+		return paint_line(at.y - bend, .021) * (1.0 - smoothstep(1.85, 3.05, abs(at.x))) * .24;
+	}
+	if (distance(world, laurier_crossing.xy) < 8.0) {
+		vec2 at = crossing_coordinates(world, laurier_crossing);
+		float bend = (road_noise(world * 2.3) - .5) * .34 + at.y * .08;
+		return paint_line(at.x - bend + .36, .016) * (1.0 - smoothstep(4.0, 6.7, abs(at.y))) * .29;
+	}
+	return 0.0;
 }
 
 float cedar_wear(vec2 road_uv, vec2 world) {
@@ -62,11 +89,16 @@ void fragment() {
 	vec2 blocks = abs(world_xz - vec2(18028., 13364.)) / vec2(67., 71.);
 	float civic = 1.0 - smoothstep(.92, 1.16, max(blocks.x, blocks.y));
 	float style = round(COLOR.r * 3.0);
-	float condition = mix(mix(1.0, .59, step(2.5, style)), .14, civic) * mix(1.0, .38, school_paving);
+	float road_age = mix(.42, .91, verge_and_wear.z);
+	float condition = mix(mix(road_age, .46, step(2.5, style)), .10, civic) * mix(1.0, .31, school_paving);
 	float unpaved = parking_lot ? 0.0 : COLOR.b;
 	vec3 asphalt = vec3(0.0);
 	if (unpaved < .999) {
 		asphalt = weathered_asphalt(world_xz, eye, condition);
+		if (road_surface == int(STANDARD_SURFACE) && !parking_lot) {
+			asphalt *= mix(mix(.93, 1.075, verge_and_wear.z), 1.0, max(civic, step(2.5, style)));
+			asphalt *= 1.0 - reference_repairs(world_xz);
+		}
 	}
 	asphalt = mix(asphalt, vec3(.265, .241, .213), civic * .20);
 	float yellow = 0.0;
@@ -96,6 +128,12 @@ void fragment() {
 		}
 		if (unpaved > .001) {
 			asphalt = mix(asphalt, road_gravel(world_xz, UV.x, 3.4), unpaved);
+		}
+		if (verge_and_wear.y > .01) {
+			float distance_to_edge = verge_and_wear.x - abs(UV.x);
+			float grit = road_noise(world_xz * 2.7) * .14 + road_noise(world_xz * .59) * .20;
+			float dust = (1.0 - smoothstep(-.08, .18 + grit, distance_to_edge));
+			asphalt = mix(asphalt, road_verge(world_xz), dust * verge_and_wear.y * .76);
 		}
 		asphalt = mix(asphalt, marina_gravel(world_xz), apron);
 		float gravel = max(apron, unpaved);
@@ -149,6 +187,18 @@ void fragment() {
 		white = max(white, max(walk, stop) * (1.0 - step(3.22, abs(UV.x))));
 		yellow *= 1.0 - gravel;
 		white *= 1.0 - gravel;
+		if (distance(world_xz, laurier_crossing.xy) < 5.0) {
+			vec2 at = crossing_coordinates(world_xz, laurier_crossing);
+			white = max(white, paint_line(abs(at.y) - 1.12, .10)
+				* (1.0 - smoothstep(3.0, 3.32, abs(at.x))));
+		}
+		if (distance(world_xz, deep_river_crossing.xy) < 5.0) {
+			vec2 at = crossing_coordinates(world_xz, deep_river_crossing);
+			float stripe = paint_line(mod(at.x + at.y * .24, .68) - .34, .15);
+			float edge = paint_line(abs(at.y) - 1.12, .075);
+			yellow = max(yellow, max(edge, stripe * (1.0 - smoothstep(1.04, 1.14, abs(at.y))))
+				* (1.0 - smoothstep(3.03, 3.36, abs(at.x))));
+		}
 	}
 	float wear = worn_road_paint(world_xz);
 	ALBEDO = mix(asphalt, vec3(.76, .54, .18), yellow * wear);

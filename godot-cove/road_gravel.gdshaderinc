@@ -6,6 +6,12 @@ vec3 gravel_color(vec2 world) {
 	return texture(gravel_scan, world / 2.0).rgb;
 }
 
+vec3 road_verge(vec2 world) {
+	vec3 gravel = gravel_color(world);
+	float grit = dot(gravel, vec3(.23, .62, .15));
+	return mix(gravel * vec3(.82, .80, .73), vec3(grit) * 1.19, .32);
+}
+
 vec3 road_gravel(vec2 world, float lateral, float half_width) {
 	float wear = road_noise(world * .51);
 	float track = 1.0 - smoothstep(.22, .70, abs(abs(lateral) - half_width * .32)

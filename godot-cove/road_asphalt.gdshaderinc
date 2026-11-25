@@ -19,26 +19,36 @@ float crack_coverage(float offset, float width, float footprint) {
 }
 
 float asphalt_cracks(vec2 p, float age, float jaggedness, float footprint) {
-	// Stagger small fracture groups in world space so they continue across mesh chunks.
-	vec2 grid = vec2(p.x + p.y * .38, p.y - p.x * .24) / 4.1;
+	// Sparse sites in world space keep repairs continuous across mesh chunks.
+	vec2 grid = vec2(p.x + p.y * .38, p.y - p.x * .24) / 6.5;
 	vec2 cell = floor(grid);
-	vec2 local = fract(grid) - .5;
 	float site = road_hash(cell);
+	if (site < mix(.98, .83, age)) {
+		return 0.0;
+	}
+	vec2 local = fract(grid) - .5;
 	float shape = road_hash(cell + vec2(17.0, 43.0));
-	float angle = shape * 6.283185;
+	float width = road_hash(cell + vec2(37.0, 71.0));
+	float direction = road_hash(cell + vec2(61.0, 13.0));
+	float angle = direction * 6.283185;
 	vec2 axis = vec2(cos(angle), sin(angle));
-	vec2 along = vec2(dot(local, axis), dot(local, vec2(-axis.y, axis.x))) * 4.1;
-	along += vec2((site - .5) * .70, (shape - .5) * .92);
+	vec2 along = vec2(dot(local, axis), dot(local, vec2(-axis.y, axis.x))) * 6.5;
+	along += vec2((width - .5) * 1.7, (shape - .5) * 1.55);
 	float broken_edge = 1.0 - smoothstep(.41, .49, max(abs(local.x), abs(local.y)));
-	float bend = (jaggedness - .5) * .19;
-	float extent = mix(.71, 1.93, site);
-	float main = crack_coverage(along.y - bend, mix(.018, .038, shape), footprint) *
-		(1.0 - smoothstep(extent - .38, extent, abs(along.x)));
-	float split = along.x + mix(-.31, .29, shape);
-	float branch = crack_coverage(along.y + bend * .53 - split * mix(.39, .79, site), .018, footprint) *
-		smoothstep(-.06, .13, split) * (1.0 - smoothstep(.56, 1.21, split));
-	float frequency = mix(.78, .39, age);
-	return broken_edge * step(frequency, site) * max(main, branch * .79);
+	float extent = mix(.28, 2.65, shape * shape);
+	float bend = (jaggedness - .5) * mix(.035, .23, shape)
+		+ along.x * along.x * (width - .5) * .15;
+	float taper = 1.0 - smoothstep(extent * .66, extent, abs(along.x));
+	float seal = mix(.006, .026, width * width) * mix(.60, 1.16, jaggedness);
+	float main = crack_coverage(along.y - bend, seal * mix(.42, 1.0, taper), footprint) * taper;
+	float branch = 0.0;
+	if (shape > .70 && width < .74) {
+		float split = along.x + mix(-.31, .38, width);
+		float fork = split * mix(-.78, .69, direction);
+		branch = crack_coverage(along.y - bend - fork, seal * .58, footprint)
+			* smoothstep(-.04, .13, split) * (1.0 - smoothstep(.27, .78, split));
+	}
+	return broken_edge * mix(.38, 1.0, width) * max(main, branch * .73);
 }
 
 vec3 weathered_asphalt(vec2 p, float scan_distance, float patch_strength) {
@@ -57,9 +67,9 @@ vec3 weathered_asphalt(vec2 p, float scan_distance, float patch_strength) {
 		float site = road_hash(floor(cells));
 		float jaggedness = road_noise(p * 3.1);
 		float cracks = asphalt_cracks(p, patch_strength, jaggedness, footprint);
-		float patch = step(.91, site) * (1.0 - smoothstep(.24, .29, abs(repair.x) + .048 * stone))
-			* (1.0 - smoothstep(.12, .16, abs(repair.y)));
-		color *= 1.0 - close * ((.38 + .18 * jaggedness) * cracks + .17 * patch * patch_strength);
+		float patch = step(.974, site) * (1.0 - smoothstep(.18, .27, abs(repair.x + repair.y * .28) + .048 * stone))
+			* (1.0 - smoothstep(.10, .21, abs(repair.y)));
+		color *= 1.0 - close * ((.24 + .16 * jaggedness) * cracks + .12 * patch * patch_strength);
 	}
 	return color;
 }

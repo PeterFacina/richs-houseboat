@@ -104,14 +104,13 @@ func road(points: Array, width: float, raised := false) -> void:
 	vertices.generate_normals()
 	var mesh := vertices.commit()
 	var material := ShaderMaterial.new()
-	material.shader = preload("res://regional_road.gdshader")
-	material.set_shader_parameter("gravel", not raised)
-	material.set_shader_parameter("half_width", width * .5)
 	if raised:
-		material.set_shader_parameter("asphalt_scan", game.river.asphalt_scan)
+		material.shader = preload("res://regional_road.gdshader")
 		material.set_shader_parameter("road_scan", game.river.ROAD_SCAN)
 		material.set_shader_parameter("road_normal", game.river.ROAD_NORMAL)
 	else:
+		material.shader = preload("res://regional_gravel.gdshader")
+		material.set_shader_parameter("half_width", width * .5)
 		material.set_shader_parameter("gravel_scan", game.river.GRAVEL_SCAN)
 		material.set_shader_parameter("gravel_normal", game.river.GRAVEL_NORMAL)
 	var surface := Kit.mesh_at(self, mesh, Vector3.ZERO, material)

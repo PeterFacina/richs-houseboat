@@ -5,6 +5,7 @@ const PublicWorks = preload("res://public_works.gd")
 const CivicParking = preload("res://deep_river_civic_parking.gd")
 const Furniture = preload("res://deep_river_champlain_furniture.gd")
 const StreetSigns = preload("res://deep_river_street_signs.gd")
+const TrafficControls = preload("res://deep_river_traffic_controls.gd")
 const ROAD_DETAILS = preload("res://ottawa/deep_river_road_details.json")
 const ROAD_LAYER := 1 << 18
 const CHUNK_SIZE := 256.0
@@ -71,15 +72,18 @@ var paved: ShaderMaterial
 var gravel: ShaderMaterial
 var spans: Array[Span] = []
 var chunks: Dictionary = {}
+var town_paving: Image
 
 
 func build(map: Node3D, data: Dictionary, elevation: Callable, parking_mask: Texture2D,
 		detail_areas: Array[Rect2], asphalt: Texture2D, normal: Texture2D,
-		stone: Texture2D, asphalt_grain: Texture2D, gravel_color: Texture2D, gravel_normal: Texture2D) -> void:
+		stone: Texture2D, asphalt_grain: Texture2D, gravel_color: Texture2D, gravel_normal: Texture2D,
+		paving_texture: Texture2D) -> void:
 	ground = elevation
 	close_areas = detail_areas
 	var limits: Array = data.downtown_paving
 	downtown = Rect2(limits[0], limits[1], limits[2] - limits[0], limits[3] - limits[1])
+	town_paving = paving_texture.get_image()
 	paved = ShaderMaterial.new()
 	paved.shader = preload("res://town_street.gdshader")
 	paved.set_shader_parameter("road_scan", asphalt)
@@ -91,6 +95,8 @@ func build(map: Node3D, data: Dictionary, elevation: Callable, parking_mask: Tex
 	paved.set_shader_parameter("champlain_access", CIVIC_ACCESS)
 	paved.set_shader_parameter("champlain_bays", Vector4(Furniture.BAY_START, Furniture.BAY_PITCH,
 		Furniture.BAY_SLOPE, Furniture.BAY_LANE_EDGE))
+	paved.set_shader_parameter("laurier_crossing", TrafficControls.LAURIER_CROSSING)
+	paved.set_shader_parameter("deep_river_crossing", TrafficControls.DEEP_RIVER_CROSSING)
 	if parking_mask != null:
 		marina_apron = parking_mask.get_image()
 		marina_area = detail_areas[0]
@@ -100,6 +106,9 @@ func build(map: Node3D, data: Dictionary, elevation: Callable, parking_mask: Tex
 	gravel = ShaderMaterial.new()
 	gravel.shader = preload("res://town_road_shoulder.gdshader")
 	gravel.set_shader_parameter("gravel_scan", gravel_color)
+	gravel.set_shader_parameter("town_paving", paving_texture)
+	gravel.set_shader_parameter("paving_bounds", Vector4(downtown.position.x, downtown.position.y,
+		downtown.size.x, downtown.size.y))
 
 	# Through roads own the overlap with side streets. Draw and collide with
 	# one surface in the overlap, with both approaches at the same grade.
@@ -133,6 +142,8 @@ func build(map: Node3D, data: Dictionary, elevation: Callable, parking_mask: Tex
 		var origin := Vector3(cell.x * CHUNK_SIZE, 0.0, cell.y * CHUNK_SIZE)
 		install(network, batch.asphalt, origin, paved, "Asphalt", true)
 		install(network, batch.shoulder, origin, gravel, "GravelShoulder", true)
+		if batch.has("verge"):
+			install(network, batch.verge, origin, gravel, "DowntownVerge", false)
 		if batch.has("sidewalk"):
 			install(network, batch.sidewalk, origin, sidewalk, "ChamplainSidewalk", true)
 	var edges: Array[PackedVector2Array] = []
@@ -146,6 +157,7 @@ func build(map: Node3D, data: Dictionary, elevation: Callable, parking_mask: Tex
 	CivicParking.new().build(network, ground, paved, edges, ROAD_LAYER)
 	Furniture.new().build(network, streets[CHAMPLAIN], ground, champlain_half_width)
 	StreetSigns.new().build(network, map, ROAD_DETAILS.data.junctions)
+	TrafficControls.new().build(network, map)
 	chunks.clear()
 	spans.clear()
 
@@ -287,7 +299,7 @@ func build_span(span: Span) -> void:
 		var middle := (start + end) * .5
 		var cell := Vector2i((middle / CHUNK_SIZE).floor())
 		if not chunks.has(cell):
-			chunks[cell] = {"asphalt": new_surface(), "shoulder": new_surface()}
+			chunks[cell] = {"asphalt": new_surface(true), "shoulder": new_surface()}
 		var batch: Dictionary = chunks[cell]
 		var origin := Vector2(cell) * CHUNK_SIZE
 		var nearby: Array[Span] = []
@@ -300,14 +312,20 @@ func build_span(span: Span) -> void:
 			var left := columns[col - 1] * span.width
 			var right := columns[col] * span.width
 			emit_strip(batch.asphalt, span, first, last, left, right, nearby, origin, false)
-		if shoulder_width(span, middle) > .02:
+		var has_shoulder := shoulder_width(span, middle) > .02
+		if has_shoulder or span.street != CHAMPLAIN:
+			# Downtown strips are visual at the unpaved edges of the mask.
+			var shoulder_key := "shoulder" if has_shoulder else "verge"
+			if not batch.has(shoulder_key):
+				batch[shoulder_key] = new_surface()
+			var verge: SurfaceTool = batch[shoulder_key]
 			for side: float in [-1.0, 1.0]:
 				var edge := span.width * side
 				var lip := edge + side * .09
 				var outer := edge + side * span.shoulder
-				emit_strip(batch.shoulder, span, first, last, minf(edge, lip), maxf(edge, lip),
+				emit_strip(verge, span, first, last, minf(edge, lip), maxf(edge, lip),
 					nearby, origin, true)
-				emit_strip(batch.shoulder, span, first, last, minf(lip, outer), maxf(lip, outer),
+				emit_strip(verge, span, first, last, minf(lip, outer), maxf(lip, outer),
 					nearby, origin, true)
 		var station := span.station + (first + last) * .5 * span.length
 		if span.street == CHAMPLAIN and station >= CHAMPLAIN_WALK_START and station <= CHAMPLAIN_WALK_END.y:
@@ -436,6 +454,13 @@ func emit_vertex(surface: SurfaceTool, span: Span, point: Vector2, nearby: Array
 		for section: Array in span.gravel_ranges:
 			surface_gravel = maxf(surface_gravel, smoothstep(section[0] - 7.0, section[0] + 7.0, station)
 				* (1.0 - smoothstep(section[1] - 7.0, section[1] + 7.0, station)))
+		# Match the shoulder material at the asphalt lip where a soft verge exists.
+		var verge := (1.0 - joins) * end_blend * (1.0 - apron)
+		if downtown.has_point(point):
+			var outside := point + axis.orthogonal() * (signf(lateral) * .4)
+			verge *= 0.0 if span.street == CHAMPLAIN else unpaved_ground(outside)
+		var street_wear := fposmod(float(span.street + 19) * .618034, 1.0)
+		surface.set_custom(0, Color(width, verge, street_wear, 0.0))
 	surface.set_color(Color(style, edges, surface_gravel,
 		float(span.road_surface) / float(RoadSurface.STANDARD)))
 	surface.set_uv(Vector2(lateral, station))
@@ -452,9 +477,20 @@ func apron_coverage(point: Vector2) -> float:
 	return marina_apron.get_pixelv(pixel.min(marina_apron.get_size() - Vector2i.ONE)).r
 
 
-static func new_surface() -> SurfaceTool:
+func unpaved_ground(point: Vector2) -> float:
+	if not downtown.has_point(point):
+		return 1.0
+	var uv := (point - downtown.position) / downtown.size
+	var pixel := Vector2i(uv * Vector2(town_paving.get_size()))
+	var paint := town_paving.get_pixelv(pixel)
+	return 1.0 - smoothstep(.08, .65, maxf(paint.r, paint.g))
+
+
+static func new_surface(pavement := false) -> SurfaceTool:
 	var surface := SurfaceTool.new()
 	surface.begin(Mesh.PRIMITIVE_TRIANGLES)
+	if pavement:
+		surface.set_custom_format(0, SurfaceTool.CUSTOM_RGB_FLOAT)
 	return surface
 
 

@@ -227,7 +227,7 @@ func build() -> void:
 			for col in range(0, detail.grid.x - 1, TILE):
 				tile(col, row, ground, detail)
 	build_water()
-	var residential_driveways := build_town()
+	var residential_driveways := build_town(paving_texture)
 	property_sites = PropertySites.build(self, ground_height, concrete_scan, scanned_surface("brick"), wood_scan)
 	build_landmarks()
 	var park := RiverbankPark.new()
@@ -660,7 +660,7 @@ func set_surface_slick(data: Vector4) -> void:
 	near_water.set_shader_parameter("surface_slick", data)
 
 
-func build_town() -> BuildingsDriveways:
+func build_town(paving_texture: Texture2D) -> BuildingsDriveways:
 	var tile_image := Image.load_from_file(BASE + "deep_river_roofs.png")
 	tile_image.generate_mipmaps()
 	var textures := ImageTexture.create_from_image(tile_image)
@@ -678,7 +678,7 @@ func build_town() -> BuildingsDriveways:
 		detail_areas.append(lamure_patch.area)
 	var roads := RoadNetwork.new()
 	roads.build(self, meta, ground_height, marina_paving, detail_areas,
-		ROAD_SCAN, ROAD_NORMAL, concrete_scan, asphalt_scan, GRAVEL_SCAN, GRAVEL_NORMAL)
+		ROAD_SCAN, ROAD_NORMAL, concrete_scan, asphalt_scan, GRAVEL_SCAN, GRAVEL_NORMAL, paving_texture)
 	buildings.build(self, footprints, textures, ground_height, meta.distance_scale,
 		scanned_surface("brick"), asphalt_scan, wood_scan, roads.paved, meta.streets,
 		regional_streets, meta.buildings, concrete_scan)
