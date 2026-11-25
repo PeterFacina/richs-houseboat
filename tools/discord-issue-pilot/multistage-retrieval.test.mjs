@@ -6,6 +6,8 @@ import { dirname, join } from 'node:path';
 import { test } from 'node:test';
 import { buildCodeIndex } from './multistage/code-index.mjs';
 import { collectEvidence, createPlanner } from './multistage/retrieval.mjs';
+import { buildLearningIndex, retrieve } from './learning/retrieval.mjs';
+import { approvalFingerprint, approvedTrainingLessons, lessonStatus, pinLesson } from './learning/lessons.mjs';
 
 function fixture(t) {
   const root = mkdtempSync(join(tmpdir(), 'houseboat-retrieval-test-'));
@@ -113,4 +115,83 @@ test('planner uses a loopback endpoint with structured, limited responses and re
   assert.equal(result.promptTokens, 18);
   assert.equal(result.outputTokens, 7);
   assert.equal(result.plan.more, false);
+});
+
+test('learning indexes typed receivers, RPC dispatch, and only fresh extracted Graphify calls', t => {
+  const f = fixture(t);
+  f.write('godot-cove/boat.gd', 'const Motor = preload("res://motor.gd")\nvar motor := Motor.new()\n' +
+    'func drive_boat():\n\tmotor.open_gate()\n\trelay_boat.rpc_id(1)\nfunc relay_boat():\n\tpass\n');
+  f.write('godot-cove/motor.gd', 'func open_gate():\n\tpass\n');
+  const graph = {
+    hashes: { 'motor.gd': f.files['godot-cove/motor.gd'].sha256, 'sensor.gd': f.files['godot-cove/sensor.gd'].sha256,
+      'extra.gd': 'stale' },
+    nodes: [{ id: 'motor', label: 'open_gate()', source_file: 'motor.gd', source_location: 'L1' },
+      { id: 'sensor', label: 'clear_path()', source_file: 'sensor.gd', source_location: 'L1' },
+      { id: 'extra', label: 'relay_signal()', source_file: 'extra.gd', source_location: 'L1' }],
+    links: [{ source: 'motor', target: 'sensor', confidence: 'EXTRACTED', relation: 'calls' },
+      { source: 'motor', target: 'extra', confidence: 'EXTRACTED', relation: 'calls' }],
+  };
+  const index = buildLearningIndex(f.root, { files: f.files }, f.tracked, { graph });
+  const find = (name, path) => index.entries.find(item => item.name === name && (!path || item.path === 'godot-cove/' + path));
+  const boat = find('drive_boat');
+  const motor = find('open_gate', 'motor.gd');
+  assert.equal(boat.links.get(motor.id), 'typed call');
+  assert.equal(boat.links.has(find('open_gate', 'gate.gd').id), false);
+  assert.equal(boat.links.get(find('relay_boat').id), 'resolved dispatch');
+  assert.equal(motor.links.get(find('clear_path').id), 'Graphify call');
+  assert.equal(motor.links.has(find('relay_signal').id), false);
+  assert.equal(index.stats.graphifyLinks, 1);
+});
+
+test('additive planning preserves reserved passages and rejects paths and stale evidence', async t => {
+  const f = fixture(t);
+  f.write('godot-cove/dispatch.gd', Array.from({ length: 14 }, (_, n) =>
+    `func gate_dispatch_${n}():\n\tvar gate_motor = ${n}\n\treturn gate_motor\n`).join(''));
+  const index = buildLearningIndex(f.root, { files: f.files }, f.tracked);
+  const note = 'Verify the gate motor dispatch and actuator.';
+  const deterministic = await retrieve(index, note);
+  let rounds = 0;
+  const planner = async ({ candidates, systems }) => {
+    if (rounds++) assert.deepEqual(systems, ['gate']);
+    assert.ok(candidates.length);
+    return { plan: { systems: ['gate'], more: true, requests: [
+      { kind: 'file', target: '../../private.txt' },
+      { kind: 'function', target: candidates.at(-1).handle },
+      { kind: 'function', target: 'does_not_exist' },
+    ] } };
+  };
+  const planned = await retrieve(index, note, { planner });
+  assert.ok(rounds <= 2);
+  assert.ok(planned.planning.retrieved > 0);
+  assert.ok(planned.planning.rejected >= 2);
+  assert.deepEqual(planned.evidence.slice(0, 8), deterministic.evidence.slice(0, 8));
+  assert.equal(planned.evidence.filter(item => item.kind === 'source').length, 11);
+  assert.ok(planned.evidence.reduce((sum, item) => sum + item.excerpt.length, 0) <= 5800);
+  f.write('godot-cove/gate.gd', 'func replaced():\n\tpass\n');
+  await assert.rejects(retrieve(index, note), /Evidence changed/);
+});
+
+test('a related verified lesson expires when source or approved content changes', async t => {
+  const f = fixture(t);
+  const build = lessons => buildLearningIndex(f.root, { files: f.files, revision: 'test-commit' }, f.tracked, { lessons });
+  const record = pinLesson({
+    id: 'gate-correction', report: { number: 1 }, implementation: { pull: 2, revision: 'test-commit' },
+    scope: ['gate motor dispatch'], anchors: [{ path: 'godot-cove/gate.gd', name: 'drive_gate' }],
+    failure: 'Unverified claim', success: 'Checked code path', verification: 'Playtest pending',
+    provenance: [{ kind: 'review', source: 'test review' }],
+  }, build(), 'test-commit');
+  const lessons = { lessons: [record] };
+  const index = build(lessons);
+  const note = 'Verify the gate motor dispatch.';
+  assert.deepEqual((await retrieve(index, note)).lessonIds, ['gate-correction']);
+  assert.deepEqual((await retrieve(index, note, { excludeHistory: new Set(['issue/1']) })).lessonIds, []);
+  assert.deepEqual((await retrieve(index, 'Compare the new fishing reel')).lessonIds, []);
+  assert.deepEqual(approvedTrainingLessons(index.statuses), []);
+  record.trainingApproval = { decision: 'approved', reviewer: 'test reviewer', fingerprint: approvalFingerprint(record) };
+  assert.deepEqual(approvedTrainingLessons(lessonStatus(lessons, index)), ['gate-correction']);
+  record.verification = 'Changed evidence';
+  assert.deepEqual(approvedTrainingLessons(lessonStatus(lessons, index)), []);
+  f.write('godot-cove/gate.gd', 'func drive_gate():\n\tpass\n');
+  assert.equal(build(lessons).statuses[0].current, false);
+  assert.deepEqual((await retrieve(build(lessons), note)).lessonIds, []);
 });

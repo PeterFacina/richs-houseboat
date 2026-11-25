@@ -14,39 +14,45 @@ const { values } = parseArgs({ options: {
   main: { type: 'string' }, pr71: { type: 'string' }, generate: { type: 'boolean' }, details: { type: 'boolean' },
   cases: { type: 'string' }, variants: { type: 'string' }, port: { type: 'string', default: '11434' },
   history: { type: 'string' }, 'no-graphify': { type: 'boolean' },
+  pr77: { type: 'string' }, trial: { type: 'string', default: '0' },
+  lessons: { type: 'string' }, graph: { type: 'string' }, embeddings: { type: 'string' },
 } });
-assert.ok(values.main && values.pr71, 'Supply --main PATH and --pr71 PATH. Add --generate for Ollama.');
+assert.ok(values.main && (values.pr71 || values.pr77), 'Supply --main PATH and --pr71 PATH or --pr77 PATH.');
 const readFixture = name => JSON.parse(readFileSync(new URL(name, import.meta.url), 'utf8'));
 const frozen = readFixture('./multistage-cases.json');
 const previous = readFixture('./heldout-cases.json');
-const allCases = [...previous.cases.map(item => ({ ...item, requirements: frozen.regressionRequirements[item.id], set: 'regression' })),
+const originalCases = [...previous.cases.map(item => ({ ...item, requirements: frozen.regressionRequirements[item.id], set: 'regression' })),
   ...frozen.cases.map(item => ({ ...item, set: 'independent' }))];
+const learning = values.pr77 ? readFixture('./learning-cases.json') : null;
+const allCases = learning ? [...originalCases.map(item => ({ ...item, set: 'regression' })), ...learning.cases] : originalCases;
 const excludedHistory = new Set(allCases.flatMap(example => {
   const match = /\/(issues|pull)\/(\d+)$/.exec(example.report ?? '');
   return match ? [`${match[1] === 'issues' ? 'issue' : 'pull'}/${match[2]}`] : [];
 }));
 const caseFilter = values.cases?.split(',');
 const cases = allCases.filter(example => !caseFilter || caseFilter.includes(example.id) || caseFilter.includes(example.set));
-const order = ['production', 'pr71', 'catalog', 'multistage'];
+const order = learning ? ['production', 'pr77', 'candidate', 'additive'] : ['production', 'pr71', 'catalog', 'multistage'];
 const selected = values.variants?.split(',') ?? order;
 assert.ok(cases.length && selected.length && selected.every(variant => order.includes(variant)), 'Unknown cases or variants');
 const main = resolve(values.main);
-const pr71 = resolve(values.pr71);
+const comparison = resolve(values.pr77 ?? values.pr71);
 const port = Number(values.port);
 assert.ok(Number.isInteger(port) && port > 0 && port <= 65535);
+const trial = Number(values.trial);
+assert.ok(Number.isInteger(trial) && trial >= 0 && trial <= 10, 'Trial must be 0–10');
 const python = process.env.HOUSEBOAT_KNOWLEDGE_PYTHON || 'python';
 const execOptions = { encoding: 'utf8', maxBuffer: 24 * 1024 * 1024, env: { ...process.env, PYTHONUTF8: '1' } };
 const git = (root, ...args) => execFileSync('git', ['-C', root, ...args], execOptions);
 const py = (script, args = [], input) => JSON.parse(execFileSync(python, [join(main, 'tools/knowledge', script), ...args], { ...execOptions, input }));
-for (const [root, revision] of [[main, frozen.source], [pr71, frozen.pr71]]) {
+for (const [root, revision] of [[main, learning?.source ?? frozen.source], [comparison, learning?.pr77 ?? frozen.pr71]]) {
   assert.equal(git(root, 'rev-parse', 'HEAD').trim(), revision);
   assert.equal(git(root, 'status', '--porcelain').trim(), '', 'Comparison checkout must be clean');
 }
 const indexModule = root => import(pathToFileURL(join(root, 'tools/game_prompt_studio/lib/index.mjs')).href);
 const production = (await indexModule(main)).findEvidence;
-const routed = (await indexModule(pr71)).findEvidence;
+const routed = learning ? undefined : (await indexModule(comparison)).findEvidence;
 const manifest = py('index.py', ['--root', main]);
-assert.equal(manifest.revision, frozen.source);
+assert.equal(manifest.revision, learning?.source ?? frozen.source);
 assert.equal(manifest.dirty, false);
 const tracked = git(main, 'ls-files', '-z').split('\0').filter(Boolean);
 const model = 'qwen3:14b';
@@ -96,6 +102,20 @@ try {
   const facts = projectProfile(db);
   const history = values.history ? JSON.parse(readFileSync(values.history, 'utf8')) : readFixture('./multistage-history.json');
   let collectEvidence, createPlanner, codeIndex;
+  let previousIndex, retrievePrevious, retrieveLearning;
+  if (selected.includes('pr77')) {
+    const previousModule = filename => import(pathToFileURL(join(comparison, 'tools/discord-issue-pilot/multistage', filename)).href);
+    previousIndex = (await previousModule('code-index.mjs')).buildCodeIndex(main, manifest, tracked, { history });
+    retrievePrevious = (await previousModule('retrieval.mjs')).collectEvidence;
+  }
+  if (selected.some(item => ['candidate', 'additive'].includes(item))) {
+    const { buildLearningIndex, retrieve } = await import('./learning/retrieval.mjs');
+    const optionalJson = path => path ? JSON.parse(readFileSync(path, 'utf8')) : undefined;
+    codeIndex = buildLearningIndex(main, manifest, tracked, { history, lessons: optionalJson(values.lessons),
+      graph: optionalJson(values.graph), embeddings: optionalJson(values.embeddings) });
+    retrieveLearning = retrieve;
+    ({ createPlanner } = await import('./multistage/retrieval.mjs'));
+  }
   if (selected.includes('multistage')) {
     ({ collectEvidence, createPlanner } = await import('./multistage/retrieval.mjs'));
     const { buildCodeIndex } = await import('./multistage/code-index.mjs');
@@ -103,24 +123,36 @@ try {
   }
   const digest = values.generate ? await modelDigest() : null;
   print({ phase: 'setup', revision: manifest.revision, pr71: frozen.pr71, pr72: frozen.pr72, model, digest, settings,
-    selected, setupMs: Math.round(performance.now() - setup), index: codeIndex?.stats, historyCount: history.records.length });
+    selected, trial, ...(learning ? { pr77: learning.pr77 } : {}), setupMs: Math.round(performance.now() - setup),
+    index: codeIndex?.stats, historyCount: history.records.length });
+  for (const example of cases) { locations(example.required); locations(example.supporting); }
   for (const example of cases) {
     const offset = allCases.indexOf(example);
-    const seed = 1703 + offset;
-    const provider = createOllama(port, (url, init) => {
+    const seed = 1703 + offset + 101 * trial;
+    const providerFor = guidance => createOllama(port, (url, init) => {
       if (!url.endsWith('/api/chat')) return fetch(url, init);
       const request = JSON.parse(init.body);
       request.options.seed = seed;
+      if (guidance) request.messages[0].content += '\n' + guidance;
       return fetch(url, { ...init, body: JSON.stringify(request) });
     });
     const rotated = [...order.slice(offset % order.length), ...order.slice(0, offset % order.length)];
     for (const variant of rotated.filter(item => selected.includes(item))) {
       const start = performance.now();
       const signal = AbortSignal.timeout(120_000);
-      const identity = { case: example.id, set: example.set, variant, seed };
+      const identity = { case: example.id, set: example.set, variant, seed, trial };
       try {
-        let evidence, planning;
-        if (variant === 'multistage') {
+        let evidence, planning, lessonIds;
+        if (variant === 'pr77') {
+          const collected = await retrievePrevious(previousIndex, example.note, { signal, excludeHistory: excludedHistory });
+          evidence = collected.evidence.map(wire);
+        } else if (variant === 'candidate' || variant === 'additive') {
+          const planner = values.generate && variant === 'additive' ? createPlanner({ port, settings, seed }) : undefined;
+          const collected = await retrieveLearning(codeIndex, example.note, { signal, planner, excludeHistory: excludedHistory });
+          evidence = collected.evidence.map(wire);
+          planning = collected.planning;
+          lessonIds = collected.lessonIds;
+        } else if (variant === 'multistage') {
           const planner = values.generate ? createPlanner({ port, settings, seed }) : undefined;
           const collected = await collectEvidence(codeIndex, example.note, { planner, signal, excludeHistory: excludedHistory });
           evidence = collected.evidence.map(wire);
@@ -134,12 +166,13 @@ try {
         }
         const scores = grade(evidence, example);
         assert.ok(scores.exact, 'Evidence failed pinned source verification');
-        print({ phase: 'retrieval', ...identity, ...scores, bytes: Buffer.byteLength(JSON.stringify(evidence)),
+        print({ phase: 'retrieval', ...identity, ...scores, lessonIds, bytes: Buffer.byteLength(JSON.stringify(evidence)),
           wallMs: Math.round(performance.now() - start), planning,
           selected: evidence.map(({ id, kind, path, line, title }) => ({ id, kind, path, line, title })),
           ...(values.details ? { evidence } : {}) });
         if (!values.generate) continue;
-        const { payload, metrics } = await provider.generate({ input: { note: example.note, tier: 'detailed', priority: '', tags: '' },
+        const guidance = ['candidate', 'additive'].includes(variant) ? (await import('./learning/prompt.mjs')).sourceGuidance : '';
+        const { payload, metrics } = await providerFor(guidance).generate({ input: { note: example.note, tier: 'detailed', priority: '', tags: '' },
           facts, evidence, settings, signal });
         const draft = buildDraft(payload, 'Evaluation brief', facts, evidence, example.note);
         const guard = checkExport(draft, evidence, facts);

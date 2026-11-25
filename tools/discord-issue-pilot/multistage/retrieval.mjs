@@ -50,7 +50,7 @@ export function createPlanner({ port, settings, seed, fetcher = fetch }) {
   };
 }
 
-function windows(item, query, limit) {
+export function windows(item, query, limit) {
   let best = { score: -Infinity };
   for (let start = 0; start < item.lines.length; start++) {
     let excerpt = '';
@@ -70,7 +70,7 @@ function windows(item, query, limit) {
   return best.excerpt ? { title: item.name, kind: item.kind, path: item.path, line: best.line, excerpt: best.excerpt } : null;
 }
 
-function leads(index, note, query) {
+export function leads(index, note, query) {
   const full = index.rank(query).filter(hit => hit.item.symbolKind === 'func' || hit.item.kind === 'source');
   const slate = new Map();
   const add = (hit, boost = 0) => {
@@ -97,7 +97,7 @@ function leads(index, note, query) {
   return [...slate.values()].sort((a, b) => b.score - a.score).map(hit => hit.item);
 }
 
-function historical(index, query, excludeHistory) {
+export function historical(index, query, excludeHistory) {
   return index.records.filter(item => !excludeHistory.has(`${item.type}/${item.number}`) &&
       !(item.issues ?? []).some(number => excludeHistory.has(`issue/${number}`)))
     .map(item => {
