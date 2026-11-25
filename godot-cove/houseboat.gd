@@ -70,6 +70,7 @@ var crank_time := 0.0
 var crank_confirmed := false
 var shutdown_left := 0.0
 var startup_audio: AudioStreamPlayer3D
+var shutdown_audio: AudioStreamPlayer3D
 var steering_rate := .69
 var throttle_rate := .34
 var drive_response := .52
@@ -112,6 +113,14 @@ func _ready() -> void:
 		startup_audio.max_distance = 87.0
 		startup_audio.volume_db = START_VOLUME
 		motor.add_child(startup_audio)
+		shutdown_audio = AudioStreamPlayer3D.new()
+		shutdown_audio.name = "OutboardShutdown"
+		shutdown_audio.position = motor.sound.position
+		shutdown_audio.unit_size = 5.1
+		shutdown_audio.max_distance = 87.0
+		shutdown_audio.volume_db = -14.0
+		shutdown_audio.doppler_tracking = AudioStreamPlayer3D.DOPPLER_TRACKING_DISABLED
+		motor.add_child(shutdown_audio)
 	sail(0.0, 0.0, false, 0.0)
 
 
@@ -320,12 +329,18 @@ func set_ignition(phase: int) -> void:
 		motor.thrust = 0.0
 		if previous == Ignition.RUN:
 			shutdown_left = SHUTDOWN_TIME
+			if not uses_battery():
+				startup_audio.stop()
+				shutdown_audio.stream = shutdown_stream(motor.rpm)
+				shutdown_audio.play()
 			return
 	startup_audio.stop()
+	shutdown_audio.stop()
 	startup_audio.volume_db = START_VOLUME
 	if phase == Ignition.START:
 		motor.rpm = 0.0
 		motor.sound.stop()
+		motor.load_sound.stop()
 	if not uses_battery() and (phase == Ignition.START or (phase == Ignition.RUN and previous == Ignition.START)):
 		startup_audio.stream = STARTER if phase == Ignition.START else CATCH
 		startup_audio.play()
@@ -336,8 +351,11 @@ func reset_ignition() -> void:
 	clear_helm()
 	shutdown_left = 0.0
 	startup_audio.stop()
+	shutdown_audio.stop()
 	motor.sound.stop()
+	motor.load_sound.stop()
 	motor.rpm = 0.0
+	motor.audio_state = Outboard.AudioState.OFF
 
 
 func tick_ignition(delta: float) -> void:
@@ -348,6 +366,31 @@ func tick_ignition(delta: float) -> void:
 		set_ignition(Ignition.RUN)
 	elif crank_time > START_TIME + 2.0:
 		set_ignition(Ignition.OFF)
+
+
+func shutdown_stream(rpm: float) -> AudioStreamWAV:
+	const RATE := 22050
+	const DURATION := .86
+	const FRAME_COUNT := int(RATE * DURATION)
+	var pcm := PackedByteArray()
+	pcm.resize(FRAME_COUNT * 2)
+	var phase := 0.0
+	var initial_hz := maxf(24.0, rpm / 60.0 * 2.0)
+	for frame in FRAME_COUNT:
+		var t := float(frame) / RATE
+		var progress := t / DURATION
+		var frequency := lerpf(initial_hz, 24.0, smoothstep(0.0, 1.0, progress))
+		phase += TAU * frequency / RATE
+		var envelope := pow(1.0 - progress, 1.35)
+		var pulse := sin(phase)
+		var exhaust := .54 * pulse + .24 * sin(phase * 2.0 + .65) + .10 * sin(phase * 4.0 + 1.1)
+		var value := exhaust * envelope
+		pcm.encode_s16(frame * 2, roundi(clampf(value, -1.0, 1.0) * 23500.0))
+	var stream := AudioStreamWAV.new()
+	stream.format = AudioStreamWAV.FORMAT_16_BITS
+	stream.mix_rate = RATE
+	stream.data = pcm
+	return stream
 
 
 func nudge_throttle(direction: float) -> void:
@@ -397,6 +440,8 @@ func update_motor(delta: float) -> void:
 				startup_audio.stop()
 	var power := throttle * throttle_cap if running else 0.0
 	motor.run(delta, power, wheel_angle, running and not startup_audio.playing, speed, gain)
+	if startup_audio.playing:
+		motor.audio_state = Outboard.AudioState.STARTUP
 	helm_wheel.basis = Basis(Vector3.BACK, -wheel_angle * 1.272)
 
 
