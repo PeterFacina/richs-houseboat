@@ -1,16 +1,19 @@
 import { readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
-import { apiInput, configuration, isEntryPoint, json, loopback, privateHeaders, roles, urlPath } from './contract.mjs';
+import { apiInput, configuration, isEntryPoint, json, loopback, privateHeaders, reviewerRoutes, roles, urlPath } from './contract.mjs';
 
 const assets = new Map([['/', ['index.html', 'text/html']], ['/dashboard.css', ['dashboard.css', 'text/css']],
   ['/dashboard.mjs', ['dashboard.mjs', 'text/javascript']]]);
 const loginName = value => typeof value === 'string' && /^[\w.+-]{1,100}@[\w.-]{1,120}$/.test(value) ? value.toLowerCase() : null;
 
-function policy(origin, users) {
-  const fixed = new URL(origin);
-  if (fixed.origin !== origin || fixed.protocol !== 'https:' || !fixed.hostname.endsWith('.ts.net')) {
-    throw new Error('Set the exact Tailscale HTTPS origin.');
-  }
+function policy(origin, users, alternateOrigin) {
+  const hosts = [origin, ...(alternateOrigin ? [alternateOrigin] : [])].map(value => {
+    const fixed = new URL(value);
+    if (fixed.origin !== value || fixed.protocol !== 'https:' || !fixed.hostname.endsWith('.ts.net')) {
+      throw new Error('Set the exact Tailscale HTTPS origin.');
+    }
+    return fixed.host;
+  });
   if (!users || typeof users !== 'object' || Array.isArray(users)) throw new Error('Configure a named dashboard allowlist.');
   const allowed = new Map();
   for (const [name, role] of Object.entries(users)) {
@@ -19,12 +22,12 @@ function policy(origin, users) {
     allowed.set(login, role);
   }
   if (!allowed.size) throw new Error('The dashboard allowlist is empty.');
-  return req => req.socket.remoteAddress === loopback && req.headers.host === fixed.host ?
+  return req => req.socket.remoteAddress === loopback && hosts.includes(req.headers.host) ?
     allowed.get(loginName(req.headers['tailscale-user-login'])) : null;
 }
 
-export function createDashboard({ origin, users, adapterPort, token }) {
-  const access = policy(origin, users);
+export function createDashboard({ origin, alternateOrigin, users, adapterPort, token }) {
+  const access = policy(origin, users, alternateOrigin);
   const files = new Map([...assets].map(([route, [file, type]]) => [
     route, { data: readFileSync(new URL('public/' + file, import.meta.url)), type },
   ]));
@@ -47,11 +50,11 @@ export function createDashboard({ origin, users, adapterPort, token }) {
     if (!url?.pathname.startsWith('/api/') || !apiInput(path, url.searchParams)) {
       return json(res, 404, { error: 'Unknown dashboard request.' });
     }
-    if (path === '/learning' && role !== 'reviewer') return json(res, 403, { error: 'Reviewer access required.' });
+    if (reviewerRoutes.has(path) && role !== 'reviewer') return json(res, 403, { error: 'Reviewer access required.' });
     try {
       const result = await fetch(`http://${loopback}:${adapterPort}/v1${path}${url.searchParams.size ? '?' + url.searchParams : ''}`, {
         headers: { Authorization: 'Bearer ' + token, 'X-Dashboard-Role': role },
-        redirect: 'error', signal: AbortSignal.timeout(2500),
+        redirect: 'error', signal: AbortSignal.timeout(path === '/issues' ? 14_000 : 2500),
       });
       if (result.status === 404) return json(res, 404, { error: 'No published brief for that issue.' });
       if (!result.ok) return json(res, 503, { error: 'Worker data is temporarily unavailable.' });
@@ -65,7 +68,7 @@ export function createDashboard({ origin, users, adapterPort, token }) {
 if (isEntryPoint(import.meta.url)) {
   try {
     const { data, port, token } = configuration(process.argv[2]);
-    createDashboard({ origin: data.origin, users: data.users, adapterPort: port('adapterPort'), token })
+    createDashboard({ origin: data.origin, alternateOrigin: data.alternateOrigin, users: data.users, adapterPort: port('adapterPort'), token })
       .listen(port('port'), loopback, () => console.log('Read-only GPU dashboard listening on loopback.'));
   } catch {
     console.error('The dashboard could not start. Check the local HTTPS origin, allowlist, ports and token file.');

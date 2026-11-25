@@ -1,11 +1,12 @@
 import { timingSafeEqual } from 'node:crypto';
 import { createServer } from 'node:http';
-import { apiInput, configuration, isEntryPoint, json, loopback, privateHeaders, roles, urlPath } from './contract.mjs';
+import { apiInput, configuration, isEntryPoint, json, loopback, privateHeaders, reviewerRoutes, roles, urlPath } from './contract.mjs';
+import { createGitHubIssues } from './github-issues.mjs';
 import { createReader } from './reader.mjs';
 
 export function createAdapter({ token, reader }) {
   const expected = Buffer.from('Bearer ' + token);
-  return createServer({ requestTimeout: 5000, headersTimeout: 5000, maxHeaderSize: 4096 }, (req, res) => {
+  return createServer({ requestTimeout: 5000, headersTimeout: 5000, maxHeaderSize: 4096 }, async (req, res) => {
     privateHeaders(res);
     const supplied = Buffer.from(req.headers.authorization ?? '');
     if (req.socket.remoteAddress !== loopback || supplied.length !== expected.length || !timingSafeEqual(supplied, expected)) {
@@ -21,11 +22,12 @@ export function createAdapter({ token, reader }) {
     const path = url?.pathname.replace(/^\/v1(?=\/)/, '');
     const input = url?.pathname.startsWith('/v1/') && apiInput(path, url.searchParams);
     if (!input) return json(res, 404, { error: 'Unknown adapter request.' });
-    if (path === '/learning' && role !== 'reviewer') return json(res, 403, { error: 'Reviewer access required.' });
+    if (reviewerRoutes.has(path) && role !== 'reviewer') return json(res, 403, { error: 'Reviewer access required.' });
     try {
-      const result = {
+      const result = await {
         '/overview': () => reader.overview(role),
         '/knowledge': () => reader.knowledge(input),
+        '/issues': () => reader.issues(input.page),
         '/briefs': () => reader.briefs(input.page),
         '/retrieval': () => reader.retrieval(input.issue, role),
         '/learning': () => reader.learning(input.page),
@@ -41,8 +43,9 @@ export function createAdapter({ token, reader }) {
 
 if (isEntryPoint(import.meta.url)) {
   try {
-    const { path, port, token } = configuration(process.argv[2]);
-    const reader = createReader({ storage: path('workerStorage'), inbox: path('trainingInbox') });
+    const { data, path, port, token } = configuration(process.argv[2]);
+    const reader = createReader({ storage: path('workerStorage'), inbox: path('trainingInbox'),
+      githubIssues: data.githubIssues === true ? createGitHubIssues({ git: data.githubGit ? path('githubGit') : 'git' }) : undefined });
     const listenPort = port('port');
     createAdapter({ token, reader }).listen(listenPort, loopback, () => console.log('Dashboard adapter listening on loopback.'));
   } catch {

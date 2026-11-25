@@ -3,6 +3,7 @@ const page = document.querySelector('#page');
 const loaded = document.querySelector('#loaded');
 const refresh = document.querySelector('#refresh');
 const nav = [...document.querySelectorAll('#nav a')];
+const reviewerViews = new Set(['issues', 'learning']);
 const integer = new Intl.NumberFormat('en-CA', { maximumFractionDigits: 0 });
 const decimal = new Intl.NumberFormat('en-CA', { maximumFractionDigits: 1 });
 const clock = new Intl.DateTimeFormat('en-CA', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
@@ -13,10 +14,16 @@ const labels = { original: 'Original', 'deterministic-v1': 'Deterministic v1', u
   partial: 'Partial', unverified: 'Unverified', source: 'Source', guide: 'Guide', github: 'GitHub', history: 'Studio history',
   reported: 'Reports', imported: 'Imported', attachment: 'Attachment', 'verified-lesson': 'Verified lesson', other: 'Other' };
 
+const trainingLabels = { 'waiting-for-approved-examples': 'Waiting for approved examples',
+  'waiting-for-holdout': 'Waiting for independent evaluation cases', 'waiting-for-worker': 'Waiting for the worker',
+  'waiting-for-gpu': 'Waiting for idle GPU', training: 'Training', evaluating: 'Evaluating',
+  'awaiting-promotion': 'Awaiting human approval', 'evaluation-did-not-improve': 'Evaluation did not improve', failed: 'Run failed' };
+
 let serial = 0;
 let lastOverview;
 const search = { q: '', kind: 'files', page: 0 };
 let briefPage = 0;
+let issuePage = 0;
 let outcomePage = 0;
 
 function el(tag, content, className) {
@@ -135,6 +142,7 @@ function statusCards({ worker, knowledge, knowledgeCheck }, recent) {
         ['Functions in source manifest', fmt(knowledge.manifestFunctions)],
       ] : []),
       ['Last observed main', commit(knowledgeCheck?.target)],
+      ['Indexed dependency references', fmt(knowledge?.dependencies)],
       [knowledgeCheck?.via === 'brief' ? 'Brief recorded' : 'Main checked', fmtTime(knowledgeCheck?.observedAt)],
     ]),
   ], 'status-card primary');
@@ -146,7 +154,12 @@ function statusCards({ worker, knowledge, knowledgeCheck }, recent) {
     pairs([
       ['Deployed revision', commit(worker?.release)],
       ['Configured retrieval', label(worker?.configuredMode)],
+      ['Model digest', worker?.modelDigest?.slice(0, 12) ?? 'Unrecorded'],
       ['Single-issue canary', worker?.canary == null ? 'Unrecorded' : worker.canary ? 'Configured' : 'Off'],
+      ...(worker?.issue ? [['Processing', anchor('#' + worker.issue, repository + '/issues/' + worker.issue)]] : []),
+      ...(worker?.gpu ? [['GPU utilization', fmt(worker.gpu.utilization) + '%'],
+        ['VRAM', fmt(worker.gpu.usedMiB) + ' / ' + fmt(worker.gpu.totalMiB) + ' MiB']] : []),
+      ...(worker?.warning ? [['Warning', worker.warning === 'github-queue' ? 'GitHub queue check failed' : 'GitHub outcome collection failed']] : []),
       ['Heartbeat', fmtTime(worker?.observedAt)],
     ]),
   ], 'status-card');
@@ -250,8 +263,9 @@ async function viewKnowledge(data) {
 
 function retrievalDetail(result, reviewer) {
   const { briefVersion, counts, sources, revision, mode, exportPassed, stale } = result;
-  const citation = sources.length ? table(['Cited source', 'Role', 'Line'], sources.map(row => [
-    codeLink(revision, row.path, row.line), label(row.kind), fmt(row.line),
+  const citation = sources.length ? table(['Cited source', 'Symbol', 'Role', 'Line', 'Relevance'], sources.map(row => [
+    codeLink(revision, row.path, row.line), row.symbol ?? '—', label(row.kind), fmt(row.line),
+    row.score == null ? '—' : decimal.format(row.score),
   ])) : notice('No pinned source citations were recorded for this brief.');
   const info = pairs([
     ['Game revision', commit(revision)], ['Retrieval mode', label(mode)], ['Brief version', briefVersion ?? 'Unrecorded'],
@@ -272,6 +286,42 @@ function retrievalDetail(result, reviewer) {
     ])])] : []),
     panel('Citations at generation', 'Links use the captured revision. Excerpts and private history stay in the local inbox.', [citation]),
   ];
+}
+
+function issueBrief(row) {
+  if (!row.brief) {
+    if (row.queued) return 'Waiting for a brief';
+    return row.state === 'open' ? 'Outside worker queue' : 'No published brief';
+  }
+  const github = anchor('GitHub brief', row.brief);
+  if (row.localCapture === null) return [github, ' · Local capture unavailable'];
+  if (!row.localCapture) return [github, ' only'];
+  return [github, ' · ', anchor('Inspect saved evidence', '#retrieval?issue=' + row.issue, false)];
+}
+
+async function viewIssues() {
+  const issues = await api('issues', { page: issuePage }).catch(() => null);
+  const tracker = anchor('Open GitHub tracker', repository + '/issues');
+  const title = heading('GitHub issues', 'GitHub issue status and GPU brief coverage.');
+  if (!issues) return [...title, panel('Issue list', null,
+    [notice('GitHub issue data is temporarily unavailable.', true)], tracker)];
+  const pullStages = { draft: 'Draft', review: 'Open for review', closed: 'Closed without merge', merged: 'Merged into main' };
+  const rows = issues.rows.map(row => [
+    anchor('#' + row.issue + (row.title ? ' ' + row.title : ''), repository + '/issues/' + row.issue),
+    [row.state === 'open' ? 'Open' : 'Closed', row.discord ? [' · ', anchor('Discord report', row.discord)] : null,
+      row.assigned ? ' · Assigned on GitHub' : null].flat(), issueBrief(row),
+    row.pull ? [anchor('PR #' + row.pull.number, repository + '/pull/' + row.pull.number), ' · ' + pullStages[row.pull.state]] : '—',
+    [row.outcome?.pull ? anchor(label(row.outcome.verification), row.outcome.pull) : 'Playtest unrecorded',
+      row.githubOutcome ? el('div', [counted(row.githubOutcome.files, 'changed file'), ' · ',
+        fmt(row.githubOutcome.passed) + '/' + fmt(row.githubOutcome.checks) + ' checks passed · ' +
+        counted(row.githubOutcome.corrections, 'inline comment')], 'muted') : null],
+  ]);
+  return [...title, panel('Issue list', counted(issues.total, 'issue') + ' · ' + fmt(issues.open) + ' open · Checked ' + fmtTime(issues.checkedAt), [
+    issues.stale ? notice('Showing the last successful GitHub check.', true) : null,
+    rows.length ? table(['Issue', 'Intake and assignment', 'GPU brief and evidence', 'Implementation PR', 'Recorded verification'], rows)
+      : notice('No issues on this page.'),
+    pager(issues.page, issues.more, next => { issuePage = next; render(); }),
+  ], tracker)];
 }
 
 async function viewRetrieval(data, params) {
@@ -296,7 +346,8 @@ async function viewRetrieval(data, params) {
   }
   const recent = await api('briefs', { page: briefPage });
   return [...heading('Retrieval', 'Inspect the evidence selected for a published brief.'),
-    panel('Find a brief', null, [form]), ...detail,
+    panel('Find a brief', null, [form], data.role === 'reviewer' ? anchor('GitHub issue coverage', '#issues', false)
+      : anchor('Open GitHub tracker', repository + '/issues')), ...detail,
     panel('Published briefs', null, [recentBriefs(recent),
       pager(recent.page, recent.more, next => { briefPage = next; render(); })])];
 }
@@ -335,7 +386,16 @@ async function viewLearning(data) {
         ...(learning ? [muted(counted(learning.lessonsUsed, 'published brief') + (learning.lessonsUsed === 1 ? ' includes' : ' include') + ' a verified lesson.')] : []),
         ...(catalogue?.items.length ? catalogue.items.map(lessonCard) : [notice('No curated lessons are available.')]),
       ]),
-      panel('Model fine-tuning', null, [chip('No run records'), muted('Captures, approvals and retrieved lessons are separate from fine-tuning. This worker records no training runs.')]),
+      panel('Model fine-tuning', data.training ? fmtTime(data.training.observedAt) : null, data.training ? [
+        chip(trainingLabels[data.training.phase] ?? 'Unrecorded'), pairs([
+          ['Eligible dataset', data.training.required == null ? fmt(data.training.examples) :
+            fmt(data.training.examples) + ' / ' + fmt(data.training.required)],
+          ['Progress', data.training.steps ? fmt(data.training.step) + ' / ' + fmt(data.training.steps) : '—'],
+          ['Candidate model', data.training.candidate ?? '—'], ['Evaluation cases', fmt(data.training.cases)],
+          ...(data.training.baselineScore == null ? [] : [['Baseline score', fmt(data.training.baselineScore) + '%'],
+            ['Candidate score', fmt(data.training.candidateScore) + '%']]),
+        ]),
+      ] : [notice('No fine-tuning status recorded.')]),
     ], 'two-cols'),
     panel('Development outcomes', 'Reviewers enter outcomes after completing a task.', [rates, outcomes,
       development ? pager(development.page, development.more, next => { outcomePage = next; render(); }) : null]),
@@ -347,7 +407,7 @@ async function viewLearning(data) {
 
 function route() {
   const [view, query] = location.hash.slice(1).split('?', 2);
-  return { view: ['knowledge', 'retrieval', 'learning'].includes(view) ? view : 'overview', params: new URLSearchParams(query) };
+  return { view: ['knowledge', 'issues', 'retrieval', 'learning'].includes(view) ? view : 'overview', params: new URLSearchParams(query) };
 }
 
 async function render(force = false) {
@@ -361,13 +421,16 @@ async function render(force = false) {
     lastOverview = overview;
     document.querySelector('#role').textContent = overview.role === 'reviewer' ? 'Reviewer access' : 'Viewer access';
     for (const link of nav) {
-      link.hidden = link.dataset.page === 'learning' && overview.role !== 'reviewer';
+      link.hidden = reviewerViews.has(link.dataset.page) && overview.role !== 'reviewer';
       if (link.dataset.page === view) link.setAttribute('aria-current', 'page');
       else link.removeAttribute('aria-current');
     }
-    const content = view === 'knowledge' ? await viewKnowledge(overview)
+    const content = reviewerViews.has(view) && overview.role !== 'reviewer'
+      ? heading(view === 'issues' ? 'GitHub issues' : 'Learning', 'Reviewer access required.')
+      : view === 'knowledge' ? await viewKnowledge(overview)
+      : view === 'issues' ? await viewIssues()
       : view === 'retrieval' ? await viewRetrieval(overview, params)
-      : view === 'learning' ? overview.role === 'reviewer' ? await viewLearning(overview) : heading('Learning', 'Reviewer access required.')
+      : view === 'learning' ? await viewLearning(overview)
       : await viewOverview(overview);
     if (id !== serial) return;
     page.replaceChildren(...content);
@@ -386,5 +449,7 @@ async function render(force = false) {
 
 refresh.addEventListener('click', () => render(true));
 window.addEventListener('hashchange', () => { if (location.hash !== '#page') render(); });
-setInterval(() => { if (!document.hidden && route().view === 'overview' && !refresh.disabled) render(true); }, 30_000);
+setInterval(() => {
+  if (!document.hidden && ['overview', 'issues', 'learning'].includes(route().view) && !refresh.disabled) render(true);
+}, 30_000);
 render();

@@ -21,8 +21,12 @@ export function config() {
   const saved = existsSync(configPath) ? JSON.parse(readFileSync(configPath, 'utf8')) : {};
   const value = { ...defaults, ...saved };
   if (!validPort(value.port) || !validPort(value.ollamaPort) || value.port === value.ollamaPort) throw new Error('Configure separate loopback ports in config.json.');
-  if (value.privateOrigin && !/^https:\/\/[a-z0-9-]+(?:\.[a-z0-9-]+)+\.ts\.net$/i.test(value.privateOrigin)) {
-    throw new Error('privateOrigin must be the exact HTTPS Tailscale Serve origin with no slash.');
+  if (value.privateOrigin) {
+    const origin = new URL(value.privateOrigin);
+    if (origin.protocol !== 'https:' || origin.origin !== value.privateOrigin ||
+        !/^[a-z0-9-]+(?:\.[a-z0-9-]+)+\.ts\.net$/.test(origin.hostname)) {
+      throw new Error('privateOrigin must be the exact HTTPS Tailscale Serve origin with no slash.');
+    }
   }
   if (value.tailscaleUsers != null) {
     if (!value.privateOrigin || typeof value.tailscaleUsers !== 'object' || Array.isArray(value.tailscaleUsers)) {

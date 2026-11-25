@@ -6,6 +6,7 @@ export const repository = 'https://github.com/PeterFacina/richs-houseboat';
 export const loopback = '127.0.0.1';
 export const pageSize = 24;
 export const roles = ['viewer', 'reviewer'];
+export const reviewerRoutes = new Set(['/issues', '/learning']);
 export const retrievalModes = ['original', 'deterministic-v1'];
 export const evidenceKinds = ['source', 'guide', 'github', 'history', 'reported', 'imported', 'attachment', 'verified-lesson', 'other'];
 const rootSources = new Set(['AGENTS.md', 'GAME GUIDE AND ASSET CREDITS.md', 'START HERE.txt', 'Play Ottawa River.cmd']);
@@ -49,7 +50,7 @@ export function urlPath(req) {
 
 const decimal = /^(?:0|[1-9]\d*)$/;
 const apiRoutes = new Map([['/overview', []], ['/knowledge', ['kind', 'q', 'page']],
-  ['/briefs', ['page']], ['/retrieval', ['issue']], ['/learning', ['page']]]);
+  ['/issues', ['page']], ['/briefs', ['page']], ['/retrieval', ['issue']], ['/learning', ['page']]]);
 
 export function apiInput(path, query) {
   const allowed = apiRoutes.get(path);

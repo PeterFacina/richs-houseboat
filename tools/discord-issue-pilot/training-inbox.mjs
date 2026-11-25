@@ -47,7 +47,8 @@ export function openTrainingInbox(path = trainingPath()) {
   db.exec('PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000;');
   db.exec('CREATE TABLE IF NOT EXISTS captures (issue INTEGER NOT NULL, id TEXT NOT NULL,'
     + ' input TEXT NOT NULL, brief TEXT NOT NULL, recorded TEXT NOT NULL, published TEXT, PRIMARY KEY(issue,id));'
-    + ' CREATE TABLE IF NOT EXISTS reviews (issue INTEGER NOT NULL, at TEXT NOT NULL, data TEXT NOT NULL);');
+    + ' CREATE TABLE IF NOT EXISTS reviews (issue INTEGER NOT NULL, at TEXT NOT NULL, data TEXT NOT NULL);'
+    + ' CREATE TABLE IF NOT EXISTS github_outcomes (issue INTEGER PRIMARY KEY, data TEXT NOT NULL);');
   return {
     capture(issue, input, brief) {
       const serialized = JSON.stringify(input);
@@ -70,7 +71,18 @@ export function openTrainingInbox(path = trainingPath()) {
           .all(issue).map(row => ({ ...row, input: JSON.parse(row.input) })),
         history: db.prepare('SELECT at,data FROM reviews WHERE issue=? ORDER BY rowid').all(issue)
           .map(row => ({ at: row.at, ...JSON.parse(row.data) })),
+        githubOutcome: JSON.parse(db.prepare('SELECT data FROM github_outcomes WHERE issue=?').get(issue)?.data ?? 'null'),
       };
+    },
+    publishedIssues() {
+      return db.prepare('SELECT DISTINCT issue FROM captures WHERE published IS NOT NULL ORDER BY issue').all().map(row => row.issue);
+    },
+    githubOutcomes() {
+      return db.prepare('SELECT issue, data FROM github_outcomes').all().map(row => ({ ...JSON.parse(row.data), issue: row.issue }));
+    },
+    saveGitHubOutcome(issue, data) {
+      db.prepare('INSERT INTO github_outcomes VALUES (?,?) ON CONFLICT(issue) DO UPDATE SET data=excluded.data')
+        .run(issue, JSON.stringify(data));
     },
     addReview(issue, review) {
       const record = this.read(issue);

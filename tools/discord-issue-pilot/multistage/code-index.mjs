@@ -10,6 +10,8 @@ const word = /[a-z][a-z0-9]*/g;
 const sourcePath = /^godot-cove\/(?:[\w .-]+\/)*[\w .-]+\.(?:gd|tscn|tres|gdshader|gdshaderinc|godot|cs)$/i;
 const guidePath = /^docs\/(?:ARCHITECTURE\.md|systems\/[\w-]+\.md)$/i;
 const digest = bytes => createHash('sha256').update(bytes).digest('hex');
+const concepts = [['fence', 'rail', 'railing', 'handrail', 'barrier', 'picket'],
+  ['helm', 'steering', 'steer', 'wheel'], ['glitch', 'flicker', 'jitter'], ['attach', 'mount', 'bind']];
 
 export function terms(text) {
   return (text.replace(/([a-z0-9])([A-Z])/g, '$1 $2').toLowerCase().match(word) ?? [])
@@ -182,7 +184,16 @@ export function buildCodeIndex(root, manifest, tracked) {
     }
     const semantic = new Map([...associated].sort((a, b) => b[1] - a[1]).slice(0, 12)
       .map(([name, weight]) => [name, Math.min(1.4, weight)]));
-    return { tokens, weights, semantic };
+    const focus = new Set();
+    const subject = new Set(terms(text.trim().split('\n', 1)[0]));
+    for (const concept of concepts.map(group => terms(group.join(' ')))) {
+      if (!concept.some(term => tokens.includes(term))) continue;
+      for (const term of concept) {
+        if (!weights.has(term) && postings.has(term)) weights.set(term, Math.min(idf(term) * .58, 2.4));
+        if (concept.some(part => subject.has(part))) focus.add(term);
+      }
+    }
+    return { tokens, weights, semantic, focus };
   }
 
   function rank(q, items = entries) {
@@ -197,7 +208,7 @@ export function buildCodeIndex(root, manifest, tracked) {
       const verification = /(?:^|\/)(?:test_|verify_)/.test(item.path);
       const score = (1.05 * name + .7 * path + 1.32 * body / diversity + 1.3 * semantic) *
         (symbol ? 1 : .7) * (verification ? .55 : 1);
-      return { item, score };
+      return { item, score, lexical: name + path + body };
     }).filter(hit => hit.score > 0).sort((a, b) => b.score - a.score || a.item.id.localeCompare(b.item.id, 'en', { numeric: true }));
   }
 

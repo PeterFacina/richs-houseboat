@@ -8,6 +8,7 @@ test('original is the default and candidate deployment can be limited to specifi
   const canary = retrievalConfig(candidateRetrieval, '113');
   assert.equal(canary.forIssue(113), candidateRetrieval);
   assert.equal(canary.forIssue(69), originalRetrieval);
+  assert.equal(retrievalConfig(candidateRetrieval, 'all').forIssue(69), candidateRetrieval);
   for (const [mode, issues] of [['new', ''], ['original', '69'], [candidateRetrieval, ''], [candidateRetrieval, '1,2'], [candidateRetrieval, '0']]) {
     assert.throws(() => retrievalConfig(mode, issues), /HOUSEBOAT_RETRIEVAL/);
   }

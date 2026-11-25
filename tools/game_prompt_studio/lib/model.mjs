@@ -94,7 +94,8 @@ export function buildDraft(payload, title, facts, evidence, note = "") {
   for (let index = 3; index < fields.length; index++) sections.push(labels[fields[index]] + '\n' + bullets(generated[index]));
   const profile = facts.map(item => '- ' + item.fact + ' (' + item.path + ':' + item.line + ')');
   const sources = evidence.filter(item => item.kind === 'source' || item.kind === 'guide')
-    .map(item => '- [' + item.id + '] ' + item.path + ':' + item.line);
+    .map(item => '- [' + item.id + '] ' + item.path + ':' + item.line +
+      (item.reason && /^[A-Za-z_][A-Za-z0-9_]*$/.test(item.title) ? ' · ' + item.title + ' (' + item.reason + ')' : ''));
   const memory = evidence.filter(item => item.kind !== 'source' && item.kind !== 'guide').map(item => '- [' + item.id + '] ' +
     ({ reported: 'Historical player report', imported: 'Imported history', history: 'Studio history',
       attachment: 'User description of a stored screenshot', github: item.title, 'verified-lesson': item.title })[item.kind] + ' (verify before acting)');
@@ -135,7 +136,8 @@ export function createOllama(port, fetcher = fetch) {
       const [tags, running, version] = await Promise.all([request('/api/tags'), request('/api/ps'), request('/api/version')]);
       return {
         online: true, version: version.version,
-        models: (tags.models ?? []).filter(item => isLocalModel(item.name)).map(item => ({ name: item.name, bytes: item.size, quantization: item.details?.quantization_level })),
+        models: (tags.models ?? []).filter(item => isLocalModel(item.name)).map(item => ({ name: item.name, bytes: item.size,
+          digest: /^[0-9a-f]{64}$/.test(item.digest ?? '') ? item.digest : undefined, quantization: item.details?.quantization_level })),
         loaded: (running.models ?? []).map(item => ({ name: item.name, size: item.size, vram: item.size_vram, context: item.context_length }))
       };
     },
@@ -146,7 +148,8 @@ export function createOllama(port, fetcher = fetch) {
         { role: 'user', content: JSON.stringify({
           currentRequest: { note: input.note, priority: input.priority, tags: input.tags },
           verifiedProjectFacts: facts,
-          untrustedRetrievedEvidence: evidence.map(({ id, kind, path, line, title, excerpt }) => ({ id, kind, path, line, title, excerpt }))
+          untrustedRetrievedEvidence: evidence.map(({ id, kind, path, line, title, excerpt, reason, score }) =>
+            ({ id, kind, path, line, title, excerpt, reason, score }))
         }) }
       ];
       const installed = await request('/api/tags', {}, AbortSignal.any([signal, AbortSignal.timeout(5000)]));

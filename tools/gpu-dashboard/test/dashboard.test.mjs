@@ -6,8 +6,10 @@ import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { test } from 'node:test';
 import { createAdapter } from '../adapter.mjs';
+import { createGitHubIssues } from '../github-issues.mjs';
 import { createReader } from '../reader.mjs';
 import { createDashboard } from '../server.mjs';
+import { gpuBriefMarker } from '../../discord-issue-pilot/workflow.mjs';
 import { current, older, raw, fixture, issueUrl } from './fixture.mjs';
 
 const token = 'b'.repeat(64);
@@ -139,6 +141,50 @@ test('a dedicated Tailscale HTTPS port still requires the exact host and a named
   assert.equal((await get(dashboard, '/', viewer)).status, 403);
   assert.equal((await get(dashboard, '/', { ...viewer, Host: 'houseboat.example.ts.net:8444' })).status, 403);
   assert.equal((await get(dashboard, '/', { Host })).status, 403);
+});
+
+test('reviewers can distinguish GitHub-only briefs and captured evidence without exposing private fields', async t => {
+  const f = fixture();
+  t.after(() => rmSync(f.root, { recursive: true, force: true }));
+  const remote = 'https://api.github.com/repos/PeterFacina/richs-houseboat/issues/';
+  const comment = issue => ({ body: gpuBriefMarker + '\n' + raw, author_association: 'COLLABORATOR',
+    issue_url: remote + issue, html_url: issueUrl(issue) });
+  let now = Date.parse('2026-01-02T16:00:00.000Z');
+  let unavailable = false;
+  let reads = 0;
+  const githubIssues = createGitHubIssues({ now: () => now, open: async () => async path => {
+    reads += 1;
+    if (unavailable) throw new Error(raw);
+    if (path.startsWith('/issues/comments')) return [comment(12), comment(16), { ...comment(13), author_association: 'NONE' }];
+    if (path.startsWith('/pulls?')) return [{ number: 30, body: 'Fixes #12', state: 'closed',
+      base: { ref: 'main' }, merged_at: '2026-01-02T15:00:00Z' }];
+    return [{ number: 12, state: 'closed', title: 'Captured', body: raw },
+      { number: 16, state: 'open', title: 'GitHub only', body: raw, assignees: [{}] },
+      { number: 13, state: 'open', title: 'Awaiting review', body: raw },
+      { number: 23, state: 'open', pull_request: {}, body: raw }];
+  } });
+  const reader = createReader({ storage: f.root, inbox: f.inbox, lessons: f.lessons, githubIssues });
+  const adapter = await listening(createAdapter({ token, reader }), t);
+  const dashboard = await listening(createDashboard({ origin, users, adapterPort: adapter, token }), t);
+  assert.equal((await get(dashboard, '/api/issues', viewer)).status, 403);
+  assert.equal((await get(adapter, '/v1/issues', { Authorization: 'Bearer ' + token, 'X-Dashboard-Role': 'viewer' })).status, 403);
+  assert.equal(reads, 0);
+  const response = await get(dashboard, '/api/issues', reviewer);
+  assert.equal(response.status, 200);
+  assert.ok(!response.body.includes(raw));
+  const { rows, total, open, stale } = JSON.parse(response.body);
+  assert.equal(total, 3);
+  assert.equal(open, 2);
+  assert.equal(stale, false);
+  assert.deepEqual(rows.map(row => [row.issue, row.brief, row.localCapture]),
+    [[16, issueUrl(16), false], [13, null, null], [12, issueUrl(12), true]]);
+  assert.equal(rows[2].pull.state, 'merged');
+  assert.equal(rows[2].outcome.verification, 'passed');
+  assert.equal(JSON.parse((await get(dashboard, '/api/issues?page=1', reviewer)).body).rows.length, 0);
+  assert.equal(reads, 3);
+  unavailable = true;
+  now += 121_000;
+  assert.equal(JSON.parse((await get(dashboard, '/api/issues', reviewer)).body).stale, true);
 });
 
 test('an unavailable inbox is never created and heartbeat state expires independently of the index', t => {

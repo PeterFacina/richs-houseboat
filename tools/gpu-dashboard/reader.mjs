@@ -1,11 +1,12 @@
 import { readFileSync, statSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { indexedKnowledge, projectProfile, recentScan } from '../game_prompt_studio/lib/index.mjs';
 import { pinnedFunctions } from '../discord-issue-pilot/multistage/code-index.mjs';
 import { lessonStatus } from '../discord-issue-pilot/learning/lessons.mjs';
 import { date, flag, model, number, oneOf, pageSize, positive, retrievalModes, revision, sourcePath, text } from './contract.mjs';
-import { briefStats, latestKnowledgeCheck, learningStats, outcomePage, publishedBriefs, retrievalResult } from './training-read.mjs';
+import { briefStats, gitHubOutcomeCounts, latestKnowledgeCheck, learningStats, outcomePage, publishedBriefs, publishedLinks, retrievalResult,
+  reviewedIssueOutcomes } from './training-read.mjs';
 
 const phases = ['starting', 'watching', 'generating', 'degraded', 'stopped'];
 const lessonFile = new URL('../discord-issue-pilot/learning-lessons.json', import.meta.url);
@@ -30,15 +31,36 @@ function statusAt(path, now) {
     const observedAt = date(value.observedAt);
     if (value.schema !== 1 || !observedAt || !phases.includes(value.phase)) return null;
     const age = now - Date.parse(observedAt);
+    const phase = age > 120_000 || age < -10_000 ? 'heartbeat-stale' : value.phase;
     const knowledge = value.knowledge;
-    return { phase: age > 120_000 || age < -10_000 ? 'heartbeat-stale' : value.phase, observedAt,
+    const gpu = value.gpu;
+    return { phase, observedAt,
       release: revision(value.release), model: model(value.model),
+      modelDigest: typeof value.modelDigest === 'string' && /^[0-9a-f]{64}$/.test(value.modelDigest) ? value.modelDigest : null,
+      issue: phase === 'generating' ? positive(value.issue) : null,
+      warning: oneOf(['github-queue', 'github-outcomes'], value.warning),
+      gpu: gpu && [gpu.utilization, gpu.usedMiB, gpu.totalMiB].every(value => number(value) !== null) &&
+        gpu.utilization <= 100 && gpu.totalMiB > 0 && gpu.usedMiB <= gpu.totalMiB ?
+        { utilization: gpu.utilization, usedMiB: gpu.usedMiB, totalMiB: gpu.totalMiB } : null,
       configuredMode: oneOf(retrievalModes, value.configuredMode), canary: flag(value.canary),
       knowledge: knowledge && date(knowledge.observedAt) ? {
         indexedRevision: revision(knowledge.indexedRevision), target: revision(knowledge.target),
         stale: flag(knowledge.stale), observedAt: date(knowledge.observedAt), via: 'heartbeat',
       } : null,
     };
+  } catch { return null; }
+}
+
+function trainingStatus(path) {
+  try {
+    if (statSync(path).size > 4096) return null;
+    const state = JSON.parse(readFileSync(path, 'utf8'));
+    const phase = oneOf(['waiting-for-approved-examples', 'waiting-for-holdout', 'waiting-for-worker', 'waiting-for-gpu',
+      'training', 'evaluating', 'awaiting-promotion', 'evaluation-did-not-improve', 'failed'], state.phase);
+    if (state.schema !== 1 || !phase || !date(state.observedAt)) return null;
+    return { phase, observedAt: state.observedAt, candidate: model(state.model), examples: number(state.examples),
+      required: number(state.required), step: number(state.step), steps: number(state.steps), cases: number(state.cases),
+      baselineScore: number(state.baselineScore), candidateScore: number(state.candidateScore) };
   } catch { return null; }
 }
 
@@ -60,6 +82,7 @@ function knowledgeOverview(db) {
   const data = inventory(db);
   if (!data) return null;
   return { revision: data.manifest.revision, indexedAt: date(data.scan.at), files: data.files.length,
+    dependencies: data.files.reduce((sum, file) => sum + (data.manifest.files[file.path]?.references?.length ?? 0), 0),
     functions: data.files.reduce((sum, item) => sum + item.functions.length, 0),
     manifestFunctions: Object.values(data.manifest.files).reduce((sum, item) =>
       sum + (item.symbols ?? []).filter(symbol => symbol.kind === 'func').length, 0),
@@ -98,7 +121,7 @@ function curatedLessons(root, db, snapshot) {
   })) };
 }
 
-export function createReader({ storage, inbox, lessons = JSON.parse(readFileSync(lessonFile, 'utf8')), now = Date.now }) {
+export function createReader({ storage, inbox, githubIssues, lessons = JSON.parse(readFileSync(lessonFile, 'utf8')), now = Date.now }) {
   const source = read => readStore(join(storage, 'studio.sqlite'), read);
   const training = read => readStore(inbox, read);
   const cache = new Map();
@@ -107,7 +130,8 @@ export function createReader({ storage, inbox, lessons = JSON.parse(readFileSync
       const cached = cache.get(role);
       const time = now();
       if (cached && time - cached.at >= 0 && time - cached.at < 15_000) return cached.value;
-      const worker = statusAt(join(storage, 'worker-status.json'), time);
+      const status = statusAt(join(storage, 'worker-status.json'), time);
+      const worker = status && role === 'viewer' ? { ...status, issue: null } : status;
       const trainingData = training(db => ({
         briefs: briefStats(db, role === 'reviewer'),
         knowledgeCheck: latestKnowledgeCheck(db),
@@ -116,12 +140,25 @@ export function createReader({ storage, inbox, lessons = JSON.parse(readFileSync
       const value = { knowledge: source(knowledgeOverview), worker,
         knowledgeCheck: worker?.knowledge ?? trainingData?.knowledgeCheck ?? null,
         briefs: trainingData?.briefs ?? null,
-        ...(role === 'reviewer' ? { learning: trainingData?.learning ?? null } : {}),
+        ...(role === 'reviewer' ? { learning: trainingData?.learning ?? null,
+          training: trainingStatus(join(dirname(inbox), 'training-status.json')) } : {}),
       };
       cache.set(role, { at: time, value });
       return value;
     },
     knowledge(params) { return source(db => knowledgePage(db, params)); },
+    async issues(page) {
+      if (!githubIssues) return null;
+      const snapshot = await githubIssues();
+      const local = training(db => ({ links: publishedLinks(db), outcomes: reviewedIssueOutcomes(db),
+        github: gitHubOutcomeCounts(db) }));
+      const rows = snapshot.rows.slice(page * pageSize, (page + 1) * pageSize)
+        .map(row => ({ ...row, localCapture: row.brief && local ? local.links.has(row.brief) : null,
+          outcome: local?.outcomes.get(row.issue) ?? null, githubOutcome: local?.github.get(row.issue) ?? null }));
+      return { checkedAt: snapshot.checkedAt, stale: snapshot.stale ?? false, rows, page,
+        more: snapshot.rows.length > (page + 1) * pageSize, total: snapshot.rows.length,
+        open: snapshot.rows.filter(row => row.state === 'open').length };
+    },
     briefs(page) { return training(db => publishedBriefs(db, page)); },
     retrieval(issue, role) { return training(db => ({ result: retrievalResult(db, issue, role === 'reviewer') })); },
     learning(page) {

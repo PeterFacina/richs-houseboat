@@ -98,6 +98,30 @@ export function publishedBriefs(db, page) {
   return { page, more: rows.length > pageSize, briefs: rows.slice(0, pageSize).map(publishedBrief).filter(Boolean) };
 }
 
+export function publishedLinks(db) {
+  return new Set(db.prepare('SELECT issue, published FROM captures WHERE published IS NOT NULL').all()
+    .map(({ issue, published }) => publication(issue, published)).filter(Boolean));
+}
+
+export function reviewedIssueOutcomes(db) {
+  if (!hasReviews(db)) return new Map();
+  const rows = db.prepare(`SELECT issue, json_extract(doc, '$.prUrl') AS pull,
+    json_extract(doc, '$.verification') AS verification FROM (${latestOutcomes})`).all();
+  return new Map(rows.map(row => [row.issue, { pull: pullLink(row.pull),
+    verification: oneOf(['passed', 'failed', 'partial', 'unverified'], row.verification) }]));
+}
+
+export function gitHubOutcomeCounts(db) {
+  if (!db.prepare("SELECT 1 FROM sqlite_schema WHERE type='table' AND name='github_outcomes'").get()) return new Map();
+  const rows = db.prepare(`SELECT issue, json_extract(doc,'$.pull') AS pull,
+    json_array_length(doc,'$.files') AS files, json_array_length(doc,'$.corrections') AS corrections,
+    json_array_length(doc,'$.checks') AS checks,
+    (SELECT COUNT(*) FROM json_each(doc,'$.checks') item WHERE json_extract(item.value,'$.conclusion')='success') AS passed
+    FROM (SELECT issue, ${cleanJson('data')} AS doc FROM github_outcomes)`).all();
+  return new Map(rows.map(({ issue, pull, files, corrections, checks, passed }) => [issue,
+    { pull: positive(pull), files: number(files), corrections: number(corrections), checks: number(checks), passed: number(passed) }]));
+}
+
 export function latestKnowledgeCheck(db) {
   const row = db.prepare(`SELECT recorded, json_extract(doc,'$.commit') AS commitSha,
     json_extract(doc,'$.knowledge.target') AS target, json_type(doc,'$.knowledge.stale') AS stale
@@ -119,7 +143,8 @@ export function retrievalResult(db, issue, reviewer) {
   const brief = publishedBrief(row);
   if (!brief) return null;
   const evidence = db.prepare(`SELECT json_extract(e.item,'$.kind') AS kind,
-    json_extract(e.item,'$.path') AS path, json_extract(e.item,'$.line') AS line
+    json_extract(e.item,'$.path') AS path, json_extract(e.item,'$.line') AS line,
+    json_extract(e.item,'$.title') AS title, json_extract(e.item,'$.score') AS score
     FROM (SELECT CASE WHEN e.type='object' THEN e.value ELSE '{}' END AS item
       FROM (${captured}) c, json_each(c.doc,'$.retrievedContext') e WHERE c.rowid=? ORDER BY e.key LIMIT 80) e`).all(row.rowid);
   const counts = {};
@@ -129,7 +154,11 @@ export function retrievalResult(db, issue, reviewer) {
     counts[kind] = (counts[kind] ?? 0) + 1;
     const path = sourcePath(item.path);
     const line = positive(item.line);
-    if (['source', 'guide'].includes(kind) && path && line && brief.revision) sources.push({ path, line, kind });
+    if (['source', 'guide'].includes(kind) && path && line && brief.revision) {
+      const score = number(item.score);
+      const symbol = typeof item.title === 'string' && /^[\w]{1,128}$/.test(item.title) ? item.title : null;
+      sources.push({ path, line, kind, ...(score === null ? {} : { score, symbol }) });
+    }
   }
   const detail = {
     ...brief, sources, counts,
