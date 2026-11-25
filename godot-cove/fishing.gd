@@ -27,6 +27,7 @@ const AircraftSteering = preload("res://aircraft_steering.gd")
 const Regions = preload("res://river_regions.gd")
 const Helicopter = preload("res://river_helicopter.gd")
 const SoloSaves = preload("res://solo_saves.gd")
+const TennisMatch = preload("res://marina_tennis_match.gd")
 const CREW_JOURNAL := "user://ottawa_multiplayer_catches.json"
 const BITE_WINDOW := 2.27
 const WINDUP := 0.19
@@ -143,6 +144,8 @@ var swimming := false
 var target_index := -1
 var rod_pressed := false
 var interact_pressed := false
+var tennis: TennisMatch
+var tennis_previous_gear := Backpack.NONE
 var ignition_hold := -1.0
 var ignition_prompt: Label
 var ignition_ring: IgnitionRing
@@ -241,6 +244,10 @@ func _ready() -> void:
 	fish_guide.closed.connect(close_guide)
 	campaign = Campaign.new()
 	add_child(campaign)
+	tennis = river.find_child("MarinaTennisMatch", true, false) as TennisMatch
+	tennis.prepare_player(eye)
+	tennis.reset_player.connect(tennis_reset_player)
+	tennis.ended.connect(func() -> void: equip_gear(tennis_previous_gear))
 	campaign.setup(self)
 	add_child(properties)
 	properties.setup(self)
@@ -380,6 +387,11 @@ func build_tension_display() -> void:
 
 
 func _input(event: InputEvent) -> void:
+	if tennis.active:
+		if event.is_action_pressed(&"ui_cancel"):
+			tennis.leave()
+			get_viewport().set_input_as_handled()
+		return
 	if properties.panel.visible:
 		properties.build_input(event)
 		return
@@ -487,6 +499,17 @@ func _input(event: InputEvent) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if tennis.active:
+		if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT and play_input():
+			tennis.swing()
+		elif event is InputEventMouse:
+			super._unhandled_input(event)
+		elif event is InputEventKey and event.pressed and not event.echo:
+			if event.physical_keycode == KEY_F3:
+				super._unhandled_input(event)
+			elif event.physical_keycode == KEY_F4:
+				change_draw_distance()
+		return
 	if properties.panel.visible:
 		return
 	if skill_screen.panel.visible or campaign.boats_menu.visible or pause_menu.visible or fish_guide.visible \
@@ -610,8 +633,13 @@ func _physics_process(delta: float) -> void:
 	var office_leaf := public_works.office_handle(eye) if can_use_yard else -1
 	var bay := public_works.nearby_door(eye) if can_use_yard else null
 	public_works.advance(delta, player, mower, spare_mower)
-	if interact_pressed and has_input and not fuel_press and not did_use and not cabin.busy():
-		if marina_cars.active >= 0:
+	if interact_pressed and has_input and not fuel_press and not did_use and not cabin.busy() and not tennis.active:
+		if can_challenge_rich():
+			tennis_previous_gear = backpack.equipped
+			release_line()
+			equip_gear(Backpack.NONE)
+			tennis.start()
+		elif marina_cars.active >= 0:
 			marina_cars.interact()
 		elif mower.rider != null:
 			if not mower.dismount():
@@ -698,14 +726,31 @@ func _physics_process(delta: float) -> void:
 	campaign.tick(delta, has_input)
 	marina_cars.hide_drivers()
 	shannon_job.tick(delta, play_input() and can_talk_to_shannon())
+	tennis.tick(delta, clock, player, eye, campaign.crew.mode == "solo", has_input and get_window().has_focus())
 	update_hud()
-	campaign.mark_world()
+	if not tennis.active:
+		campaign.mark_world()
 	regions.tick(delta)
 	safety.tick(delta)
 
 
 func play_input() -> bool:
 	return Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and not menu_blocks_play()
+
+
+func can_challenge_rich() -> bool:
+	return campaign.crew.mode == "solo" and can_use_fuel() and not cabin.busy() and tennis.focused(eye, player)
+
+
+func tennis_reset_player(at: Vector3, toward: Vector3) -> void:
+	reset_foot_stance()
+	player.global_position = at + Vector3.UP * .10
+	player.velocity = Vector3.ZERO
+	var heading := toward - at
+	yaw = atan2(-heading.x, -heading.z)
+	pitch = -.07
+	update_view()
+	player.reset_physics_interpolation()
 
 
 func _process(delta: float) -> void:
@@ -775,7 +820,7 @@ func stow_for_fueling() -> void:
 
 
 func hands_available() -> bool:
-	return can_use_fuel() and not campaign.marina_fuel.is_local_holder()
+	return not tennis.active and can_use_fuel() and not campaign.marina_fuel.is_local_holder()
 
 
 func can_use_fuel() -> bool:
@@ -1809,7 +1854,7 @@ func update_hud() -> void:
 	ignition_ring.progress = clampf(ignition_hold / Boat.START_TIME, 0.0, 1.0) if ignition_ring.visible else 0.0
 	backpack.update_throttle(mower.throttle_index if mower.rider != null and play_input() else -1, mower.throttle_label())
 	backpack.hud_available = not piloting and not campaign.crewplay.hands_busy() and not cabin.hands_in_use() and not chart.visible and not fish_guide.visible and not cheats.visible \
-		and not campaign.controls_blocked() and not cabin.busy() and not campaign.marina_fuel.is_local_holder()
+		and not campaign.controls_blocked() and not cabin.busy() and not campaign.marina_fuel.is_local_holder() and not tennis.active
 	objective.text = ""
 	var at: Vector3 = vessel.center if aboard() else player.global_position
 	instruction.text = ""
@@ -1824,6 +1869,13 @@ func update_hud() -> void:
 			roundi(line_tension * 100), roundi(drag_setting * 100)]
 	marker.visible = false
 	fps.text = "%d FPS\n%s   [F4]" % [Engine.get_frames_per_second(), graphics.description()]
+	if tennis.active:
+		objective.text = tennis.score_text()
+		objective.show()
+		instruction.text = tennis.instruction_text(eye)
+		backpack.waypoint.hide()
+		campaign.info.hide()
+		return
 	if marina_cars.active >= 0:
 		var car: MarinaCars.RoadCar = marina_cars.cars[marina_cars.active]
 		var reverse := "   ·   REVERSE" if car.speed < -.08 else ""
@@ -1933,6 +1985,8 @@ func update_hud() -> void:
 			marker.text = waypoint_text
 			marker.position = Vector2(clampf(projected.x - 68, 20, 1080), clampf(projected.y - 25, 128, 585))
 			marker.show()
+	if play_input() and can_challenge_rich():
+		instruction.text = "E  Challenge Big Rich to tennis"
 	objective.visible = not objective.text.is_empty()
 
 
