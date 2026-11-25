@@ -21,8 +21,11 @@ const Landings = preload("res://river_campaign_data.gd")
 const BASE := "res://ottawa/"
 const ROAD_SCAN = preload("res://ottawa/materials/road_asphalt033_color.jpg")
 const ROAD_NORMAL = preload("res://ottawa/materials/road_asphalt033_normal.jpg")
+const GRAVEL_SCAN = preload("res://ottawa/materials/gravel_road_diff_1k.jpg")
+const GRAVEL_NORMAL = preload("res://ottawa/materials/gravel_road_nor_gl_1k.jpg")
 const TILE := 44
 const PLAZA_PORTICO_TREE := Vector2(18000.5215, 13239.9229)
+var town_walkways: RoadNetwork.Walkways
 
 class TerrainPatch:
 	var area: Rect2
@@ -131,10 +134,15 @@ func build() -> void:
 		cut_launch_channel()
 	swisha_patch = TerrainPatch.new(meta.swisha, BASE + "swisha")
 	detail_patches = [marina_patch, swisha_patch]
+	var park := RiverbankPark.new()
 	if meta.has("lamure"):
 		lamure_patch = TerrainPatch.new(meta.lamure, BASE + "lamure")
 		detail_patches.append(lamure_patch)
 		meta.places.append({"name": "Lamure Beach", "point": meta.lamure.point})
+	if meta.has("riverbank"):
+		park.prepare(meta.riverbank)
+		marina_patch.heights = park.grade_parking(marina_patch.heights, marina_patch.grid,
+			marina_patch.area.position, marina_patch.spacing, ground_height)
 	regional_water = Image.load_from_file(BASE + "shoals.png")
 	chart_texture = ImageTexture.create_from_image(Image.load_from_file(BASE + "chart.png"))
 	station_water = ImageTexture.create_from_image(Image.load_from_file(BASE + "swisha_shoals.png"))
@@ -225,13 +233,12 @@ func build() -> void:
 			for col in range(0, detail.grid.x - 1, TILE):
 				tile(col, row, ground, detail)
 	build_water()
-	var residential_driveways := build_town()
+	var residential_driveways := build_town(paving_texture, ground)
 	property_sites = PropertySites.build(self, ground_height, concrete_scan, scanned_surface("brick"), wood_scan)
 	build_landmarks()
-	var park := RiverbankPark.new()
 	if meta.has("riverbank"):
-		park.prepare(meta.riverbank)
 		var surface := Image.load_from_file(BASE + "riverbank_surface.png")
+		park.clear_old_path_paint(surface)
 		surface.generate_mipmaps()
 		ground.set_shader_parameter("riverbank_path_mask", ImageTexture.create_from_image(surface))
 		ground.set_shader_parameter("riverbank_path_bounds", Vector4(
@@ -254,6 +261,7 @@ func build() -> void:
 				return true
 			return PublicWorks.cleared_for_construction(foot) or park.owns_tree(foot) \
 				or residential_driveways.clears_tree(point) \
+				or town_walkways.clears_tree(point) \
 				or RoadNetwork.clears_champlain_tree(point, street_start, street_axis) \
 				or RoadNetwork.CivicParking.covers(point) \
 				or PropertySites.clears_tree(point) \
@@ -658,7 +666,7 @@ func set_surface_slick(data: Vector4) -> void:
 	near_water.set_shader_parameter("surface_slick", data)
 
 
-func build_town() -> BuildingsDriveways:
+func build_town(paving_texture: Texture2D, terrain: Material) -> BuildingsDriveways:
 	var tile_image := Image.load_from_file(BASE + "deep_river_roofs.png")
 	tile_image.generate_mipmaps()
 	var textures := ImageTexture.create_from_image(tile_image)
@@ -676,10 +684,11 @@ func build_town() -> BuildingsDriveways:
 		detail_areas.append(lamure_patch.area)
 	var roads := RoadNetwork.new()
 	roads.build(self, meta, ground_height, marina_paving, detail_areas,
-		ROAD_SCAN, ROAD_NORMAL, concrete_scan, asphalt_scan)
+		ROAD_SCAN, ROAD_NORMAL, concrete_scan, asphalt_scan, GRAVEL_SCAN, GRAVEL_NORMAL, paving_texture)
 	buildings.build(self, footprints, textures, ground_height, meta.distance_scale,
 		scanned_surface("brick"), asphalt_scan, wood_scan, roads.paved, meta.streets,
 		regional_streets, meta.buildings, concrete_scan)
+	town_walkways = roads.build_walkways(buildings.driveways, concrete_scan, asphalt_scan, terrain)
 	windows = buildings.windows
 	bind_day_sky(windows)
 	add_child(town_hall)

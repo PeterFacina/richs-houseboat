@@ -1,0 +1,10 @@
+{
+  "11": {"name": "Deep River Road", "edges": [[76, 314, -1, 1.25, 1.45, "asphalt", true], [337, 635.94, -1, 1.1, 1.45, "asphalt", true]]},
+  "16": {"name": "Ridge Road west approach", "edges": [[0, 963, 1, 1.55, 1.4, "asphalt", false]]},
+  "32": {"name": "Hillcrest Avenue", "edges": [[595, 1304.67, 1, 1.12, 1.44, "concrete", true]]},
+  "34": {"name": "Glendale Avenue", "edges": [[0, 93, 1, 1.25, 1.5, "asphalt", true], [0, 93, -1, 0, 0, "concrete", true], [143, 282, 1, 1.15, 1.42, "asphalt", true]]},
+  "49": {"name": "Ridge Road", "edges": [[2, 1554, 1, 1.40, 1.48, "asphalt", false]]},
+  "63": {"name": "Silvie Street at Hillcrest", "edges": [[0, 22, 1, 0, 0, "concrete", true], [0, 22, -1, 0, 0, "concrete", true]]},
+  "67": {"name": "Deep River Road toward Beach Avenue", "edges": [[0, 179.06, 1, 1.22, 1.45, "asphalt", true]]},
+  "76": {"name": "Brockhouse Way", "edges": [[0, 274, 1, 1.32, 1.45, "asphalt", false], [570, 616, 1, 1.45, 1.40, "asphalt", false], [884, 936, 1, 1.20, 1.45, "asphalt", false]]}
+}

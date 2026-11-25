@@ -19,7 +19,6 @@ func setup(scene: Node3D) -> void:
 	name = "RegionalTravel"
 	data = JSON.parse_string(FileAccess.get_file_as_string("res://ottawa/regional_access.json"))
 	init_helipad()
-	for points: Array in data.mcanulty_roads: road(points, 6.4, false)
 	var outline: Array = data.cemetery
 	var center := Vector2.ZERO
 	for index in outline.size() - 1: center += Vector2(outline[index][0], outline[index][1])
@@ -29,11 +28,11 @@ func setup(scene: Node3D) -> void:
 	ski = ground(Vector2(at[0], at[1]))
 	var park: Array = data.markers["Grouse Park"]
 	var ski_trail := [[ski.x, ski.z], [ski.x - 80, ski.z + 140], park]
-	road(ski_trail, 2.2, true)
+	road(ski_trail, 2.2)
 	build_cemetery(outline)
 	# A short gameplay access route from the regional landing to a dam lookout.
 	var swisha: Vector3 = game.campaign.landings.sites[3].stand
-	road([[swisha.x, swisha.z], [2580, 3790], [2580, 3450], [2470, 3360], [2270, 3380]], 6.4, false, true)
+	road([[swisha.x, swisha.z], [2580, 3790], [2580, 3450], [2470, 3360], [2270, 3380]], 6.4, true)
 	clear_pad_trees()
 	plant_travel_groves(ski_trail)
 	clear_property_trees()
@@ -48,7 +47,7 @@ func ground(p: Vector2) -> Vector3:
 	return Vector3(p.x, game.river.ground_height(p.x, p.y) + .08, p.y)
 
 
-func road(points: Array, width: float, trail: bool, raised := false) -> void:
+func road(points: Array, width: float, raised := false) -> void:
 	var vertices := SurfaceTool.new()
 	vertices.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var centers: Array[Vector2] = []
@@ -82,10 +81,9 @@ func road(points: Array, width: float, trail: bool, raised := false) -> void:
 			var row := index + corner.x
 			var p := centers[row] + edges[row] * corner.y
 			var at := ground(p)
-			# Keep narrow terrain-following surfaces above the terrain and the
-			# older atlas street ribbons where their paths cross or overlap.
+			# Keep the narrow terrain-following trail above the ground.
 			at.y = heights[row] if raised else at.y + .10
-			vertices.set_uv(p*.25)
+			vertices.set_uv(Vector2(width * .5 * corner.y, 0.0))
 			vertices.add_vertex(at)
 		if raised and heights[index] - ground(centers[index]).y > .9:
 			for side: float in [-.94, .94]:
@@ -103,11 +101,16 @@ func road(points: Array, width: float, trail: bool, raised := false) -> void:
 					Kit.box_at(self, p + Vector3.UP * rise * .5, Vector3(.38, rise, .38), steel)
 	vertices.generate_normals()
 	var mesh := vertices.commit()
-	var material := Kit.paint(Color("#5c5746") if trail else Color("#454945"), .96)
-	if not trail:
-		material.albedo_texture = game.river.asphalt_scan
-		material.albedo_color = Color.WHITE
-	material.cull_mode = BaseMaterial3D.CULL_DISABLED
+	var material := ShaderMaterial.new()
+	if raised:
+		material.shader = preload("res://regional_road.gdshader")
+		material.set_shader_parameter("road_scan", game.river.ROAD_SCAN)
+		material.set_shader_parameter("road_normal", game.river.ROAD_NORMAL)
+	else:
+		material.shader = preload("res://regional_gravel.gdshader")
+		material.set_shader_parameter("half_width", width * .5)
+		material.set_shader_parameter("gravel_scan", game.river.GRAVEL_SCAN)
+		material.set_shader_parameter("gravel_normal", game.river.GRAVEL_NORMAL)
 	var surface := Kit.mesh_at(self, mesh, Vector3.ZERO, material)
 	if not raised:
 		surface.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
