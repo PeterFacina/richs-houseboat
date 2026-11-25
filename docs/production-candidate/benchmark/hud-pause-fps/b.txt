@@ -1,0 +1,67 @@
+Game knowledge revision 9097d61064bd0db0330832d1f355cb595bb0f5f7
+
+When the gameplay pause menu opens, temporarily hide the FPS and graphics-pres
+
+OBJECTIVE
+- When the gameplay pause menu opens, temporarily hide the FPS and graphics-preset lines even if F3 enabled them. Keep the date and time visible at the same top-right position.
+- After resuming, restore the prior F3 preference, including when that preference was off.
+- Check narrow and wide window bounds and switching an F4 preset after resume.
+- Preserve the live interaction hint without an empty objective row and keep waypoint distance updating.
+
+CURRENT PLAYER REQUEST (verbatim context)
+> When the gameplay pause menu opens, temporarily hide the FPS and graphics-preset lines even if F3 enabled them. Keep the date and time visible at the same top-right position. After resume restore the prior F3 preference, including when that preference was off. Check narrow and wide window bounds and switching an F4 preset after resume. Preserve the live interaction hint without an empty objective row and keep waypoint distance updating.
+
+PROJECT CONTEXT
+- The Godot project identifies itself as Rich’s Houseboat — Ottawa River. (godot-cove/project.godot:4)
+- The configured main scene is res://title_screen.tscn. (godot-cove/project.godot:5)
+- The project config selects the Compatibility renderer. (godot-cove/project.godot:33)
+
+SOURCES TO INSPECT
+- [S1] godot-cove/fishing.gd:1823
+- [S2] godot-cove/river_pause.gd:241
+- [S3] godot-cove/title_screen.gd:153
+- [S4] godot-cove/river_pause.gd:344
+- [S5] godot-cove/fishing.gd:281
+- [S6] godot-cove/river_pause.gd:50
+- [S7] godot-cove/river_backpack.gd:251
+- [S8] godot-cove/cove.gd:371
+- [S9] godot-cove/river_pause.gd:311
+- [S10] godot-cove/fishing.gd:455
+- [S11] godot-cove/river_pause.gd:101
+- [S12] docs/systems/FISHING-PLAYER.md:7
+- [S13] Source-verified lesson from issue #69 (verify before acting)
+
+VERIFIED LESSON FROM A COMPLETED TASK
+- Use [S13] as background for the current report.
+- Previously failed approach: Right alignment alone did not establish bounds at narrow sizes. Removing location text also removed a position used for waypoint distance.
+- Merged solution: Use a shared top-right layout container, keep the clock above FPS, hide an empty objective, and retain the position used by distance updates.
+- Review feedback: PR #70 review identified that alignment alone left FPS overflow unverified. It requested measured bounds across presets, F3 checks, and preservation of mission and action hints.
+- Verification: Merged source confirms wiring. Inspect actual bounds, toggle states and viewport sizes during a playtest.
+- Original records: https://github.com/PeterFacina/richs-houseboat/issues/69 and https://github.com/PeterFacina/richs-houseboat/pull/70
+
+IMPLEMENTATION
+- Reproduce the reported behavior in the selected baseline. Implement the smallest effective change after confirming the cause.
+- Reproduce the pause menu behavior with F3 enabled and disabled, and observe the visibility of FPS and graphics-preset lines.
+- Verify the position and visibility of the date and time during pause and resume.
+- Test the pause menu on narrow and wide window sizes, and after switching an F4 preset, to ensure layout stability.
+- Confirm that the live interaction hint remains visible and that waypoint distance updates are preserved during pause and resume.
+- Inspect the `apply_settings` and `update_hud` functions to determine how F3 preferences are stored and restored.
+
+VERIFICATION
+- After implementing the change, verify that FPS and graphics-preset lines are hidden during pause, and that they are restored correctly after resume, regardless of F3 state.
+- Ensure that the date and time remain visible and positioned at the top-right during pause and resume.
+- Test the pause menu on different window sizes and after switching an F4 preset to confirm layout stability.
+- Confirm that the live interaction hint is not replaced by an empty objective row and that waypoint distance updates continue during pause and resume.
+
+ACCEPTANCE CRITERIA
+- FPS and graphics-preset lines are hidden during pause and restored after resume, with F3 preferences preserved.
+- Date and time remain visible and positioned at the top-right during pause and resume.
+- Pause menu layout is stable across narrow and wide window sizes and after switching an F4 preset.
+- Live interaction hint is preserved without an empty objective row, and waypoint distance updates continue during pause and resume.
+
+OPEN QUESTIONS
+- The exact code responsible for rendering the date and time is not provided in the source excerpts [S13].
+- The behavior of waypoint distance updates during pause is not explicitly defined in the provided code [S7].
+
+HANDOFF
+- Report the changed files, actual test results, any screenshots captured, and remaining gaps. Preserve existing controls, saves, and unrelated behavior.

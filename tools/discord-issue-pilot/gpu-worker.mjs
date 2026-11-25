@@ -10,9 +10,11 @@ import { sourceKnowledge } from './source-knowledge.mjs';
 import { workerGeneration } from './worker-generation.mjs';
 import { repository } from './workflow.mjs';
 import { openTrainingInbox } from './training-inbox.mjs';
+import { retrievalConfig } from './production-retrieval.mjs';
 
 const token = process.env.GITHUB_TOKEN;
 const model = process.env.STUDIO_MODEL ?? 'qwen3:14b';
+const retrieval = retrievalConfig(process.env.HOUSEBOAT_RETRIEVAL_MODE, process.env.HOUSEBOAT_RETRIEVAL_CANARY_ISSUES);
 if (!token) throw new Error('Set GITHUB_TOKEN in the worker’s local .worker.env file.');
 if (!isLocalModel(model)) throw new Error('STUDIO_MODEL must name a tagged local model.');
 const stop = new AbortController();
@@ -80,7 +82,8 @@ try {
   } catch (error) {
     console.error(error.message);
   }
-  generation = await workerGeneration({ storage, model, knowledge, github, inbox });
+  generation = await workerGeneration({ storage, model, knowledge, github, inbox, retrieval });
+  console.log(`Worker retrieval mode ${retrieval.mode}${retrieval.issues.size ? ' for canary issues ' + [...retrieval.issues].join(',') : ''}.`);
   console.log('Houseboat GPU worker is watching GitHub for queued reports.');
   while (!stop.signal.aborted) {
     try { await poll(generation.generate, inbox.link); } catch (error) {

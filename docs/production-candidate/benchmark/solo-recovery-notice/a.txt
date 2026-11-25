@@ -1,0 +1,67 @@
+Game knowledge revision 9097d61064bd0db0330832d1f355cb595bb0f5f7
+
+When a solo trip loads a campaign from its last good backup because the primar
+
+OBJECTIVE
+- Display a one-time in-game recovery notice when a solo trip loads a campaign from its last good backup due to a corrupt or absent primary save.
+- Ensure the notice is not shown for a healthy primary save or a fresh slot.
+- Preserve the recovered backup on the next successful save.
+- Resume normal rotation on a later save and leave the catch journal untouched.
+- Do not add saved fields or change crew behavior.
+- Run the existing save recovery checks against isolated fixture data.
+
+CURRENT PLAYER REQUEST (verbatim context)
+> When a solo trip loads a campaign from its last good backup because the primary save is corrupt or absent, show a brief one-time in-game recovery notice on entering that trip. A healthy primary or a fresh slot must not show it. Preserve the recovered backup on the next successful save, resume normal rotation on a later save and leave the catch journal untouched. Do not add saved fields or change crew behavior. Run the existing save recovery checks against isolated fixture data.
+
+PROJECT CONTEXT
+- The Godot project identifies itself as Rich’s Houseboat — Ottawa River. (godot-cove/project.godot:4)
+- The configured main scene is res://title_screen.tscn. (godot-cove/project.godot:5)
+- The project config selects the Compatibility renderer. (godot-cove/project.godot:33)
+
+SOURCES TO INSPECT
+- [S1] godot-cove/solo_slot_menu.gd:90
+- [S2] godot-cove/fishing.gd:1576
+- [S3] godot-cove/river_ledger.gd:30
+- [S4] godot-cove/river_pause.gd:342
+- [S5] godot-cove/fishing.gd:1602
+- [S6] godot-cove/river_ledger.gd:19
+- [S7] godot-cove/solo_saves.gd:20
+- [S8] godot-cove/river_campaign.gd:82
+- [S9] godot-cove/verify_solo_slots.gd:40
+- [S10] godot-cove/solo_slot_menu.gd:118
+- [S11] godot-cove/river_ledger.gd:60
+- [S12] docs/systems/PROGRESSION-ECONOMY.md:8
+
+IMPLEMENTATION
+- Reproduce the reported behavior in the selected baseline. Implement the smallest effective change after confirming the cause.
+- Reproduce the scenario where a solo trip loads a campaign from a backup due to a corrupt or absent primary save.
+- Inspect the code responsible for detecting save corruption or absence and triggering recovery.
+- Identify the logic that displays in-game notices and ensure it is triggered only in the correct scenario.
+- Verify that the recovered backup is preserved on the next successful save.
+- Confirm that the catch journal is not modified during the recovery process.
+- Ensure no new saved fields are introduced and crew behavior remains unchanged.
+- Validate that the existing save recovery checks are applied against isolated fixture data.
+
+VERIFICATION
+- After loading a campaign from a backup, does the one-time recovery notice appear only once and not on subsequent loads? [S10]
+- Does the system not show the recovery notice when a healthy primary save is used or when a fresh slot is loaded? [S1]
+- Is the recovered backup preserved on the next successful save, and does the system resume normal rotation on a later save? [S7]
+- Is the catch journal untouched and not modified during the recovery process? [S2]
+- Are no new saved fields introduced, and does crew behavior remain unchanged? [S6]
+- Are the existing save recovery checks applied against isolated fixture data without errors? [S9]
+
+ACCEPTANCE CRITERIA
+- A one-time in-game recovery notice is shown when a solo trip loads a campaign from a backup due to a corrupt or absent primary save.
+- The notice is not shown for a healthy primary save or a fresh slot.
+- The recovered backup is preserved on the next successful save.
+- Normal rotation resumes on a later save, and the catch journal remains untouched.
+- No new saved fields are introduced, and crew behavior remains unchanged.
+- The existing save recovery checks are applied against isolated fixture data without errors.
+
+OPEN QUESTIONS
+- Whether the recovery notice is displayed correctly in all relevant UI contexts.
+- Whether the recovery notice is localized or accessible to all players.
+- Whether the recovery notice is compatible with future save formats or system changes.
+
+HANDOFF
+- Report the changed files, actual test results, any screenshots captured, and remaining gaps. Preserve existing controls, saves, and unrelated behavior.

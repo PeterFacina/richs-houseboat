@@ -1,0 +1,56 @@
+Game knowledge revision 9097d61064bd0db0330832d1f355cb595bb0f5f7
+
+Give a road-car guest driver a brief HUD status while the host is braking beca
+
+OBJECTIVE
+- Display a brief HUD status to a road-car guest driver when their input expires during host braking.
+- Clear the HUD status when the host receives fresh input or when the guest leaves the seat.
+- Ensure the HUD status is not visible to other riders or solo players.
+- Host-authoritative status must be used, with no changes to steering, braking, camera, or engine mix.
+
+CURRENT PLAYER REQUEST (verbatim context)
+> Give a road-car guest driver a brief HUD status while the host is braking because that guest's driving input expired. Clear the status when the host receives fresh input and when the guest leaves the seat. Check simulated missing input during a turn and recovery by the same driver. Use host-authoritative status, keep steering, braking, camera and engine mix unchanged and do not show the status to other riders or solo players.
+
+PROJECT CONTEXT
+- The Godot project identifies itself as Rich’s Houseboat — Ottawa River. (godot-cove/project.godot:4)
+- The configured main scene is res://title_screen.tscn. (godot-cove/project.godot:5)
+- The project config selects the Compatibility renderer. (godot-cove/project.godot:33)
+
+SOURCES TO INSPECT
+- [S1] godot-cove/fishing.gd:1898
+- [S2] godot-cove/fishing.gd:662
+- [S3] godot-cove/marina_cars.gd:265
+- [S4] godot-cove/river_crew.gd:60
+- [S5] godot-cove/cove.gd:357
+- [S6] godot-cove/lawn_mower.gd:272
+- [S7] godot-cove/river_lobby.gd:106
+- [S8] godot-cove/lawn_mower.gd:256
+- [S9] godot-cove/marina_cars.gd:394
+- [S10] godot-cove/marina_cars.gd:416
+- [S11] godot-cove/lawn_mower.gd:265
+- [S12] docs/ARCHITECTURE.md:15
+
+IMPLEMENTATION
+- Reproduce the reported behavior in the selected baseline. Implement the smallest effective change after confirming the cause.
+- Reproduce the scenario where a guest driver's input expires during host braking and confirm that the HUD status appears as expected.
+- Verify that the HUD status is cleared when the host resumes receiving input or when the guest leaves the seat.
+- Ensure that the HUD status is not visible to other riders or solo players.
+- Confirm that the host maintains authoritative control over the status display and that no changes occur to steering, braking, camera, or engine mix.
+
+VERIFICATION
+- Confirm that the HUD status appears only when a guest driver's input expires during host braking.
+- Verify that the HUD status is cleared when the host resumes receiving input or when the guest leaves the seat.
+- Ensure that the HUD status is not visible to other riders or solo players.
+- Confirm that the host maintains authoritative control over the status display and that no changes occur to steering, braking, camera, or engine mix.
+
+ACCEPTANCE CRITERIA
+- The HUD status appears briefly to the guest driver when their input expires during host braking.
+- The HUD status is cleared when the host resumes receiving input or when the guest leaves the seat.
+- The HUD status is not visible to other riders or solo players.
+- The host maintains authoritative control over the status display, with no changes to steering, braking, camera, or engine mix.
+
+OPEN QUESTIONS
+- The exact implementation details for the HUD status display are not currently available in the provided code.
+
+HANDOFF
+- Report the changed files, actual test results, any screenshots captured, and remaining gaps. Preserve existing controls, saves, and unrelated behavior.

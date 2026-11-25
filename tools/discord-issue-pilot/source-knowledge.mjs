@@ -113,6 +113,15 @@ export function sourceKnowledge({ db, storage, remote, python = 'python', log = 
       const input = JSON.stringify({ catalog, note, tasks });
       return JSON.parse(await command(python, [selector], 10_000, input));
     },
+    async withVerifiedCheckout(commit, use) {
+      const manifest = indexedKnowledge(db);
+      if (manifest?.revision !== commit || (await git('rev-parse', 'HEAD')).trim() !== commit ||
+          (await git('status', '--porcelain', '--untracked-files=all')).trim()) {
+        throw new Error('The source checkout does not match the indexed revision.');
+      }
+      const tracked = (await git('ls-files', '-z')).split('\0').filter(Boolean);
+      return use(source, manifest, tracked);
+    },
   };
 }
 

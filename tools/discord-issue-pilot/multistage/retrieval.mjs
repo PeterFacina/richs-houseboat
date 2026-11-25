@@ -109,7 +109,9 @@ export function historical(index, query, excludeHistory) {
       excerpt: item.title }));
 }
 
-export async function collectEvidence(index, note, { planner, signal = AbortSignal.timeout(75_000), excludeHistory = new Set() } = {}) {
+export async function collectEvidence(index, note, {
+  planner, signal = AbortSignal.timeout(75_000), excludeHistory = new Set(), budget = BUDGET, extra = [],
+} = {}) {
   note = note.slice(0, 6500);
   const query = index.query(note);
   const ranked = leads(index, note, query);
@@ -202,8 +204,10 @@ export async function collectEvidence(index, note, { planner, signal = AbortSign
     if (passage) context.push(passage);
   }
   context.push(...historical(index, query, excludeHistory));
+  context.push(...extra);
   const contextLength = context.reduce((sum, item) => sum + item.excerpt.length, 0);
-  const limit = Math.min(760, Math.floor((BUDGET - contextLength) / Math.max(1, picked.size)));
+  const limit = Math.min(760, Math.floor((budget - contextLength) / Math.max(1, picked.size)));
+  if (limit < 100) throw new Error('Source excerpt budget exhausted.');
   const source = [...picked.values()].map(({ item, query: relevant }) => windows(item, relevant, limit)).filter(Boolean);
   const evidence = [...source, ...context].map((item, i) => ({ ...item, id: 'S' + (i + 1) }));
   index.verify(evidence);

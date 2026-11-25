@@ -14,6 +14,8 @@ HUD and multiplayer helm requests use source functions associated with the repor
 
 The [held-out evaluation](GPU-HELDOUT-EVALUATION.md) compares the general route and a separate reviewer pass across five reports. See [private inbox backup and recovery](GPU-TRAINING-BACKUP.md) for the online SQLite restore drill and the off-device recovery plan.
 
+See the [production candidate runbook](production-candidate/README.md) for the optional deterministic mode, verified lesson export, canary settings and rollback checks. The default worker retrieval remains the original route.
+
 ## Install and verify
 
 - Use Node.js 24, Git with sparse checkout and partial fetch support, Python 3.9 or newer, and the existing local Ollama with `qwen3:14b`. If `python` is an app alias or is absent, set `HOUSEBOAT_KNOWLEDGE_PYTHON` to the path of an installed Python executable. Set it in the worker launcher environment or local `.worker.env`.

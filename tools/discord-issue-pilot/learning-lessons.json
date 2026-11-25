@@ -25,6 +25,7 @@
       ],
       "failure": "Right alignment alone did not establish bounds at narrow sizes. Removing location text also removed a position used for waypoint distance.",
       "success": "Use a shared top-right layout container, keep the clock above FPS, hide an empty objective, and retain the position used by distance updates.",
+      "feedback": "PR #70 review identified that alignment alone left FPS overflow unverified. It requested measured bounds across presets, F3 checks, and preservation of mission and action hints.",
       "verification": "Merged source confirms wiring. Inspect actual bounds, toggle states and viewport sizes during a playtest.",
       "provenance": [
         {

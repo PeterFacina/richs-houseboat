@@ -49,9 +49,10 @@ export function openTrainingInbox(path = trainingPath()) {
         if (!capture) throw new Error('Approval needs the ID of a published capture.');
         if (typeof review.reviewer !== 'string' || !review.reviewer.trim()) throw new Error('Name the reviewer.');
         const original = JSON.parse(capture.input.request.messages.find(message => message.role === 'user').content);
+        const evidence = capture.input.exportEvidence ?? original.untrustedRetrievedEvidence;
         const brief = buildDraft(review.target, 'Reviewed brief', original.verifiedProjectFacts,
-          original.untrustedRetrievedEvidence, original.currentRequest.note);
-        const findings = checkExport(brief, original.untrustedRetrievedEvidence, original.verifiedProjectFacts);
+          evidence, original.currentRequest.note);
+        const findings = checkExport(brief, evidence, original.verifiedProjectFacts);
         if (findings.length) throw new Error('Target export rejected: ' + findings.join(', '));
       } else if (review.status !== 'feedback') {
         throw new Error('Use status feedback or approved.');

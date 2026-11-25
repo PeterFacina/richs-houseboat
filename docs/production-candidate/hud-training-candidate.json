@@ -1,0 +1,42 @@
+{
+  "issue": 69,
+  "prUrl": "https://github.com/PeterFacina/richs-houseboat/pull/70",
+  "reportUrl": "https://github.com/PeterFacina/richs-houseboat/issues/69",
+  "sourceRevision": "9097d61064bd0db0330832d1f355cb595bb0f5f7",
+  "status": "pending-human-review",
+  "reviewer": null,
+  "captureId": null,
+  "summary": "Source-checked correction for the published HUD assignment. Right alignment left overflow unverified. Later commits use a top-right container, put the date and time above FPS, hide the empty objective row and restore the position used for waypoint distance. Runtime bounds and screenshots are still required.",
+  "originalRequirements": [
+    "Keep the FPS and preset lines visible within the screen on all graphics presets and viewport sizes.",
+    "Move date and time to the top right, preserve F3 and avoid a gap when the optional diagnostics are hidden.",
+    "Remove persistent location banners and keep the existing live objective text in the top left.",
+    "Preserve styling, interaction and objective behavior. Check the HUD in game and capture screenshots."
+  ],
+  "target": {
+    "objective": [
+      "Fit the FPS, graphics-preset and date/time displays at the top right across graphics presets and viewport sizes. Preserve the F3 toggle and existing visual style.",
+      "Remove persistent location banners while keeping dynamic objective and action hints at the top left. Preserve waypoint distance and mission text."
+    ],
+    "observations": [
+      "Does the FPS label's measured right bound exceed the viewport in Performance mode, even with right-aligned text?",
+      "Which live hints, waypoint distances and mission states still need the player or vessel position after removal of the location banners?"
+    ],
+    "tasks": [
+      "Reproduce the reported overflow before changing layout. Measure the label and container bounds, using the existing theme.",
+      "Use a top-right layout container with the date/time row above the optional FPS and graphics-preset rows. Keep F3 tied to those diagnostics.",
+      "Hide the empty objective row while preserving the current objective and interaction logic. Retain the position calculation used for waypoint distance."
+    ],
+    "verification": [
+      "Measure rendered Control bounds at narrow and wide resolutions across all graphics presets. Check F3 both ways in active gameplay and around pause and resume.",
+      "Exercise live objectives, interaction hints and waypoint movement. Capture screenshots with diagnostics shown and hidden. Record any runtime checks that could not be run."
+    ],
+    "acceptance": [
+      "The diagnostics fit within the viewport and the clock stays anchored when they are hidden.",
+      "The top-left HUD shows the live hint without an empty row. Mission and waypoint text still update and the existing theme is preserved."
+    ],
+    "unknowns": [
+      "The merged source confirms wiring. Review of actual bounds and screenshots across presets is still pending."
+    ]
+  }
+}

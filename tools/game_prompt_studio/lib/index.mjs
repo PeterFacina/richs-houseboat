@@ -181,7 +181,7 @@ const terms = text => [...new Set(text.replace(/([a-z])([A-Z])/g, '$1 $2').toLow
   .split(/[\W_]+/u).filter(word => word.length > 2 && !stop.has(word)))];
 const genericSymbols = new Set(['at', 'text', 'layout', 'label', 'update', 'setup', 'show', 'hide']);
 
-export function findEvidence(db, note, focus, budget, { manifest, selection = {}, rankedSources = [] } = {}) {
+export function findEvidence(db, note, focus, budget, { manifest, selection = {}, rankedSources = [], original = false } = {}) {
   const tokens = terms(note + ' ' + focus.join(' ')).slice(0, 32);
   const query = tokens.map(word => '"' + word + '"*').join(' OR ');
   const rows = query ? db.prepare(
@@ -201,7 +201,7 @@ export function findEvidence(db, note, focus, budget, { manifest, selection = {}
     if (row) add({ ...row, kind: guide.test(path) ? 'guide' : 'source', reason: 'Selected file' }, 850);
   }
   const sourceCount = () => result.filter(item => item.kind === 'source').length;
-  const routed = rankedSources.length ? { passages: rankedSources, guides: selection.guides ?? [] } :
+  const routed = original ? null : rankedSources.length ? { passages: rankedSources, guides: selection.guides ?? [] } :
     routedSourcePassages(db, manifest, note);
   const bestChunk = path => (query && db.prepare(
     'SELECT path,line,excerpt,bm25(chunks,3,0,1) AS score FROM chunks WHERE chunks MATCH ? AND path=? ORDER BY score,line LIMIT 1'
@@ -211,7 +211,7 @@ export function findEvidence(db, note, focus, budget, { manifest, selection = {}
   const explicitSymbols = new Set(note.toLowerCase().match(/\b[a-z][a-z0-9]*(?:_[a-z0-9]+)+\b/g) ?? []);
   for (const { path, symbols } of selection.matches ?? []) {
     if (sourceCount() >= (routed ? 2 : 3)) break;
-    const symbol = symbols.find(item => routed ? explicitSymbols.has(item.name.toLowerCase()) :
+    const symbol = original ? symbols[0] : symbols.find(item => routed ? explicitSymbols.has(item.name.toLowerCase()) :
       !genericSymbols.has(item.name.toLowerCase()));
     if (!symbol || result.some(item => item.path === path)) continue;
     const row = atLine.get(path, symbol.line);
@@ -258,7 +258,7 @@ export function findEvidence(db, note, focus, budget, { manifest, selection = {}
     [/\b(?:fish(?:ing)?|rods?|reel|lure|bobber)\b/i, ['fishing_rig.gd', 'fishing.gd']],
     [/\b(?:hands?|grips?|avatar|held|props?)\b/i, ['crew_avatar.gd', 'crew_play.gd']],
     [/\b(?:multiplayer|host|guest|remote|replicat\w*|friends)\b/i, ['river_crew.gd', 'crew_avatar.gd']],
-    [/\b(?:face|limb|neck|topology)\b/i, ['rich_model.gd', 'rich_npc.gd']],
+    [original ? /\b(?:rich|face|limb|neck|topology)\b/i : /\b(?:face|limb|neck|topology)\b/i, ['rich_model.gd', 'rich_npc.gd']],
     [/\b(?:cooler|bong|drink|vape|cabin)\b/i, ['cabin_props.gd', 'cabin_life.gd']]
   ];
   for (const [pattern, names] of areas) {

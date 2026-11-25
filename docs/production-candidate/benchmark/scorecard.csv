@@ -1,0 +1,7 @@
+case,packet,model,reasoning_setting,input_tokens,cached_input_tokens,output_tokens,reasoning_tokens,development_seconds,correction_seconds,incorrect_assumptions,unnecessary_source_steps,acceptance_passed,acceptance_failed,acceptance_unverified,automated_tests,human_corrections,first_attempt_success,patch_or_log_reference,notes
+hud-pause-fps,A,,,,,,,,,,,,,,,,,,
+hud-pause-fps,B,,,,,,,,,,,,,,,,,,
+solo-recovery-notice,A,,,,,,,,,,,,,,,,,,
+solo-recovery-notice,B,,,,,,,,,,,,,,,,,,
+guest-car-input-status,A,,,,,,,,,,,,,,,,,,
+guest-car-input-status,B,,,,,,,,,,,,,,,,,,

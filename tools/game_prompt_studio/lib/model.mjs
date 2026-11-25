@@ -1,3 +1,5 @@
+import { lessonSection } from './verified-lesson.mjs';
+
 export const tiers = {
   quick: { words: '180–350', tokens: 850 },
   detailed: { words: '350–650', tokens: 1550 },
@@ -40,7 +42,11 @@ function canonicalPath(path) {
 }
 
 export function checkExport(text, evidence, facts = []) {
-  const normalized = text.normalize('NFKC').replace(/\p{Cf}/gu, '').replace(/\s+/gu, ' ');
+  // Permit the two repository links only in the exact server-rendered lesson block.
+  const lesson = lessonSection(evidence);
+  const block = lesson && '\n\n' + lesson.text + '\n\n';
+  const guarded = block && text.includes(block) ? text.replace(block, () => block.replace(lesson.sourceLine, '- Original records')) : text;
+  const normalized = guarded.normalize('NFKC').replace(/\p{Cf}/gu, '').replace(/\s+/gu, ' ');
   const findings = [];
   if (text !== text.replace(/\p{Cf}/gu, '') || /[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/.test(text)) findings.push('Hidden control characters');
   for (const [pattern, label] of unsafe) if (pattern.test(normalized)) findings.push(label);
@@ -91,11 +97,13 @@ export function buildDraft(payload, title, facts, evidence, note = "") {
     .map(item => '- [' + item.id + '] ' + item.path + ':' + item.line);
   const memory = evidence.filter(item => item.kind !== 'source' && item.kind !== 'guide').map(item => '- [' + item.id + '] ' +
     ({ reported: 'Historical player report', imported: 'Imported history', history: 'Studio history',
-      attachment: 'User description of a stored screenshot', github: item.title })[item.kind] + ' (verify before acting)');
+      attachment: 'User description of a stored screenshot', github: item.title, 'verified-lesson': item.title })[item.kind] + ' (verify before acting)');
   sections.splice(2, 0, 'PROJECT CONTEXT\n' + (profile.length ? profile.join('\n') : '- No project profile facts were confirmed by the index.'),
     'SOURCES TO INSPECT\n' + (sources.length ? sources.join('\n') : '- No relevant source file was matched. Inspect the current project first.') +
       (memory.length ? '\n' + memory.join('\n') : ''));
-  if (note.trim() && !checkExport(note, evidence, facts).length) {
+  const lesson = lessonSection(evidence);
+  if (lesson) sections.splice(4, 0, lesson.text);
+  if (note.trim() && !checkExport(note, evidence.filter(item => item.kind !== 'verified-lesson'), facts).length) {
     const quotations = note.trim().split(/\r?\n/).map(line => '> ' + line).join('\n');
     sections.splice(2, 0, 'CURRENT PLAYER REQUEST (verbatim context)\n' + quotations);
   }

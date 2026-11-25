@@ -1,0 +1,64 @@
+Game knowledge revision 9097d61064bd0db0330832d1f355cb595bb0f5f7
+
+When a solo trip loads a campaign from its last good backup because the primar
+
+OBJECTIVE
+- Display a one-time in-game recovery notice when a solo trip loads a campaign from its last good backup due to a corrupt or absent primary save.
+- Ensure the notice is not shown for a healthy primary save or a fresh slot.
+- Preserve the recovered backup on the next successful save.
+- Resume normal rotation on a later save.
+- Leave the catch journal untouched.
+- Do not add saved fields or change crew behavior.
+- Run the existing save recovery checks against isolated fixture data.
+
+CURRENT PLAYER REQUEST (verbatim context)
+> When a solo trip loads a campaign from its last good backup because the primary save is corrupt or absent, show a brief one-time in-game recovery notice on entering that trip. A healthy primary or a fresh slot must not show it. Preserve the recovered backup on the next successful save, resume normal rotation on a later save and leave the catch journal untouched. Do not add saved fields or change crew behavior. Run the existing save recovery checks against isolated fixture data.
+
+PROJECT CONTEXT
+- The Godot project identifies itself as Rich’s Houseboat — Ottawa River. (godot-cove/project.godot:4)
+- The configured main scene is res://title_screen.tscn. (godot-cove/project.godot:5)
+- The project config selects the Compatibility renderer. (godot-cove/project.godot:33)
+
+SOURCES TO INSPECT
+- [S1] godot-cove/river_campaign.gd:203
+- [S2] godot-cove/fishing.gd:321
+- [S3] godot-cove/crew_play.gd:830
+- [S4] docs/systems/PROGRESSION-ECONOMY.md:1
+- [S5] docs/systems/BOAT-WATER.md:1
+- [S6] godot-cove/boat_amenities.gd:23
+- [S7] godot-cove/verify_solo_slots.gd:45
+- [S8] Studio history (verify before acting)
+- [S9] Studio history (verify before acting)
+
+IMPLEMENTATION
+- Reproduce the reported behavior in the selected baseline. Implement the smallest effective change after confirming the cause.
+- Reproduce the scenario where a solo trip loads from a backup due to a corrupt or absent primary save.
+- Inspect the existing save recovery logic in the project to identify where the check for backup data is performed.
+- Locate the code responsible for displaying in-game notices and determine how to trigger the recovery notice conditionally.
+- Modify the recovery notice logic to ensure it is shown only when the primary save is corrupt or absent and the backup is used.
+- Ensure the notice is not shown when the primary save is healthy or the slot is fresh.
+- Update the save logic to preserve the recovered backup on the next successful save.
+- Verify that the catch journal remains untouched during the recovery process.
+- Test the recovery notice behavior across different save states and ensure it does not affect crew behavior or add new saved fields.
+
+VERIFICATION
+- Confirm the recovery notice appears only when the primary save is corrupt or absent and the backup is used.
+- Verify the notice does not appear for a healthy primary save or a fresh slot.
+- Ensure the recovered backup is preserved on the next successful save.
+- Check that normal rotation resumes on a later save without issues.
+- Validate that the catch journal remains unchanged during and after the recovery process.
+- Confirm no new saved fields are added and crew behavior is unaffected.
+
+ACCEPTANCE CRITERIA
+- The recovery notice is shown only when required and not shown otherwise.
+- The recovered backup is preserved and used correctly on the next save.
+- The catch journal remains untouched and unaffected.
+- No new saved fields are added, and crew behavior is unchanged.
+
+OPEN QUESTIONS
+- The exact location of the backup data storage and retrieval logic.
+- The specific UI element used to display the recovery notice.
+- The exact conditions under which the primary save is considered healthy or corrupt.
+
+HANDOFF
+- Report the changed files, actual test results, any screenshots captured, and remaining gaps. Preserve existing controls, saves, and unrelated behavior.

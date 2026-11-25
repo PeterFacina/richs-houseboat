@@ -1,0 +1,58 @@
+Game knowledge revision 9097d61064bd0db0330832d1f355cb595bb0f5f7
+
+Give a road-car guest driver a brief HUD status while the host is braking beca
+
+OBJECTIVE
+- Display a brief HUD status to a road-car guest driver when their driving input expires during host braking.
+- Clear the HUD status when the host receives fresh input or when the guest leaves the seat.
+- Simulate missing input during a turn and verify recovery by the same driver.
+- Ensure the HUD status is host-authoritative and not visible to other riders or solo players.
+
+CURRENT PLAYER REQUEST (verbatim context)
+> Give a road-car guest driver a brief HUD status while the host is braking because that guest's driving input expired. Clear the status when the host receives fresh input and when the guest leaves the seat. Check simulated missing input during a turn and recovery by the same driver. Use host-authoritative status, keep steering, braking, camera and engine mix unchanged and do not show the status to other riders or solo players.
+
+PROJECT CONTEXT
+- The Godot project identifies itself as Rich’s Houseboat — Ottawa River. (godot-cove/project.godot:4)
+- The configured main scene is res://title_screen.tscn. (godot-cove/project.godot:5)
+- The project config selects the Compatibility renderer. (godot-cove/project.godot:33)
+
+SOURCES TO INSPECT
+- [S1] godot-cove/river_crew.gd:60
+- [S2] godot-cove/river_regions.gd:51
+- [S3] godot-cove/marina_cars.gd:125
+- [S4] docs/systems/MULTIPLAYER.md:1
+- [S5] docs/systems/BOAT-WATER.md:1
+- [S6] godot-cove/marina_car.gd:67
+- [S7] godot-cove/crew_avatar.gd:155
+- [S8] Historical player report (verify before acting)
+- [S9] Studio history (verify before acting)
+- [S10] Historical player report (verify before acting)
+
+IMPLEMENTATION
+- Reproduce the reported behavior in the selected baseline. Implement the smallest effective change after confirming the cause.
+- Reproduce the scenario where a guest driver's input expires during host braking and verify if the HUD status is displayed correctly.
+- Inspect the code for guest driver seat status tracking and input expiration detection. [S3]
+- Identify or create a HUD element that can be used to display the status to the guest driver only. [S7]
+- Implement the host-authoritative status logic to ensure it is not visible to other riders or solo players. [S1]
+- Simulate missing input during a turn and verify that the guest driver can recover input correctly. [S3]
+- Ensure that the HUD status is cleared when the host receives fresh input or when the guest leaves the seat. [S1]
+
+VERIFICATION
+- Verify that the HUD status is displayed only to the guest driver when their input expires during host braking.
+- Confirm that the HUD status is cleared when the host receives fresh input or when the guest leaves the seat.
+- Validate that the status is not visible to other riders or solo players.
+- Check that the simulation of missing input during a turn and recovery by the same driver works as expected.
+
+ACCEPTANCE CRITERIA
+- The guest driver receives a brief HUD status when their input expires during host braking.
+- The HUD status is cleared when the host receives fresh input or when the guest leaves the seat.
+- The status is host-authoritative and not visible to other riders or solo players.
+- The system correctly simulates missing input during a turn and verifies recovery by the same driver.
+
+OPEN QUESTIONS
+- Whether the current system can distinguish between guest and host input expiration events.
+- Whether the existing HUD elements can be repurposed or if new ones need to be created.
+- Whether the host authoritative status can be implemented without affecting other systems.
+
+HANDOFF
+- Report the changed files, actual test results, any screenshots captured, and remaining gaps. Preserve existing controls, saves, and unrelated behavior.

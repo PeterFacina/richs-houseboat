@@ -1,0 +1,58 @@
+Game knowledge revision 9097d61064bd0db0330832d1f355cb595bb0f5f7
+
+When the gameplay pause menu opens, temporarily hide the FPS and graphics-pres
+
+OBJECTIVE
+- When the gameplay pause menu opens, temporarily hide the FPS and graphics-preset lines even if F3 enabled them. Keep the date and time visible at the same top-right position.
+- After resuming, restore the prior F3 preference, including when that preference was off.
+- Check narrow and wide window bounds and switching an F4 preset after resume.
+- Preserve the live interaction hint without an empty objective row and keep waypoint distance updating.
+
+CURRENT PLAYER REQUEST (verbatim context)
+> When the gameplay pause menu opens, temporarily hide the FPS and graphics-preset lines even if F3 enabled them. Keep the date and time visible at the same top-right position. After resume restore the prior F3 preference, including when that preference was off. Check narrow and wide window bounds and switching an F4 preset after resume. Preserve the live interaction hint without an empty objective row and keep waypoint distance updating.
+
+PROJECT CONTEXT
+- The Godot project identifies itself as Rich’s Houseboat — Ottawa River. (godot-cove/project.godot:4)
+- The configured main scene is res://title_screen.tscn. (godot-cove/project.godot:5)
+- The project config selects the Compatibility renderer. (godot-cove/project.godot:33)
+
+SOURCES TO INSPECT
+- [S1] godot-cove/river_pause.gd:101
+- [S2] godot-cove/river_menu_theme.gd:177
+- [S3] godot-cove/cove.gd:133
+- [S4] godot-cove/fishing.gd:1013
+- [S5] godot-cove/river_backpack.gd:177
+- [S6] Historical player report (verify before acting)
+- [S7] Historical player report (verify before acting)
+- [S8] Historical player report (verify before acting)
+
+IMPLEMENTATION
+- Reproduce the reported behavior in the selected baseline. Implement the smallest effective change after confirming the cause.
+- Reproduce the pause menu behavior with F3 enabled and disabled, and verify the visibility of FPS and graphics-preset lines.
+- Verify that the date and time remain visible at the top-right position during the pause menu.
+- Inspect the `cove.gd` file [S3] to determine how the FPS and graphics-preset lines are managed and ensure they are hidden during the pause menu.
+- Track the F3 preference state before pausing and restore it after resuming.
+- Test the F4 preset switching behavior in both narrow and wide window bounds after resuming from the pause menu.
+- Ensure the live interaction hint is preserved without an empty objective row and that waypoint distance updates continue during the pause menu.
+
+VERIFICATION
+- After implementing the changes, verify that the FPS and graphics-preset lines are hidden during the pause menu and restored after resuming.
+- Ensure that the date and time remain visible at the top-right position during the pause menu.
+- Confirm that the F3 preference is restored correctly after resuming from the pause menu, including when it was off.
+- Test the F4 preset switching behavior in both narrow and wide window bounds after resuming from the pause menu.
+- Verify that the live interaction hint is preserved without an empty objective row and that waypoint distance updates continue during the pause menu.
+
+ACCEPTANCE CRITERIA
+- The FPS and graphics-preset lines are hidden during the pause menu and restored after resuming.
+- The date and time remain visible at the top-right position during the pause menu.
+- The F3 preference is restored correctly after resuming from the pause menu, including when it was off.
+- The F4 preset switching behavior works correctly in both narrow and wide window bounds after resuming from the pause menu.
+- The live interaction hint is preserved without an empty objective row and waypoint distance updates continue during the pause menu.
+
+OPEN QUESTIONS
+- The exact method for tracking and restoring the F3 preference state is not currently implemented.
+- The behavior of the F4 preset switching after resuming from the pause menu is not currently tested.
+- The impact of the pause menu on the live interaction hint and waypoint distance updates is not currently verified.
+
+HANDOFF
+- Report the changed files, actual test results, any screenshots captured, and remaining gaps. Preserve existing controls, saves, and unrelated behavior.

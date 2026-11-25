@@ -11,6 +11,7 @@ import { processGpuIssue } from './gpu-queue.mjs';
 import { sourceKnowledge } from './source-knowledge.mjs';
 import { openTrainingInbox } from './training-inbox.mjs';
 import { workerGeneration } from './worker-generation.mjs';
+import { candidateRetrieval, originalRetrieval, retrievalConfig } from './production-retrieval.mjs';
 import { gpuBriefMarker, gpuPendingMarker, reportHeader, reportKinds } from './workflow.mjs';
 
 const note = 'Why does passive water velocity drift affect the houseboat?';
@@ -113,7 +114,8 @@ test('pinned refresh, persistent fallback, and queued brief provenance', async t
     let request;
     const section = ['Check houseboat drift using [S1].'];
     let unsafe = false;
-    generation = await workerGeneration({ storage, model, knowledge, github, inbox, async fetchOllama(url, init) {
+    generation = await workerGeneration({ storage, model, knowledge, github, inbox,
+      retrieval: retrievalConfig(candidateRetrieval, '115,116'), async fetchOllama(url, init) {
       if (url.endsWith('/api/tags')) return Response.json({ models: [{ name: model, digest: 'model-fixture' }] });
       assert.ok(url.endsWith('/api/chat'));
       request = JSON.parse(init.body);
@@ -163,6 +165,19 @@ test('pinned refresh, persistent fallback, and queued brief provenance', async t
     const stale = await generation.generate(note, { ...issue, number: 114 });
     assert.match(stale.brief, /\(stale, main refresh failed\)/);
     assert.equal(inbox.read(114).captures[0].input.commit, third);
+    const selected = await generation.generate(note, { ...issue, number: 115 });
+    assert.ok(selected.brief);
+    const candidate = inbox.read(115).captures[0].input;
+    assert.equal(candidate.knowledge.retrieval.effective, candidateRetrieval);
+    assert.equal(candidate.knowledge.stale, true);
+    assert.ok(candidate.retrievedContext.some(item => item.path === 'godot-cove/drift.gd'));
+    writeFileSync(join(storage, 'source', 'godot-cove', 'boat.gd'), 'func dirty_unverified_text():\n  pass\n');
+    await generation.generate(note, { ...issue, number: 116 });
+    const fallback = inbox.read(116).captures[0].input;
+    assert.equal(fallback.knowledge.retrieval.requested, candidateRetrieval);
+    assert.equal(fallback.knowledge.retrieval.effective, originalRetrieval);
+    assert.equal(fallback.knowledge.retrievalFallback, true);
+    assert.ok(!JSON.stringify(fallback.retrievedContext).includes('dirty_unverified_text'));
   } finally {
     await generation?.close();
     inbox?.close();
