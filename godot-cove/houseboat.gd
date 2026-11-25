@@ -439,7 +439,13 @@ func update_motor(delta: float) -> void:
 			else:
 				startup_audio.stop()
 	var power := throttle * throttle_cap if running else 0.0
-	motor.run(delta, power, wheel_angle, running and not startup_audio.playing, speed, gain)
+	var startup_progress := -1.0
+	if running and startup_audio.playing:
+		startup_progress = clampf(startup_audio.get_playback_position() / maxf(.001, startup_audio.stream.get_length()), 0.0, 1.0)
+		var crossfade := smoothstep(.52, .99, startup_progress)
+		var starter_gain := maxf(.0001, cos(crossfade * PI * .5))
+		startup_audio.volume_db = START_VOLUME + linear_to_db(starter_gain)
+	motor.run(delta, power, wheel_angle, running and not startup_audio.playing, speed, gain, startup_progress)
 	if startup_audio.playing:
 		motor.audio_state = Outboard.AudioState.STARTUP
 	helm_wheel.basis = Basis(Vector3.BACK, -wheel_angle * 1.272)
