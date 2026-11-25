@@ -337,7 +337,7 @@ func build_waterfront_parking(park: Node3D) -> void:
 	striping.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	var iron := Kit.paint(Color("#2d3030"), .59, .63)
 	build_railing(park, "WaterfrontParkingRailing", survey_points([
-		Vector2(38, 8.89), Vector2(43, 8.89), Vector2(50.12, 8.89),
+		Vector2(33.9, 8.89), Vector2(38, 8.89), Vector2(43, 8.89), Vector2(50.12, 8.89),
 	]), iron, true)
 	build_railing(park, "AmphitheatreRoadRailing", survey_points([
 		Vector2(53.02, 8.89), Vector2(64.5, 8.89), Vector2(71, 8.89), Vector2(75.7, 6.74),
