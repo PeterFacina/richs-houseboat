@@ -87,7 +87,7 @@ async function submit(message, kind) {
     let issue;
     if (reservation.changes) {
       issue = await github('/issues', 'POST', {
-        title: reportKinds[kind].titlePrefix + reportText.split('\n')[0].slice(0, 150),
+        title: reportKinds[kind].titlePrefix + reportText.trim().split('\n')[0].slice(0, 150),
         body: reportHeader(kind) + reportText + attachmentNote + '\n\n'
           + 'Discord report: ' + message.url + '\n\n'
           + '## Done when\n\n' + reportKinds[kind].done + '\n\n'
