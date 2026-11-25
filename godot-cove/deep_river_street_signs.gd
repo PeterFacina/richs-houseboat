@@ -1,6 +1,6 @@
 extends RefCounted
 
-const BLADE_FONT = preload("res://ottawa/BarlowCondensed-SemiBold.ttf")
+const BLADE_FONT = preload("res://deep_river/BarlowCondensed-SemiBold.ttf")
 
 const Kit = preload("res://scenery.gd")
 const RANGE := 135.0

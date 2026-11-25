@@ -1,7 +1,7 @@
 extends SceneTree
 
 const Saves = preload("res://solo_saves.gd")
-const Ledger = preload("res://river_ledger.gd")
+const Ledger = preload("res://game_ledger.gd")
 
 
 func _initialize() -> void:

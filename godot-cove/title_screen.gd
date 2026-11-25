@@ -3,10 +3,10 @@ extends Node3D
 const Kit = preload("res://scenery.gd")
 const Boat = preload("res://houseboat.gd")
 const Rich = preload("res://rich_model.gd")
-const MenuTheme = preload("res://river_menu_theme.gd")
+const MenuTheme = preload("res://game_menu_theme.gd")
 const Settings = preload("res://river_pause.gd")
 const SoloSlots = preload("res://solo_slot_menu.gd")
-const PLAY_SCENE := "res://fishing.tscn"
+const PLAY_SCENE := "res://game_world.tscn"
 
 @onready var shore = $Shore
 @onready var menu_layer: CanvasLayer = $Menu

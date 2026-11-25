@@ -4,7 +4,7 @@ Verify current source; this is not a physics specification.
 
 - [houseboat.gd](../../godot-cove/houseboat.gd) extends AnimatableBody3D; entry points include `sail`, `sail_river`, `passive_water_velocity`, `sample`, `update_motor`, `advance_steering` and throttle/ignition methods.
 - [swell.gd](../../godot-cove/swell.gd) is referenced by the houseboat. [outboard.gd](../../godot-cove/outboard.gd) and [boat_fuel_tank.gd](../../godot-cove/boat_fuel_tank.gd) are also preloaded there.
-- [fishing.gd](../../godot-cove/fishing.gd) exposes `step_vessel`, helm throttle and ignition integration. Trace callers through campaign/session code when changing movement.
+- [game_world.gd](../../godot-cove/game_world.gd) exposes `step_vessel`, helm throttle and ignition integration. Trace callers through campaign/session code when changing movement.
 - [boat_mooring.gd](../../godot-cove/boat_mooring.gd) limits horizontal hull movement while grounded by an anchor or tethered to a cleat. The hull still samples wind, current and waves. [river_mooring.gd](../../godot-cove/river_mooring.gd) registers cleats from the marina and campaign landings and validates each interaction.
 - At the helm, press G in neutral to lower the anchor or press G again to raise it. Pick up the bow and stern lines individually with E, aim at reachable dock cleats, and press E to tie each line. E unties a line at the dock cleat or from the boat. Release all dock lines before taking the helm. The anchor holds the boat at neutral until raised.
 - At a campaign landing, two lines tied to that landing enable services and the L-key board and go-ashore shortcut. Landing saves and ferry arrivals pre-rig both lines. The public launch pre-rigs its own lines on spawn.

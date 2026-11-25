@@ -5,7 +5,7 @@ signal close_requested
 signal guide_requested
 signal map_resized
 
-const MenuTheme = preload("res://river_menu_theme.gd")
+const MenuTheme = preload("res://game_menu_theme.gd")
 const NotebookStyle = preload("res://notebook_theme.gd")
 var embedded := false
 

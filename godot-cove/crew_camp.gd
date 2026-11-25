@@ -5,7 +5,7 @@ const Tools = preload("res://crew_tools.gd")
 const Catalog = preload("res://fish_species.gd")
 const Fish = preload("res://river_fish.gd")
 const Marina = preload("res://marina_art.gd")
-const Ledger = preload("res://river_ledger.gd")
+const Ledger = preload("res://game_ledger.gd")
 
 var stove: Node3D
 var lanterns: Array[OmniLight3D] = []

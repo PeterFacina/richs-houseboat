@@ -7,7 +7,7 @@ const GasBar = preload("res://marina_gas_bar.gd")
 const Fleet = preload("res://marina_fleet.gd")
 const Pines = preload("res://lamure_pines.gd")
 const Graphics = preload("res://river_graphics.gd")
-const WATERFRONT_CANOPY := "res://ottawa/waterfront_canopy.bin"
+const WATERFRONT_CANOPY := "res://deep_river/waterfront_canopy.bin"
 const YachtClub = preload("res://marina_yacht_club.gd")
 const TennisCourts = preload("res://marina_tennis_courts.gd")
 const MOWING_LAWN := [
@@ -450,7 +450,7 @@ func load_tree_materials() -> void:
 	bark_material = Kit.paint(Color("#554e3e"))
 	leaf_mesh = leaf_cards()
 	distant_leaf_mesh = leaf_cards(2)
-	var image := Image.load_from_file("res://ottawa/shore_canopy.png")
+	var image := Image.load_from_file("res://deep_river/shore_canopy.png")
 	image.resize(768, 768, Image.INTERPOLATE_LANCZOS)
 	image.generate_mipmaps()
 	leaf_material = ShaderMaterial.new()

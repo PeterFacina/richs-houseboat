@@ -1,6 +1,6 @@
 # Rich's Houseboat
 
-A Godot game set on the Ottawa River around Deep River, Ontario, with boating, fishing, town activities, progression and multiplayer. The shared game source is in [godot-cove/](godot-cove/). The team develops on separate task branches and integrates reviewed changes into main.
+Rich’s Houseboat is the working title of a multiplayer open-world life simulation built in Godot and set in Deep River, Ontario, along the Ottawa River. See [Game identity](docs/GAME-IDENTITY.md) for the project’s direction and terminology. The shared game source is in [godot-cove/](godot-cove/). The team develops on separate task branches and integrates reviewed changes into main.
 
 ## Getting started
 

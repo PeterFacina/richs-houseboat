@@ -3,7 +3,7 @@ import argparse
 import json
 import re
 from pathlib import Path
-from index import build
+from index import GAME_ROUTES, build
 
 FUNC = re.compile(r"^([ \t]*)(?:(?:static|async)[ \t]+)?func[ \t]+(\w+)\s*\(")
 TOKEN = re.compile(r"""(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|#.*$)""")
@@ -52,6 +52,10 @@ def retrieve(root, catalog, symbol, path=None, max_lines=60, budget=8000, caller
     result = {"revision": catalog["revision"], "dirty": catalog["dirty"],
               "symbol": symbol, "definitions": [], "lexical_calls": [],
               "truncated": False}
+    if path and path not in catalog["files"]:
+        folder, _, name = path.rpartition("/")
+        if folder == "godot-cove" and name in GAME_ROUTES["aliases"]:
+            path = f"{folder}/{GAME_ROUTES['aliases'][name]}"
     regex = re.compile(r"\b" + re.escape(symbol) + r"\s*\(")
     for name in catalog["files"]:
         if not name.endswith(".gd"):

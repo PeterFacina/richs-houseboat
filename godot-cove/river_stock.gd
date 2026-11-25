@@ -1,7 +1,7 @@
 extends RefCounted
 
 const Species = preload("res://fish_species.gd")
-const Map = preload("res://ottawa_map.gd")
+const Map = preload("res://deep_river_map.gd")
 const CELL := 21.0
 const RADIUS := 5
 

@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { readFileSync, lstatSync, realpathSync } from 'node:fs';
 import { isAbsolute, join, relative, sep } from 'node:path';
+import gameRoutes from '../../knowledge/game-routes.json' with { type: 'json' };
 
 const stop = new Set(('a about after all also an and any are as at be before between both but by can check code could do does ' +
   'for from func game get had has have how i if in is it its keep let make may must new no not of on one only or our out ' +
@@ -8,6 +9,7 @@ const stop = new Set(('a about after all also an and any are as at be before bet
   'use using verify want was we were when where whether which while who will with would you your var void self').split(' '));
 const word = /[a-z][a-z0-9]*/g;
 const sourcePath = /^godot-cove\/(?:[\w .-]+\/)*[\w .-]+\.(?:gd|tscn|tres|gdshader|gdshaderinc|godot|cs)$/i;
+const sourceFilename = /(?<![\w.-])[\w-]+\.(?:gd|tscn)\b/gi;
 const guidePath = /^docs\/(?:ARCHITECTURE\.md|systems\/[\w-]+\.md)$/i;
 const digest = bytes => createHash('sha256').update(bytes).digest('hex');
 const concepts = [['fence', 'rail', 'railing', 'handrail', 'barrier', 'picket'],
@@ -166,6 +168,7 @@ export function buildCodeIndex(root, manifest, tracked) {
   const idf = term => Math.log1p((entries.length + .5) / ((postings.get(term)?.length ?? entries.length) + .5));
 
   function query(text) {
+    text = text.replace(sourceFilename, name => gameRoutes.aliases[name.toLowerCase()] ?? name);
     const tokens = [...new Set(terms(text))].slice(0, 80);
     const weights = new Map(tokens.filter(term => postings.has(term)).map(term => [term, idf(term)]));
     const associated = new Map();

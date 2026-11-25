@@ -1,6 +1,6 @@
 extends RefCounted
 
-const Ledger = preload("res://river_ledger.gd")
+const Ledger = preload("res://game_ledger.gd")
 const CAMPAIGNS := [Ledger.SAVE, "user://ottawa_river_campaign_2.json"]
 const JOURNALS := ["user://ottawa_catches.json", "user://ottawa_catches_2.json"]
 

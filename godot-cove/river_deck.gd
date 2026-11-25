@@ -2,7 +2,7 @@ extends Node3D
 
 const Kit = preload("res://scenery.gd")
 const Boat = preload("res://houseboat.gd")
-const Ledger = preload("res://river_ledger.gd")
+const Ledger = preload("res://game_ledger.gd")
 const Hardware = preload("res://mooring_hardware.gd")
 const ROPE_SEGMENTS := 8
 

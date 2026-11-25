@@ -4,6 +4,8 @@ The Discord report commands create a GitHub issue and use the original Discord m
 
 ## Review outcomes and lessons
 
+See the [private training backup and restore runbook](GPU-TRAINING-BACKUP.md) for online snapshots, archive custody and recovery verification.
+
 Use `training-review.mjs show ISSUE` to see the local capture, verified evidence and automatically collected GitHub outcome. Keep this output on the GPU host. Use `training-review.mjs record ISSUE REVIEW.json` for reviewer-approved playtest outcomes and corrected prompt targets. See the [training record format](../tools/discord-issue-pilot/README.md#training-records).
 
 Run `node learning/review-lesson.mjs proposal ISSUE` to prepare a lesson review from its collected merged PR. Record what failed, what succeeded, how it was verified and which functions still demonstrate that behavior. Run `node learning/review-lesson.mjs approve ISSUE REVIEW.json` after human review. The function-aware retriever checks the approved source fingerprints against current main and omits stale or irrelevant lessons. A lesson approval supplies retrieval evidence. A separate approved corrected target and a passed reviewed outcome are required for fine-tuning.

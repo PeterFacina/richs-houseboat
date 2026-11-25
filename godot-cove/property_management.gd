@@ -1,7 +1,7 @@
 extends CanvasLayer
 
 const Warehouse = preload("res://warehouse_property.gd")
-const ThemeKit = preload("res://river_menu_theme.gd")
+const ThemeKit = preload("res://game_menu_theme.gd")
 const FloorOverlay = preload("res://property_floor_overlay.gd")
 const ACTION := "warehouse"
 const RESULT := -40
@@ -44,8 +44,8 @@ var known_state: Dictionary
 var last_minute := -1
 
 
-func setup(fishing_game: Node) -> void:
-	game = fishing_game
+func setup(game_world: Node) -> void:
+	game = game_world
 	layer = 8
 	add_child(panel)
 	panel.hide()

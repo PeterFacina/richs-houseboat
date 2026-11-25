@@ -3,7 +3,7 @@ extends Node3D
 signal spoken(line_id: String, toward: Vector3)
 
 const Model = preload("res://rich_model.gd")
-const BASE := "res://ottawa/rich/"
+const BASE := "res://deep_river/rich/"
 const STATION := Vector3(.86, .752, -1.59)
 const REST_YAW := -1.95
 const TALK_RANGE := 3.0

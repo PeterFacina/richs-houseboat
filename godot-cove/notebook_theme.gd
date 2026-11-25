@@ -1,6 +1,6 @@
 extends RefCounted
 
-const Menu = preload("res://river_menu_theme.gd")
+const Menu = preload("res://game_menu_theme.gd")
 const NAVY := Menu.NAVY
 const INK := Menu.NAVY
 const PAPER := Menu.PAPER

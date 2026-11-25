@@ -1,5 +1,7 @@
 # Rich’s Houseboat
 
+Rich’s Houseboat is a multiplayer open-world life simulation built in Godot and set in Deep River, Ontario, along the Ottawa River. Use [Game identity](docs/GAME-IDENTITY.md) for terminology, narrative direction and compatibility contracts.
+
 ## Required task startup (including read-only investigations)
 
 1. Explicitly read this current root AGENTS.md before investigating. Do not assume previously loaded instructions are current. Check the task checkout and applicable nested instructions. For new edits fetch latest main and use a separate task worktree as described below; never silently switch/reset a read-only or existing task checkout.

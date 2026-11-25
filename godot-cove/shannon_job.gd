@@ -58,8 +58,8 @@ var reminder_index := 0
 var encouragement := 0
 
 
-func setup(fishing_game: Node3D, grass_owner: AnimatableBody3D, station: Vector3, heading: float, screen: Vector3) -> void:
-	game = fishing_game
+func setup(game_world: Node3D, grass_owner: AnimatableBody3D, station: Vector3, heading: float, screen: Vector3) -> void:
+	game = game_world
 	mower = grass_owner
 	name = "ShannonLarping"
 	monitor_focus = screen

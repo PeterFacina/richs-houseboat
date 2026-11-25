@@ -1,7 +1,21 @@
 import assert from 'node:assert/strict';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import test from 'node:test';
 import { buildDraft, checkExport } from '../game_prompt_studio/lib/model.mjs';
+import { buildCodeIndex } from './multistage/code-index.mjs';
 import { candidateRetrieval, originalRetrieval, retrievalConfig } from './production-retrieval.mjs';
+
+test('deterministic retrieval normalizes legacy filenames with the shared game routes', t => {
+  const root = mkdtempSync(join(tmpdir(), 'houseboat-retrieval-aliases-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const index = buildCodeIndex(root, { files: {} }, []);
+  assert.deepEqual(
+    index.query('Check fishing.gd, FISHING.tscn, ottawa_map.gd and river_crew.gd'),
+    index.query('Check game_world.gd, game_world.tscn, deep_river_map.gd and multiplayer_session.gd'),
+  );
+});
 
 test('original is the default and candidate deployment can be limited to specific issues', () => {
   assert.equal(retrievalConfig().forIssue(69), originalRetrieval);

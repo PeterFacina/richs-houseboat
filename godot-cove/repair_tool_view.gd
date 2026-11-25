@@ -5,9 +5,9 @@ const Cable = preload("res://crew_tools.gd")
 const Hands = preload("res://river_hands.gd")
 const BASE := Vector3(.25, -.26, -.55)
 const SOUNDS := {
-	"welder": preload("res://ottawa/marina_fuel/flow.wav"),
-	"wrench": preload("res://ottawa/marina_fuel/click.wav"),
-	"strippers": preload("res://ottawa/marina_fuel/ding.wav"),
+	"welder": preload("res://deep_river/marina_fuel/flow.wav"),
+	"wrench": preload("res://deep_river/marina_fuel/click.wav"),
+	"strippers": preload("res://deep_river/marina_fuel/ding.wav"),
 }
 
 var models: Dictionary = {}

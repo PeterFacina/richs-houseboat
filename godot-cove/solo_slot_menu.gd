@@ -3,9 +3,9 @@ extends Control
 signal selected(slot: int)
 signal closed
 
-const Atlas = preload("res://river_menu_theme.gd")
+const Atlas = preload("res://game_menu_theme.gd")
 const Saves = preload("res://solo_saves.gd")
-const Ledger = preload("res://river_ledger.gd")
+const Ledger = preload("res://game_ledger.gd")
 
 var play_buttons: Array[Button] = []
 var reset_buttons: Array[Button] = []

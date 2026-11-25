@@ -1,10 +1,10 @@
 extends Node3D
 
 const Kit = preload("res://scenery.gd")
-const Ottawa = preload("res://ottawa_map.gd")
+const DeepRiverMap = preload("res://deep_river_map.gd")
 const TETHER := 26.0
 
-var river: Ottawa
+var river: DeepRiverMap
 var surface_camera: Camera3D
 var camera: Camera3D
 var vehicle: Node3D
@@ -18,7 +18,7 @@ var aim := Vector2.ZERO
 var velocity := Vector3.ZERO
 
 
-func setup(map: Ottawa, eye: Camera3D) -> void:
+func setup(map: DeepRiverMap, eye: Camera3D) -> void:
 	river = map
 	surface_camera = eye
 	vehicle = Node3D.new()

@@ -1,6 +1,6 @@
 extends CanvasLayer
 
-const Atlas = preload("res://river_menu_theme.gd")
+const Atlas = preload("res://game_menu_theme.gd")
 const XP = preload("res://progression.gd")
 const COLORS := {"Fishing": Color.SKY_BLUE, "Lawn Care": Color.PALE_GREEN, "Boating": Color.TURQUOISE, "Driving": Color.ORANGE, "Business": Color.PLUM, "Exploration": Color.CORAL}
 var game: Node
