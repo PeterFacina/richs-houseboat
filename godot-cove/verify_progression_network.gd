@@ -50,6 +50,12 @@ func exercise() -> void:
 	root.add_child(game)
 	game.process_mode = Node.PROCESS_MODE_DISABLED
 	campaign = game.campaign
+	# The helm handoff fixture uses a houseboat that is already restored.
+	var story := campaign.story
+	story.state().step = story.QUESTS.size()
+	story.state().launched = true
+	story.normalize()
+	story.sync_world()
 	var original_crew := campaign.crew
 	var host := endpoint("Host")
 	campaign.crew = host

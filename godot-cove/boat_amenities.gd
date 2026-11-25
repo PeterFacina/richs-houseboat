@@ -64,6 +64,12 @@ func build_rooms() -> void:
 	var cloth := Kit.paint(Color("#4e7773"), .97)
 	var porcelain := Kit.paint(Color("#e3e6dd"), .38)
 	var steel := Kit.paint(Color("#a0aaa5"), .52, .35)
+	if not boat.restoration_design:
+		build_aft_shell(wood, cream, dark)
+	build_aft_furniture(wood, cream, dark, cloth, porcelain, steel)
+
+
+func build_aft_shell(wood: Material, cream: Material, dark: Material) -> void:
 	solid(Vector3(0, .69, 4.64), Vector3(2.82, .12, 3.92), wood)
 	for index in 19:
 		Kit.box_at(boat, Vector3(0, .755, 2.83 + index * .2), Vector3(2.79, .012, .194), wood)
@@ -86,6 +92,10 @@ func build_rooms() -> void:
 		Kit.mesh_at(boat, pontoon, Vector3(side * .78, .14, 4.7), dark).rotation.x = PI * .5
 	solid(Vector3(0, 1.66, 6.56), Vector3(2.82, 1.82, .12), cream)
 	solid(Vector3(0, 2.64, 4.65), Vector3(2.96, .16, 4.04), cream)
+
+
+func build_aft_furniture(wood: Material, cream: Material, dark: Material,
+		cloth: Material, porcelain: Material, steel: Material) -> void:
 	# Bathroom partition leaves a 0.95 m passage beside the berth.
 	solid(Vector3(.50, 1.62, 5.37), Vector3(.075, 1.74, 2.29), cream)
 	Kit.box_at(boat, Vector3(.91, .769, 5.36), Vector3(.77, .025, 2.28), dark)

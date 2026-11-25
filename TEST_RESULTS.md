@@ -1,5 +1,20 @@
 # Test results
 
+## Big Rich restoration and tennis integration
+
+Godot 4.7.2 on Windows, with fresh local test profiles. The integration started at main `9097d61`, used the tennis implementation in PR #81 and the restoration from playtest commit `3528f7d`. Recent HUD layout and the shared game theme were retained.
+
+| Check | Result |
+| --- | --- |
+| Restoration story | Passed all eight quests, both marina return paths, powered travel, repairs, launch, cabin access, ownership, recruitment and upgrades. Parking and the full-route catch events used fixtures. |
+| Tennis and NPC roles | Passed graphical checks for the quest offer, Notebook, shared score HUD, focused match entry, a returned serve, a first-to-seven result, gear restoration on exit, and Rich switching between court, yard and companion duties. Court placement and the remainder of the match used scripted inputs and steps. |
+| Four-player localhost | Passed one host and three guests, including two simultaneous repairs, loans, reconnect, rewards, launch, ownership and upgrade replication. The test staged the intervening quest milestones. |
+| Saves and existing gameplay | Legacy and prototype saves reloaded. Solo slots, ledger recovery, progression rules, ENet progression and helm handoff, town contracts, vehicle exits and warehouse checks passed. |
+
+Tennis retains its solo rules. Separate-machine co-op and the full restoration runtime with an unscripted player remain unmeasured.
+
+## Earlier baseline tests
+
 Godot 4.7.2 on Windows, headless, with isolated temporary APPDATA paths. The source project imported successfully.
 
 | Check | Result |

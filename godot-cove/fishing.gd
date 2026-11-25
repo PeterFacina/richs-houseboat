@@ -21,6 +21,9 @@ const PublicWorks = preload("res://public_works.gd")
 const PauseMenu = preload("res://river_pause.gd")
 const Safety = preload("res://river_safety.gd")
 const RiverChart = preload("res://river_chart.gd")
+const Notebook = preload("res://river_notebook.gd")
+const StoryOffer = preload("res://npc_quest_offer.gd")
+const RichStory = preload("res://rich_story.gd")
 const MenuTheme = preload("res://river_menu_theme.gd")
 const Lobby = preload("res://river_lobby.gd")
 const AircraftSteering = preload("res://aircraft_steering.gd")
@@ -35,7 +38,7 @@ const SWIM_ENTRY_DEPTH := 1.16
 const SWIM_EXIT_DEPTH := .95
 const SWIM_FEET_DEPTH := 1.22
 enum Fishing { READY, CASTING, WAITING, BITE, FIGHT, RETRIEVING, NET_READY, LANDING, DISPLAY, RELEASING }
-enum ChartDestination { MARINA, SWISHA, CHALK_RIVER, LAMURE, BOAT, PINE, BIRCH, CAMP, HELIPAD, CEMETERY, SKI }
+enum ChartDestination { MARINA, SWISHA, CHALK_RIVER, LAMURE, BOAT, PINE, BIRCH, CAMP, HELIPAD, CEMETERY, SKI, YARD }
 const TELEPORT_NAMES := {
 	ChartDestination.MARINA: "Deep River Marina",
 	ChartDestination.SWISHA: "Swisha Dam",
@@ -48,6 +51,7 @@ const TELEPORT_NAMES := {
 	ChartDestination.HELIPAD: "McAnulty Road helipad",
 	ChartDestination.CEMETERY: "Deep River Cemetery",
 	ChartDestination.SKI: "Mount Martin / ski trail",
+	ChartDestination.YARD: "Pier Road boat yard",
 }
 
 @export_group("On-Foot Movement")
@@ -136,6 +140,11 @@ var journal: Array = []
 var discovered_species := {}
 var guide_book_page := ""
 var chart := RiverChart.new()
+var notebook := Notebook.new()
+var story_offer := StoryOffer.new()
+var story_tracker: Label
+var notebook_mouse_mode := Input.MOUSE_MODE_CAPTURED
+var offer_mouse_mode := Input.MOUSE_MODE_CAPTURED
 var graphics := preload("res://river_graphics.gd").new()
 var teleport_dialog: ConfirmationDialog
 var teleport_destination: ChartDestination
@@ -183,10 +192,14 @@ class IgnitionRing extends Control:
 
 func _ready() -> void:
 	random.randomize()
+	campaign = Campaign.new()
+	var new_trip := campaign.load_trip(self)
+	var saved_story: Dictionary = campaign.ledger.state.rich_story
 	river = Ottawa.new()
 	add_child(river)
 	river.build()
 	vessel = launch_boat_scene.instantiate() as Boat
+	vessel.restoration_design = multiplayer_trip or new_trip or saved_story.get("managed", saved_story.get("shore_start", false))
 	vessel.center = river.point(1)
 	vessel.top_speed = 6.5
 	vessel.water_check = river.can_sail
@@ -234,21 +247,22 @@ func _ready() -> void:
 	cabin.spill_overboard.connect(register_slick)
 	cabin.message.connect(notify_angling)
 	read_journal()
+	build_story_ui()
 	make_chart()
 	stock = Stock.new(river)
 	stock.update(vessel.center)
 	build_fish_finder()
 	fish_guide = Guide.new()
+	fish_guide.embedded = true
 	fish_guide.hide()
-	hud.add_child(fish_guide)
+	notebook.pages[Notebook.Page.FISH].add_child(fish_guide)
 	fish_guide.closed.connect(close_guide)
-	campaign = Campaign.new()
 	add_child(campaign)
 	tennis = river.find_child("MarinaTennisMatch", true, false) as TennisMatch
 	tennis.prepare_player(eye)
 	tennis.reset_player.connect(tennis_reset_player)
 	tennis.ended.connect(func() -> void: equip_gear(tennis_previous_gear))
-	campaign.setup(self)
+	campaign.setup(self, new_trip)
 	add_child(properties)
 	properties.setup(self)
 	for site: Node3D in river.property_sites:
@@ -289,11 +303,13 @@ func _ready() -> void:
 	safety.setup(self)
 	hud.add_child(pause_menu)
 	pause_menu.setup(self)
-	for menu in [pause_menu, chart, campaign.board, campaign.boats_menu]:
+	for menu in [pause_menu, notebook, story_offer, campaign.board, campaign.boats_menu]:
 		menu.visibility_changed.connect(update_menu_hud)
 	helicopter = Helicopter.new()
 	add_child(helicopter)
 	helicopter.setup(self)
+	campaign.story.restore_local()
+	refresh_story_ui()
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	if multiplayer_trip:
 		open_multiplayer_lobby()
@@ -329,6 +345,8 @@ func save_trip() -> String:
 	pause_menu.persist()
 	if campaign.crew.is_guest():
 		return ""
+	campaign.story.remember_local()
+	campaign.story.save_boat_pose()
 	campaign.ledger.save_file()
 	return campaign.ledger.error
 
@@ -359,8 +377,8 @@ func finish_return_to_title(message: String) -> void:
 
 func update_menu_hud() -> void:
 	var piloting := is_instance_valid(helicopter) and helicopter.my_seat() == 0
-	crosshair.visible = not piloting
-	var show_hud: bool = not (piloting or pause_menu.visible or chart.visible or campaign.board.visible or campaign.boats_menu.visible)
+	crosshair.visible = not (piloting or notebook.visible or story_offer.visible)
+	var show_hud: bool = not (piloting or pause_menu.visible or notebook.visible or story_offer.visible or campaign.board.visible or campaign.boats_menu.visible)
 	(objective.get_parent() as Control).visible = show_hud
 	marker.self_modulate.a = 1.0 if show_hud else 0.0
 	campaign.info.self_modulate.a = marker.self_modulate.a
@@ -391,6 +409,14 @@ func _input(event: InputEvent) -> void:
 		if event.is_action_pressed(&"ui_cancel"):
 			tennis.leave()
 			get_viewport().set_input_as_handled()
+		return
+	if story_offer.visible:
+		if event.is_action_pressed(&"ui_cancel"):
+			close_story_offer()
+			get_viewport().set_input_as_handled()
+		return
+	if notebook.visible:
+		notebook_input(event)
 		return
 	if properties.panel.visible:
 		properties.build_input(event)
@@ -478,23 +504,12 @@ func _input(event: InputEvent) -> void:
 	if cabin.busy() and (key == KEY_J or key == KEY_TAB or key == KEY_M):
 		get_viewport().set_input_as_handled()
 		return
-	if key == KEY_J and not (fish_guide.visible and get_viewport().gui_get_focus_owner() is LineEdit):
-		if fish_guide.visible:
-			close_guide()
-		else:
-			open_fish_guide()
+	if key == KEY_J:
+		open_fish_guide()
 		get_viewport().set_input_as_handled()
 		return
-	if fish_guide.visible:
-		if key == KEY_ESCAPE:
-			close_guide()
-			get_viewport().set_input_as_handled()
-		return
-	if key == KEY_TAB or key == KEY_M or (key == KEY_ESCAPE and chart.visible):
-		if chart.visible:
-			close_chart()
-		else:
-			open_chart()
+	if key == KEY_TAB or key == KEY_M:
+		open_chart()
 		get_viewport().set_input_as_handled()
 
 
@@ -510,7 +525,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			elif event.physical_keycode == KEY_F4:
 				change_draw_distance()
 		return
-	if properties.panel.visible:
+	if properties.panel.visible or notebook.visible or story_offer.visible:
 		return
 	if skill_screen.panel.visible or campaign.boats_menu.visible or pause_menu.visible or fish_guide.visible \
 			or teleport_dialog.visible or backpack.inventory.visible or cheats.visible:
@@ -626,7 +641,9 @@ func _physics_process(delta: float) -> void:
 	use_cabin = use_cabin and not campaign.amenities.seated()
 	use_cabin = use_cabin and not in_aircraft()
 	var fuel_press: bool = interact_pressed and has_input and can_use_fuel() and campaign.marina_fuel.interact()
-	var reserved_press := fuel_press or (interact_pressed and has_input and campaign.launch_interaction() != "")
+	var repairing: bool = campaign.story.update_repair(delta, has_input,
+		Input.is_physical_key_pressed(KEY_E) and not fuel_press)
+	var reserved_press := fuel_press or repairing or (interact_pressed and has_input and campaign.launch_interaction() != "")
 	var did_use := cabin.update(delta, clock, use_cabin, interact_pressed and not reserved_press,
 		Input.is_physical_key_pressed(KEY_E) and not reserved_press)
 	var can_use_yard := interact_pressed and has_input and can_talk_to_shannon()
@@ -726,7 +743,7 @@ func _physics_process(delta: float) -> void:
 	campaign.tick(delta, has_input)
 	marina_cars.hide_drivers()
 	shannon_job.tick(delta, play_input() and can_talk_to_shannon())
-	tennis.tick(delta, clock, player, eye, campaign.crew.mode == "solo", has_input and get_window().has_focus())
+	update_tennis(delta, has_input and get_window().has_focus())
 	update_hud()
 	if not tennis.active:
 		campaign.mark_world()
@@ -739,7 +756,14 @@ func play_input() -> bool:
 
 
 func can_challenge_rich() -> bool:
-	return campaign.crew.mode == "solo" and can_use_fuel() and not cabin.busy() and tennis.focused(eye, player)
+	return campaign.story.rich_at_tennis and can_use_fuel() and not cabin.busy() and tennis.focused(eye, player)
+
+
+func update_tennis(delta: float, has_input: bool) -> void:
+	var courtside := campaign.crew.mode == "solo" and not aboard() and campaign.story.can_play_tennis() \
+		and (tennis.active or tennis.near_challenge(player.global_position))
+	campaign.story.set_rich_at_tennis(courtside)
+	tennis.tick(delta, clock, player, eye, courtside, has_input)
 
 
 func tennis_reset_player(at: Vector3, toward: Vector3) -> void:
@@ -765,7 +789,8 @@ func _process(delta: float) -> void:
 
 
 func menu_blocks_play() -> bool:
-	return properties.panel.visible or skill_screen.panel.visible or pause_menu.visible or chart.visible or fish_guide.visible or backpack.inventory.visible or cheats.visible or campaign.controls_blocked()
+	return notebook.visible or story_offer.visible or properties.panel.visible or skill_screen.panel.visible \
+		or pause_menu.visible or backpack.inventory.visible or cheats.visible or campaign.controls_blocked()
 
 
 func close_cheats() -> void:
@@ -802,12 +827,18 @@ func close_backpack() -> void:
 func equip_gear(gear: int) -> void:
 	if gear == backpack.equipped:
 		return
+	if not backpack.gear_available(gear):
+		notify_angling("Ask Big Rich about borrowing equipment.", 2.8)
+		return
 	if fishing != Fishing.READY:
 		if gear != Backpack.NONE:
 			notify_angling("Stow the rod before switching gear.", 3.2)
 			return
 		release_line()
 	backpack.set_equipped(gear)
+	if is_instance_valid(campaign.crew) and not campaign.story.repair_tool().is_empty():
+		var tool := campaign.story.repair_tool() if gear == Backpack.REPAIR else ""
+		campaign.request(RichStory.ACTION, [RichStory.NPC_ID, "", "tool:" + tool])
 
 
 func fists_available() -> bool:
@@ -997,7 +1028,7 @@ func set_swimming(active: bool) -> void:
 
 
 func can_board_from_water() -> bool:
-	if flying or mower.rider != null or marina_cars.active >= 0:
+	if not vessel.visible or flying or mower.rider != null or marina_cars.active >= 0:
 		return false
 	if not swimming or absf(vessel.speed) > 1.2:
 		return false
@@ -1084,22 +1115,16 @@ func can_wade_at(point: Vector3) -> bool:
 
 
 func close_guide() -> void:
-	fish_guide.hide()
-	if not guide_book_page.is_empty():
-		campaign.open_board(guide_book_page)
-		guide_book_page = ""
-		return
-	if DisplayServer.get_name() != "headless":
-		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	close_notebook()
 
 
 func pass_out() -> void:
 	if driving:
 		campaign.relinquish_helm()
 	vessel.throttle = 0.0
-	chart.hide()
+	close_notebook(false)
+	close_story_offer()
 	sonar_overlay.hide()
-	fish_guide.hide()
 	backpack.inventory.hide()
 	release_line()
 
@@ -1298,7 +1323,7 @@ func tick_cast() -> void:
 	if t >= 1.0:
 		effects.break_surface(float_site, .59, "splash")
 		var depth := river.depth_at(cast_site)
-		bite_at = clock + random.randf_range(5.0, 12.5) + Species.leader(rig_slot, depth) * .17
+		bite_at = clock + random.randf_range(5.0, 12.5) * companion_bite_factor() + Species.leader(rig_slot, depth) * .17
 		if trophy.draws_bait(cast_site, clock):
 			bite_at = maxf(clock + 2.6, trophy.ready_at + 1.1)
 		tap_at = bite_at - random.randf_range(.70, 1.75)
@@ -1320,7 +1345,7 @@ func tick_float(delta: float) -> void:
 	elif fishing == Fishing.BITE and state_age >= BITE_WINDOW:
 		notify_angling("Missed the bite. Strike when the float goes under.", 3.8)
 		change_state(Fishing.WAITING)
-		bite_at = clock + random.randf_range(6.0, 12.0)
+		bite_at = clock + random.randf_range(6.0, 12.0) * companion_bite_factor()
 		tap_at = bite_at - 1.25
 		tap_done = false
 
@@ -1659,12 +1684,182 @@ func record_catch() -> void:
 	campaign.request("catch", [name_in_journal, catch_length])
 
 
-func make_chart() -> void:
+func build_story_ui() -> void:
 	var layer := CanvasLayer.new()
 	layer.layer = 2
 	add_child(layer)
-	layer.add_child(chart)
-	chart.setup(river.chart_texture, river.extent)
+	layer.add_child(notebook)
+	layer.add_child(story_offer)
+	notebook.dismissed.connect(close_notebook)
+	notebook.page_selected.connect(select_notebook_page)
+	notebook.services_requested.connect(func():
+		close_notebook(false)
+		campaign.open_board())
+	notebook.tracker_changed.connect(update_story_tracker)
+	story_offer.dismissed.connect(close_story_offer)
+	story_offer.chosen.connect(func(npc: String, id: String, action: String):
+		campaign.request(RichStory.ACTION, [npc, id, action])
+		if action in ["invite", "dismiss"]:
+			close_story_offer())
+	story_tracker = label("", 15, MenuTheme.GOLD)
+	story_tracker.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	instruction.get_parent().add_child(story_tracker)
+	story_tracker.hide()
+
+
+func open_notebook(page := Notebook.Page.QUESTS) -> void:
+	if story_offer.visible:
+		return
+	if not notebook.visible:
+		notebook_mouse_mode = Input.mouse_mode
+		sonar_overlay.hide()
+		release_line()
+		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	select_notebook_page(page)
+
+
+func select_notebook_page(page: int) -> void:
+	chart.hide()
+	fish_guide.hide()
+	notebook.select_page(page, campaign.story)
+	match page:
+		Notebook.Page.CHART:
+			chart.set_status("")
+			chart.set_return_available(can_return_to_boat and vessel.visible and not aboard())
+			chart.update_boat(vessel.center)
+			chart.open(false)
+		Notebook.Page.FISH:
+			fish_guide.set_catches(discovered_species)
+			fish_guide.show()
+		Notebook.Page.CATCH_LOG:
+			chart.journal_view.show()
+
+
+func close_notebook(return_to_services := true) -> void:
+	if not notebook.visible:
+		return
+	chart.hide()
+	fish_guide.hide()
+	notebook.hide()
+	teleport_dialog.hide()
+	var page := guide_book_page
+	guide_book_page = ""
+	Input.mouse_mode = notebook_mouse_mode
+	if return_to_services and not page.is_empty():
+		campaign.open_board(page)
+
+
+func notebook_input(event: InputEvent) -> void:
+	if teleport_dialog.visible or not event is InputEventKey or not event.pressed or event.echo:
+		return
+	var key: Key = event.physical_keycode if event.physical_keycode != 0 else event.keycode
+	if key == KEY_ESCAPE:
+		close_notebook()
+	elif get_viewport().gui_get_focus_owner() is LineEdit:
+		return
+	elif key == KEY_B:
+		close_notebook()
+	elif key == KEY_M:
+		select_notebook_page(Notebook.Page.CHART)
+	elif key == KEY_J:
+		select_notebook_page(Notebook.Page.FISH)
+	elif chart.visible and key in [KEY_1, KEY_2, KEY_3, KEY_4]:
+		var place := int(key - KEY_1)
+		if place < river.meta.places.size():
+			target_index = place
+	else:
+		return
+	get_viewport().set_input_as_handled()
+
+
+var story_upgrade_offer := false
+
+
+func open_story_offer(upgrades := false) -> void:
+	if not story_offer.visible:
+		offer_mouse_mode = Input.mouse_mode
+		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	story_upgrade_offer = upgrades
+	present_story_offer()
+
+
+func close_story_offer() -> void:
+	if story_offer.visible:
+		story_offer.hide()
+		Input.mouse_mode = offer_mouse_mode
+
+
+func present_story_offer() -> void:
+	var story := campaign.story
+	var quest := story.current()
+	var data := {"npc": RichStory.NPC_ID, "name": RichStory.NPC_NAME, "status": story.progress_text()}
+	if story_upgrade_offer:
+		data.merge({"title": "Houseboat upgrades", "description": "Rich’s workbench",
+			"objectives": "Solar panel  ·  Daylight charging\nRebuilt outboard  ·  18% higher top speed"})
+		var buttons: Array = []
+		for id: String in RichStory.Parts.UPGRADES:
+			var option: Dictionary = RichStory.Parts.UPGRADES[id]
+			if not RichStory.Parts.upgrade_installed(story.state(), id):
+				buttons.append(["upgrade:" + id, "%s · $%d + %d parts" % [option.name, option.cash, option.parts]])
+		if buttons.size() > 0:
+			data.action = buttons[0][0]
+			data.button = buttons[0][1]
+		if buttons.size() > 1:
+			data.secondary_action = buttons[1][0]
+			data.secondary_button = buttons[1][1]
+	elif quest.is_empty():
+		var aboard_with_rich := story.companion_aboard()
+		data.merge({"title": "Rich’s Retirement Plan", "description": RichStory.RETIREMENT,
+			"objectives": "Tie up a houseboat or Princecraft near the marina to bring Rich aboard.",
+			"button": "Dismiss Rich" if aboard_with_rich else "Invite Rich aboard",
+			"action": "dismiss" if story.state().companion else "invite"})
+		if story.state().companion and not aboard_with_rich:
+			data.button = "Dismiss Rich"
+	else:
+		var dialogue: String = RichStory.KEEP_ROD if quest.id == "story_fish" and story.status() == RichStory.Chain.Status.READY else quest.text
+		data.merge({"id": quest.id, "title": quest.title, "description": dialogue,
+			"objectives": story.objectives_text(quest),
+			"rewards": "Rewards\n$%d crew cash  ·  %d XP" % [quest.cash, campaign.XP.REWARDS[quest.id]]})
+		if quest.id == "story_fish":
+			data.rewards += "\nBig Rich’s Old Fishing Rod"
+		elif quest.id == "story_retire":
+			data.rewards += "\nHouseboat ownership and companion access"
+		match story.status():
+			RichStory.Chain.Status.AVAILABLE:
+				data.button = "Accept Quest"
+				data.action = "accept"
+			RichStory.Chain.Status.READY:
+				data.button = "Complete Quest"
+				data.action = "complete"
+	story_offer.present(data)
+
+
+func refresh_story_ui() -> void:
+	if not is_instance_valid(helicopter) or not is_instance_valid(story_tracker):
+		return
+	if notebook.visible:
+		notebook.refresh(campaign.story)
+	if story_offer.visible:
+		present_story_offer()
+	update_story_tracker()
+
+
+func update_story_tracker() -> void:
+	var quest := campaign.story.current()
+	story_tracker.visible = notebook.track_quest and not quest.is_empty() and not menu_blocks_play() \
+		and not in_aircraft() and not tennis.active
+	if story_tracker.visible:
+		story_tracker.text = "%s\n%s" % [quest.title, campaign.story.progress_text()]
+
+
+func companion_bite_factor() -> float:
+	return 1.0 / RichStory.BITE_RATE if aboard() and campaign.story.companion_aboard() else 1.0
+
+
+func make_chart() -> void:
+	notebook.pages[Notebook.Page.CHART].add_child(chart)
+	chart.setup(river.chart_texture, river.extent, true)
+	notebook.attach_catch_log(chart.journal_view)
 	chart.travel_requested.connect(ask_to_teleport)
 	chart.close_requested.connect(close_chart)
 	chart.guide_requested.connect(open_fish_guide)
@@ -1682,6 +1877,9 @@ func make_chart() -> void:
 
 
 func make_waypoints() -> void:
+	chart.add_waypoint(ChartDestination.YARD, "Pier Road boat yard", "Big Rich",
+		"Pier Road boat yard", "Return to the houseboat restoration yard beside the park.",
+		campaign.story.yard.rich_stand.position, Vector2(-20, -48), Color("#78612f"), false, 1)
 	chart.add_waypoint(ChartDestination.SWISHA, "Swisha Dam", "Swisha / Des Joachims Dam",
 		"Swisha / Des Joachims Dam", "Arrive at the tailwater landing near the dam access road.",
 		river.point(0), Vector2(16, -44), Color("#bd512d"), false, 2)
@@ -1719,30 +1917,17 @@ func make_waypoints() -> void:
 
 
 func open_chart(show_catches := false) -> void:
-	sonar_overlay.hide()
-	release_line()
-	chart.set_status("")
-	chart.set_return_available(can_return_to_boat and not aboard())
-	chart.update_boat(vessel.center)
-	chart.open(show_catches)
-	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	open_notebook(Notebook.Page.CATCH_LOG if show_catches else Notebook.Page.CHART)
 
 
 func close_chart() -> void:
 	teleport_dialog.hide()
-	chart.hide()
-	if DisplayServer.get_name() != "headless":
-		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	close_notebook()
 
 
 func open_fish_guide(book_page := "") -> void:
 	guide_book_page = book_page
-	chart.hide()
-	sonar_overlay.hide()
-	release_line()
-	fish_guide.set_catches(discovered_species)
-	fish_guide.show()
-	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	open_notebook(Notebook.Page.FISH)
 
 
 func teleport_blocker() -> String:
@@ -1786,6 +1971,8 @@ func teleport_from_chart() -> void:
 	release_line()
 	set_swimming(false)
 	if teleport_destination == ChartDestination.BOAT:
+		if not vessel.visible:
+			return
 		campaign.keep_player_on_deck(vessel, vessel.board_anchor())
 		yaw = vessel.heading
 		can_return_to_boat = false
@@ -1806,6 +1993,9 @@ func teleport_from_chart() -> void:
 				# Open space on the public wharf, clear of the rails and lamppost.
 				arrival = Vector3(18077.0, Wharf.DECK_HEIGHT, 12638.0)
 				view_target = river.point(1)
+			ChartDestination.YARD:
+				arrival = campaign.story.yard.arrivals[0]
+				view_target = campaign.story.yard.hull.position
 			ChartDestination.SWISHA:
 				arrival = campaign.landings.sites[3].transfer
 				view_target = river.measured("dam")
@@ -1853,10 +2043,11 @@ func update_hud() -> void:
 	ignition_ring.visible = ignition_prompt.visible and not engine_running and ignition_hold > 0.0
 	ignition_ring.progress = clampf(ignition_hold / Boat.START_TIME, 0.0, 1.0) if ignition_ring.visible else 0.0
 	backpack.update_throttle(mower.throttle_index if mower.rider != null and play_input() else -1, mower.throttle_label())
-	backpack.hud_available = not piloting and not campaign.crewplay.hands_busy() and not cabin.hands_in_use() and not chart.visible and not fish_guide.visible and not cheats.visible \
+	backpack.hud_available = not piloting and not campaign.crewplay.hands_busy() and not cabin.hands_in_use() and not notebook.visible and not story_offer.visible and not cheats.visible \
 		and not campaign.controls_blocked() and not cabin.busy() and not campaign.marina_fuel.is_local_holder() and not tennis.active
 	objective.text = ""
 	var at: Vector3 = vessel.center if aboard() else player.global_position
+	update_story_tracker()
 	instruction.text = ""
 	var on_line := fishing == Fishing.FIGHT
 	progress.visible = on_line
@@ -1949,6 +2140,8 @@ func update_hud() -> void:
 			and not campaign.controls_blocked() and campaign.preview_id.is_empty():
 		var which := marina_cars.focused
 		var car_label: String = marina_cars.cars[which].details.label
+		if which == 0 and campaign.story.state().loans.has("transport"):
+			car_label += " · Property of Big Rich"
 		instruction.text = "E  Drive " + car_label if marina_cars.drivers[which] == 0 else car_label + "  ·  In use"
 	if play_input():
 		if flying:
@@ -2012,7 +2205,7 @@ func update_flight_mode(enabled: bool) -> void:
 
 
 func aboard() -> bool:
-	return not flying and not in_aircraft() and super.aboard()
+	return vessel.visible and not flying and not in_aircraft() and super.aboard()
 
 
 func in_aircraft() -> bool:

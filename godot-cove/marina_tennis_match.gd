@@ -54,6 +54,7 @@ func build(height: Callable, half_span: float, net_height: Callable) -> void:
 	rich.name = "CourtsideRich"
 	add_child(rich)
 	rich.build(false)
+	rich.hide()
 	build_racket(rich.wrists[1], Vector3(0, -.04, .08)).rotation.x = -1.45
 	var sphere := SphereMesh.new()
 	sphere.radius = BALL_RADIUS
@@ -79,6 +80,10 @@ func prepare_player(camera: Camera3D) -> void:
 	racket = build_racket(camera, Vector3(.33, -.47, -.60))
 	racket.scale = Vector3.ONE * .72
 	racket.hide()
+
+
+func near_challenge(at: Vector3) -> bool:
+	return to_global(feet_at(CHALLENGE_SPOT)).distance_squared_to(at) < 16.0 * 16.0
 
 
 func focused(camera: Camera3D, player: CharacterBody3D) -> bool:

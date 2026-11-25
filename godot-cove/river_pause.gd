@@ -425,7 +425,7 @@ func navigate(where: String) -> void:
 	match where:
 		"chart":
 			game.open_chart()
-		"board": game.campaign.open_board()
+		"board": game.open_notebook()
 		"pack": game.open_backpack()
 		"guide": game.open_fish_guide()
 

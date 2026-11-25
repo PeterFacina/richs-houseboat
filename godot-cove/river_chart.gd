@@ -6,6 +6,8 @@ signal guide_requested
 signal map_resized
 
 const MenuTheme = preload("res://river_menu_theme.gd")
+const NotebookStyle = preload("res://notebook_theme.gd")
+var embedded := false
 
 class PinPulse extends Control:
 	var tint: Color
@@ -58,7 +60,8 @@ var selected := -1
 var boat_id := -1
 
 
-func setup(texture: Texture2D, world_extent: Vector2) -> void:
+func setup(texture: Texture2D, world_extent: Vector2, as_notebook_page := false) -> void:
+	embedded = as_notebook_page
 	extent = world_extent
 	atlas = texture
 	bounds = Rect2(Vector2.ZERO, extent)
@@ -68,6 +71,7 @@ func setup(texture: Texture2D, world_extent: Vector2) -> void:
 	backdrop.color = MenuTheme.SCRIM
 	add_child(backdrop)
 	backdrop.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	backdrop.visible = not embedded
 	var inset := MenuTheme.panel(self, MenuTheme.CREAM, MenuTheme.SAND, 15, 16)
 	var frame := inset.get_parent() as PanelContainer
 	frame.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -75,6 +79,8 @@ func setup(texture: Texture2D, world_extent: Vector2) -> void:
 	frame.offset_right = -MenuTheme.MARGIN
 	frame.offset_top = 23
 	frame.offset_bottom = -23
+	if embedded:
+		frame.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	var stack := VBoxContainer.new()
 	stack.add_theme_constant_override("separation", 9)
 	inset.add_child(stack)
@@ -92,6 +98,8 @@ func setup(texture: Texture2D, world_extent: Vector2) -> void:
 	header.add_child(section_picker)
 	guide_button = header_button(header, "Fish Index  ·  J", "fish", func(): guide_requested.emit())
 	close_button = header_button(header, "Close  ·  Tab", "back", func(): close_requested.emit())
+	guide_button.visible = not embedded
+	close_button.visible = not embedded
 
 	var content := HBoxContainer.new()
 	content.add_theme_constant_override("separation", 14)
@@ -108,7 +116,11 @@ func setup(texture: Texture2D, world_extent: Vector2) -> void:
 	sources.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	credits.add_child(sources)
 	credits.add_child(MenuTheme.text("◆  Your boat", 12, MenuTheme.BLUE, true))
+	if embedded:
+		content.add_child(NotebookStyle.Binding.new())
 	make_sidebar(content)
+	if embedded:
+		heading.add_theme_color_override(&"font_color", NotebookStyle.OLIVE)
 	hide()
 
 
@@ -180,6 +192,7 @@ func make_sidebar(parent: HBoxContainer) -> void:
 	sidebar.add_child(tabs)
 	ways_tab = header_button(tabs, "Waypoints", "chart", func(): show_journal(false))
 	journal_tab = header_button(tabs, "Catch Journal", "journal", func(): show_journal(true))
+	journal_tab.visible = not embedded
 	for tab in [ways_tab, journal_tab]:
 		tab.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		tab.add_theme_font_size_override("font_size", 14)
