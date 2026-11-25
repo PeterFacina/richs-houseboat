@@ -72,6 +72,14 @@ tailscale serve status
 
 The worker checks GitHub `main` at startup and before generating a queued brief. The dashboard reads the last committed index and published GitHub brief links from the worker stores. Its Refresh button reloads those records. GitHub links to the private repository require the viewer’s own repository access.
 
+Retrieval lists issues with a published GPU brief. Use the [GitHub issue tracker](https://github.com/PeterFacina/richs-houseboat/issues) to find open issues that are awaiting a brief or are outside the worker queue.
+
+### Recover the Windows web process
+
+If Tailscale returns 502 and the dashboard port has no listener, check the Local Service task’s last exit result and its launcher log. The web process on Windows 11 build 26200 exited with `0xC0000409` on Node.js 24.15.0. The same exit code has been reported upstream on that Windows build. Use a current Node.js 24 LTS build for the web task. The host now runs a dedicated verified Node.js 24.22.3 executable with `--no-maglev`. The web task keeps its startup trigger and an additional one-minute trigger with **IgnoreNew**, so a running instance is left in place and an exited instance can recover. [Node.js Windows crash report](https://github.com/nodejs/node/issues/62260)
+
+The timed trigger started the updated web process after the previous instance was stopped. The browser loaded Game Knowledge with 205 files, and the overview, search, retrieval and learning requests returned 200 over Tailscale. The five dashboard tests passed on the updated runtime.
+
 Replacing the Studio root route is a separate cutover. After approval for that cutover, record the existing proxy target, repoint the root to the reviewed dashboard, and verify HTTPS and both dashboard roles. Restore the recorded proxy target to roll back.
 
 ## Verification
