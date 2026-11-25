@@ -2,6 +2,7 @@ extends Control
 
 const SAVE := "user://river_preferences.cfg"
 const MenuTheme = preload("res://game_menu_theme.gd")
+const GameRelease = preload("res://game_release.gd")
 const MIST := MenuTheme.MUTED
 const TEAL := MenuTheme.BLUE
 const Graphics = preload("res://river_graphics.gd")
@@ -76,6 +77,8 @@ func setup(scene: Node3D = null) -> void:
 	titles.add_child(MenuTheme.text("RICH’S HOUSEBOAT", 14, MenuTheme.ORANGE, true))
 	title = MenuTheme.text("Settings" if game == null else "Paused", 42, MenuTheme.NAVY, true)
 	titles.add_child(title)
+	if game != null:
+		titles.add_child(MenuTheme.text(GameRelease.version_text(), 14, MenuTheme.ORANGE, true))
 	back = button(header, "Back", func(): close() if game == null else show_main(), &"QuietAction", "back", 36)
 	back.size_flags_horizontal = Control.SIZE_SHRINK_END
 	back.size_flags_vertical = Control.SIZE_SHRINK_CENTER

@@ -4,6 +4,7 @@ const Kit = preload("res://scenery.gd")
 const Boat = preload("res://houseboat.gd")
 const Rich = preload("res://rich_model.gd")
 const MenuTheme = preload("res://game_menu_theme.gd")
+const GameRelease = preload("res://game_release.gd")
 const Settings = preload("res://river_pause.gd")
 const SoloSlots = preload("res://solo_slot_menu.gd")
 const PLAY_SCENE := "res://game_world.tscn"
@@ -20,6 +21,7 @@ var menu: VBoxContainer
 var start: Button
 var multiplayer_button: Button
 var settings_button: Button
+var whats_new_button: Button
 var status: Label
 var settings: Settings
 var loading := false
@@ -196,7 +198,10 @@ func build_menu() -> void:
 	status.text = arrival_message
 	status.visible = not arrival_message.is_empty()
 	menu.add_child(status)
+	whats_new_button = add_action(actions, "What’s New", false, func(): GameRelease.show_popup(menu_layer))
+	menu.add_child(MenuTheme.text(GameRelease.version_text(), 14, MenuTheme.CREAM))
 	start.grab_focus()
+	GameRelease.show_popup.call_deferred(menu_layer)
 
 
 func add_action(parent: VBoxContainer, caption: String, primary: bool, action: Callable) -> Button:
