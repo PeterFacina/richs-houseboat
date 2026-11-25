@@ -60,7 +60,7 @@ def query(index, phrase, limit):
     names = re.findall(r"(?<![\w.-])[\w-]+\.(?:gd|tscn)\b", phrase.lower())
     names = [GAME_ROUTES["aliases"].get(name, name) for name in names]
     preferred = list(dict.fromkeys(names + [
-        name for pattern, paths in GAME_ROUTES["routes"] if re.search(pattern, phrase, re.I)
+        name for pattern, paths, _ in GAME_ROUTES["routes"] if re.search(pattern, phrase, re.I)
         for name in paths
     ]))
     priority = {name: position for position, name in enumerate(preferred)}

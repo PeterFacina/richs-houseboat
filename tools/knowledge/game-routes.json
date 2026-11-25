@@ -16,35 +16,40 @@
       [
         "deep_river_map.gd",
         "game_world.gd"
-      ]
+      ],
+      "docs/ARCHITECTURE.md"
     ],
     [
       "\\b(?:municipal traffic|traffic controls?)\\b",
       [
         "deep_river_traffic_controls.gd",
         "deep_river_street_signs.gd"
-      ]
+      ],
+      "docs/ARCHITECTURE.md"
     ],
     [
       "\\bdeep river (?:roads?|street network)\\b",
       [
         "deep_river_roads.gd",
         "deep_river_map.gd"
-      ]
+      ],
+      "docs/ARCHITECTURE.md"
     ],
     [
       "\\b(?:big rich|houseboat restoration)\\b",
       [
         "rich_story.gd",
         "houseboat_restoration.gd"
-      ]
+      ],
+      "docs/systems/QUESTS.md"
     ],
     [
       "\\bshannon(?: lapping)?\\b",
       [
         "shannon_job.gd",
         "shannon_model.gd"
-      ]
+      ],
+      "docs/systems/QUESTS.md"
     ],
     [
       "\\b(?:(?:multiple|shared|generic) (?:npc |character )?quests?|quest framework|quest chain)",
@@ -52,7 +57,8 @@
         "quest_chain.gd",
         "npc_quest_offer.gd",
         "player_notebook.gd"
-      ]
+      ],
+      "docs/systems/QUESTS.md"
     ],
     [
       "\\b(?:mowing|lawn care) (?:jobs?|progression|xp)\\b",
@@ -60,7 +66,8 @@
         "shannon_job.gd",
         "lawn_mower.gd",
         "progression.gd"
-      ]
+      ],
+      "docs/systems/PROGRESSION-ECONOMY.md"
     ],
     [
       "\\b(?:universal xp|skill tree|research tree|fishing progression|driving progression|player progression|shared economy)\\b",
@@ -68,21 +75,24 @@
         "progression.gd",
         "progression_catalog.gd",
         "game_ledger.gd"
-      ]
+      ],
+      "docs/systems/PROGRESSION-ECONOMY.md"
     ],
     [
       "\\bottawa river fish\\b",
       [
         "river_stock.gd",
         "fish_species.gd"
-      ]
+      ],
+      "docs/systems/FISHING-PLAYER.md"
     ],
     [
       "\\bottawa river (?:water|hydrology)\\b",
       [
         "deep_river_map.gd",
         "water.gdshader"
-      ]
+      ],
+      "docs/systems/BOAT-WATER.md"
     ]
   ]
 }

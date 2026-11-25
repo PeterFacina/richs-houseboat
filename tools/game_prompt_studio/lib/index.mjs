@@ -10,7 +10,7 @@ const coreGuides = [identity, 'docs/ARCHITECTURE.md', 'docs/UNIVERSAL-XP.md'];
 const guide = /^docs\/(?:GAME-IDENTITY|ARCHITECTURE|UNIVERSAL-XP|systems\/[\w-]+)\.md$/;
 const bakedAssets = /^godot-cove\/(?:ottawa|deep_river)(?:\/|$)/i;
 const sourceFilename = /(?<![\w.-])[\w-]+\.(?:gd|tscn)\b/gi;
-const routes = gameRoutes.routes.map(([pattern, paths]) => [new RegExp(pattern, 'i'), paths]);
+const routes = gameRoutes.routes.map(([pattern, paths, guidePath]) => ({ pattern: new RegExp(pattern, 'i'), paths, guidePath }));
 const historic = ['Ethan House Boat and UI Update.txt', 'Richs Houseboat - Feature List for Peter.txt'];
 const maxBytes = 500_000;
 const privateName = /(?:^|[/_.-])(?:\.git|\.godot|node_modules|\.venv|build|cache|exports?|secrets?|credentials?|tokens?|passwords?|private|keys?|env)(?:[/_.-]|$)/i;
@@ -210,7 +210,8 @@ export function findEvidence(db, note, focus, budget, { manifest, selection = {}
   ).get(query, path)) || db.prepare('SELECT path,line,excerpt FROM chunks WHERE path=? ORDER BY line LIMIT 1').get(path);
 
   const names = [...lookup.matchAll(sourceFilename)].map(match => match[0].toLowerCase());
-  const preferred = new Set([...names, ...routes.flatMap(([pattern, paths]) => pattern.test(lookup) ? paths : [])]);
+  const matchedRoutes = routes.filter(route => route.pattern.test(lookup));
+  const preferred = new Set([...names, ...matchedRoutes.flatMap(route => route.paths)]);
   for (const name of preferred) {
     if (sourceCount() >= 3) break;
     const path = 'godot-cove/' + name;
@@ -236,13 +237,15 @@ export function findEvidence(db, note, focus, budget, { manifest, selection = {}
   }
   const selected = result.filter(item => item.kind === 'source').map(item => item.path);
   const guides = db.prepare('SELECT path FROM files ORDER BY path').all().map(row => row.path).filter(path => guide.test(path));
-  for (const path of new Set([...(selection.guides ?? []).filter(path => guides.includes(path)), ...guides])) {
+  const preferredGuides = new Set([...matchedRoutes.map(route => route.guidePath), ...(selection.guides ?? [])]);
+  for (const path of new Set([...preferredGuides, ...guides])) {
+    if (!guides.includes(path)) continue;
     if (result.filter(item => item.kind === 'guide').length >= 2) break;
     if (result.some(item => item.path === path)) continue;
     const chunks = db.prepare('SELECT path,line,excerpt FROM chunks WHERE path=? ORDER BY line').all(path);
     const linked = chunks.find(row => selected.some(source => row.excerpt.includes('../../' + source + ')')));
     const match = rows.find(row => row.path === path);
-    const row = match ?? linked ?? (selection.guides?.includes(path) && bestChunk(path));
+    const row = match ?? linked ?? (preferredGuides.has(path) && bestChunk(path));
     if (row) add({ ...row, kind: 'guide', reason: 'Relevant subsystem guide' }, 540);
   }
 

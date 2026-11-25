@@ -145,9 +145,14 @@ test('identity and historical world names resolve from the current checkout', t 
   writeFileSync(join(paths.game, 'deep_river_map.gd'), 'extends Node3D\nfunc build_town():\n  pass');
   mkdirSync(join(paths.game, 'deep_river'));
   writeFileSync(join(paths.game, 'deep_river', 'ignored.gd'), 'func baked_asset():\n  pass');
+  mkdirSync(join(paths.project, 'docs/systems'));
+  writeFileSync(join(paths.project, 'docs/systems/QUESTS.md'), 'Shannon already offers mowing jobs. Her independent questline is planned.');
+  writeFileSync(join(paths.game, 'shannon_job.gd'), 'extends Node3D\nfunc offer_mowing_job():\n  pass');
   const db = openDb(paths.storage);
   try {
     scan(db, paths.project);
+    assert.ok(findEvidence(db, 'Future Shannon Lapping questline', [], 4000)
+      .some(item => item.path === 'docs/systems/QUESTS.md' && item.excerpt.includes('planned')));
     const fact = projectProfile(db).find(item => item.path === 'docs/GAME-IDENTITY.md');
     assert.equal(fact.fact, identity);
     assert.equal(fact.line, 3);
