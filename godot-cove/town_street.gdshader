@@ -2,6 +2,7 @@ shader_type spatial;
 
 #include "res://river_surfaces.gdshaderinc"
 #include "res://road_asphalt.gdshaderinc"
+#include "res://road_gravel.gdshaderinc"
 
 // Matches RoadSurface in deep_river_roads.gd.
 const int CHAMPLAIN_SURFACE = 0;
@@ -60,7 +61,13 @@ void fragment() {
 	}
 	vec2 blocks = abs(world_xz - vec2(18028., 13364.)) / vec2(67., 71.);
 	float civic = 1.0 - smoothstep(.92, 1.16, max(blocks.x, blocks.y));
-	vec3 asphalt = weathered_asphalt(world_xz, eye, mix(1.0, .04, civic) * mix(1.0, .28, school_paving));
+	float style = round(COLOR.r * 3.0);
+	float condition = mix(mix(1.0, .59, step(2.5, style)), .14, civic) * mix(1.0, .38, school_paving);
+	float unpaved = parking_lot ? 0.0 : COLOR.b;
+	vec3 asphalt = vec3(0.0);
+	if (unpaved < .999) {
+		asphalt = weathered_asphalt(world_xz, eye, condition);
+	}
 	asphalt = mix(asphalt, vec3(.265, .241, .213), civic * .20);
 	float yellow = 0.0;
 	float white = 0.0;
@@ -76,7 +83,7 @@ void fragment() {
 		float bar = mod(UV.y - parking_bays.w - .33, .68) - .08;
 		white = max(spaces * stripes * paint_line(divider, .055), crossing * paint_line(bar, .08));
 	} else {
-		float gravel = marina_gravel_mask(world_xz);
+		float apron = marina_gravel_mask(world_xz);
 		if (road_surface == CEDAR_SURFACE) {
 			asphalt *= 1.0 + cedar_wear(UV, world_xz);
 		} else if (road_surface == YARD_DRIVE_SURFACE) {
@@ -87,8 +94,11 @@ void fragment() {
 			float join = paint_line(UV.x + .17 + (mottling - .5) * .09, .022);
 			asphalt *= 1.0 - school_paving * (.09 + .04 * mottling + .09 * join);
 		}
-		asphalt = mix(asphalt, marina_gravel(world_xz), gravel);
-		float style = round(COLOR.r * 3.0);
+		if (unpaved > .001) {
+			asphalt = mix(asphalt, road_gravel(world_xz, UV.x, 3.4), unpaved);
+		}
+		asphalt = mix(asphalt, marina_gravel(world_xz), apron);
+		float gravel = max(apron, unpaved);
 		float dash = abs(mod(UV.y + 1.2, 9.0) - 4.5);
 		float broken = 1.0 - smoothstep(1.43, 1.49 + fwidth(UV.y), dash);
 		yellow = paint_line(UV.x, .060) * step(.5, style) * mix(1.0, broken, step(1.5, style)) * UV2.x;
@@ -143,7 +153,15 @@ void fragment() {
 	float wear = worn_road_paint(world_xz);
 	ALBEDO = mix(asphalt, vec3(.76, .54, .18), yellow * wear);
 	ALBEDO = mix(ALBEDO, vec3(.87, .86, .81), white * wear);
-	NORMAL = road_relief(world_xz, NORMAL, VIEW_MATRIX[0].xyz, eye);
-	ROUGHNESS = mix(.93, .99, road_noise(world_xz * .48));
+	vec3 asphalt_normal = NORMAL;
+	vec3 gravel_detail = NORMAL;
+	if (unpaved < .999) {
+		asphalt_normal = road_relief(world_xz, NORMAL, VIEW_MATRIX[0].xyz, eye);
+	}
+	if (unpaved > .001) {
+		gravel_detail = gravel_relief(world_xz, NORMAL, VIEW_MATRIX[0].xyz, eye);
+	}
+	NORMAL = normalize(mix(asphalt_normal, gravel_detail, unpaved));
+	ROUGHNESS = mix(mix(.93, .99, road_noise(world_xz * .48)), .995, unpaved);
 	SPECULAR = .17;
 }

@@ -21,6 +21,8 @@ const Landings = preload("res://river_campaign_data.gd")
 const BASE := "res://ottawa/"
 const ROAD_SCAN = preload("res://ottawa/materials/road_asphalt033_color.jpg")
 const ROAD_NORMAL = preload("res://ottawa/materials/road_asphalt033_normal.jpg")
+const GRAVEL_SCAN = preload("res://ottawa/materials/gravel_road_diff_1k.jpg")
+const GRAVEL_NORMAL = preload("res://ottawa/materials/gravel_road_nor_gl_1k.jpg")
 const TILE := 44
 const PLAZA_PORTICO_TREE := Vector2(18000.5215, 13239.9229)
 
@@ -676,7 +678,7 @@ func build_town() -> BuildingsDriveways:
 		detail_areas.append(lamure_patch.area)
 	var roads := RoadNetwork.new()
 	roads.build(self, meta, ground_height, marina_paving, detail_areas,
-		ROAD_SCAN, ROAD_NORMAL, concrete_scan, asphalt_scan)
+		ROAD_SCAN, ROAD_NORMAL, concrete_scan, asphalt_scan, GRAVEL_SCAN, GRAVEL_NORMAL)
 	buildings.build(self, footprints, textures, ground_height, meta.distance_scale,
 		scanned_surface("brick"), asphalt_scan, wood_scan, roads.paved, meta.streets,
 		regional_streets, meta.buildings, concrete_scan)

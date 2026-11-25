@@ -4,6 +4,8 @@ const Kit = preload("res://scenery.gd")
 const PublicWorks = preload("res://public_works.gd")
 const CivicParking = preload("res://deep_river_civic_parking.gd")
 const Furniture = preload("res://deep_river_champlain_furniture.gd")
+const StreetSigns = preload("res://deep_river_street_signs.gd")
+const ROAD_DETAILS = preload("res://ottawa/deep_river_road_details.json")
 const ROAD_LAYER := 1 << 18
 const CHUNK_SIZE := 256.0
 const JUNCTION_LIFT := .043
@@ -39,6 +41,7 @@ enum RoadSurface { CHAMPLAIN, BROCKHOUSE, CEDAR, YARD_DRIVE, STANDARD }
 class Span:
 	var street: int
 	var road_surface: RoadSurface
+	var gravel_ranges: Array
 	var order: int
 	var start: Vector2
 	var end: Vector2
@@ -72,7 +75,7 @@ var chunks: Dictionary = {}
 
 func build(map: Node3D, data: Dictionary, elevation: Callable, parking_mask: Texture2D,
 		detail_areas: Array[Rect2], asphalt: Texture2D, normal: Texture2D,
-		stone: Texture2D, gravel_grain: Texture2D) -> void:
+		stone: Texture2D, asphalt_grain: Texture2D, gravel_color: Texture2D, gravel_normal: Texture2D) -> void:
 	ground = elevation
 	close_areas = detail_areas
 	var limits: Array = data.downtown_paving
@@ -81,8 +84,10 @@ func build(map: Node3D, data: Dictionary, elevation: Callable, parking_mask: Tex
 	paved.shader = preload("res://town_street.gdshader")
 	paved.set_shader_parameter("road_scan", asphalt)
 	paved.set_shader_parameter("road_normal", normal)
-	paved.set_shader_parameter("asphalt_scan", gravel_grain)
+	paved.set_shader_parameter("asphalt_scan", asphalt_grain)
 	paved.set_shader_parameter("concrete_scan", stone)
+	paved.set_shader_parameter("gravel_scan", gravel_color)
+	paved.set_shader_parameter("gravel_normal", gravel_normal)
 	paved.set_shader_parameter("champlain_access", CIVIC_ACCESS)
 	paved.set_shader_parameter("champlain_bays", Vector4(Furniture.BAY_START, Furniture.BAY_PITCH,
 		Furniture.BAY_SLOPE, Furniture.BAY_LANE_EDGE))
@@ -94,8 +99,7 @@ func build(map: Node3D, data: Dictionary, elevation: Callable, parking_mask: Tex
 			marina_area.size.x, marina_area.size.y))
 	gravel = ShaderMaterial.new()
 	gravel.shader = preload("res://town_road_shoulder.gdshader")
-	gravel.set_shader_parameter("asphalt_scan", asphalt)
-	gravel.set_shader_parameter("concrete_scan", stone)
+	gravel.set_shader_parameter("gravel_scan", gravel_color)
 
 	# Through roads own the overlap with side streets. Draw and collide with
 	# one surface in the overlap, with both approaches at the same grade.
@@ -141,6 +145,7 @@ func build(map: Node3D, data: Dictionary, elevation: Callable, parking_mask: Tex
 		span.neighbors.clear()
 	CivicParking.new().build(network, ground, paved, edges, ROAD_LAYER)
 	Furniture.new().build(network, streets[CHAMPLAIN], ground, champlain_half_width)
+	StreetSigns.new().build(network, map, ROAD_DETAILS.data.junctions)
 	chunks.clear()
 	spans.clear()
 
@@ -222,6 +227,7 @@ func add_street(street: int, line: Array, width: float, road_surface := RoadSurf
 		var span := Span.new()
 		span.street = street
 		span.road_surface = road_surface
+		span.gravel_ranges = ROAD_DETAILS.data.gravel.get(str(street), [])
 		span.order = spans.size()
 		span.start = centers[i - 1]
 		span.end = centers[i]
@@ -422,7 +428,15 @@ func emit_vertex(surface: SurfaceTool, span: Span, point: Vector2, nearby: Array
 		paint *= smoothstep(26.0, 40.0, point.distance_to(PLAZA_FRONTAGE))
 	var style := float(span.marking) / 3.0
 	var edges := 1.0 if span.street in HIGHWAY or (span.street == BROCKHOUSE and not downtown.has_point(point)) else 0.0
-	surface.set_color(Color(style, edges, (1.0 - joins) * end_blend * (1.0 - apron),
+	# Blue is gravel coverage on pavement and opacity on the separate shoulder mesh.
+	var surface_gravel := 0.0
+	if shoulder:
+		surface_gravel = (1.0 - joins) * end_blend * (1.0 - apron)
+	else:
+		for section: Array in span.gravel_ranges:
+			surface_gravel = maxf(surface_gravel, smoothstep(section[0] - 7.0, section[0] + 7.0, station)
+				* (1.0 - smoothstep(section[1] - 7.0, section[1] + 7.0, station)))
+	surface.set_color(Color(style, edges, surface_gravel,
 		float(span.road_surface) / float(RoadSurface.STANDARD)))
 	surface.set_uv(Vector2(lateral, station))
 	surface.set_uv2(Vector2(shoulder_mix if shoulder else paint * end_blend, transverse))
