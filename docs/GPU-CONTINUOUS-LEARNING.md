@@ -40,3 +40,7 @@ After reviewing the evaluation, run `python learning/fine_tune.py promote CONFIG
 ## Production verification
 
 Use the isolated worker smoke test on a real report and check its pinned game revision, input provenance, relevance and export guard. Confirm a newly authorized Discord report produces one GitHub draft handoff, opens the Codex worktree and progresses through a human-reviewed PR. Finding an existing GitHub brief is a valid reason to skip generation. Do not reconstruct or label a missing historical capture as if the worker had originally recorded it.
+
+The Windows host rollout uses the pinned `6628321` worker and the verified game index at `59f55b3`. The #84 replay found the parking railing call and its implementation and the isolated Qwen generation passed the export guard. The worker collected five merged PR outcomes with changed files and check results. The GitHub dashboard matched 23 issues against 19 trusted brief publications and six saved runs. The training controller waits for 24 eligible examples and currently records zero. The three private held-out cases use actual issues #66, #69 and #84. The scheduled evaluation and promotion pipeline remains gated until training data is eligible.
+
+The dashboard is served at the Tailscale root and remains reachable at HTTPS port 8443. Prompt Studio is on HTTPS port 8444 with the same database and authorization settings. The new bot attachment note and stronger Codex worktree handoff are repository changes for the Discord bot host. Verify them using an agreed fresh Discord report on that host.

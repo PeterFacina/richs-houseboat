@@ -187,6 +187,20 @@ test('reviewers can distinguish GitHub-only briefs and captured evidence without
   assert.equal(JSON.parse((await get(dashboard, '/api/issues', reviewer)).body).stale, true);
 });
 
+test('reviewers see the training gate from a Python status record with microseconds', t => {
+  const f = fixture();
+  t.after(() => rmSync(f.root, { recursive: true, force: true }));
+  writeFileSync(join(f.root, 'training-status.json'), JSON.stringify({ schema: 1, phase: 'waiting-for-approved-examples',
+    observedAt: '2026-01-02T16:00:00.123456Z', examples: 0, required: 24, privatePath: raw }));
+  const reader = createReader({ storage: f.root, inbox: f.inbox, lessons: f.lessons });
+  const result = reader.overview('reviewer').training;
+  assert.equal(result.observedAt, '2026-01-02T16:00:00.123Z');
+  assert.equal(result.examples, 0);
+  assert.equal(result.required, 24);
+  assert.ok(!JSON.stringify(result).includes(raw));
+  assert.equal(reader.overview('viewer').training, undefined);
+});
+
 test('an unavailable inbox is never created and heartbeat state expires independently of the index', t => {
   const f = fixture();
   t.after(() => rmSync(f.root, { recursive: true, force: true }));

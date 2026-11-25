@@ -19,7 +19,7 @@ FIELDS = ('objective', 'observations', 'tasks', 'verification', 'acceptance', 'u
 
 
 def timestamp():
-    return datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
+    return datetime.now(timezone.utc).isoformat(timespec='milliseconds').replace('+00:00', 'Z')
 
 
 def read_json(path):

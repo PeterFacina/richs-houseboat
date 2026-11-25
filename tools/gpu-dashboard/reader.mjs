@@ -57,8 +57,9 @@ function trainingStatus(path) {
     const state = JSON.parse(readFileSync(path, 'utf8'));
     const phase = oneOf(['waiting-for-approved-examples', 'waiting-for-holdout', 'waiting-for-worker', 'waiting-for-gpu',
       'training', 'evaluating', 'awaiting-promotion', 'evaluation-did-not-improve', 'failed'], state.phase);
-    if (state.schema !== 1 || !phase || !date(state.observedAt)) return null;
-    return { phase, observedAt: state.observedAt, candidate: model(state.model), examples: number(state.examples),
+    const time = typeof state.observedAt === 'string' && /Z$/.test(state.observedAt) ? Date.parse(state.observedAt) : NaN;
+    if (state.schema !== 1 || !phase || !Number.isFinite(time)) return null;
+    return { phase, observedAt: new Date(time).toISOString(), candidate: model(state.model), examples: number(state.examples),
       required: number(state.required), step: number(state.step), steps: number(state.steps), cases: number(state.cases),
       baselineScore: number(state.baselineScore), candidateScore: number(state.candidateScore) };
   } catch { return null; }
