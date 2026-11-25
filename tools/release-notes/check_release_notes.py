@@ -17,13 +17,21 @@ NOTE_NAME = re.compile(r"^godot-cove/release-notes/pr-(\d+)\.json$")
 MAX_BULLET_CHARS = 450
 
 
+def reject_json_constant(value: str) -> None:
+    raise ValueError(f"{value} is not a JSON value")
+
+
 def is_player_facing_path(path: str) -> bool:
     """Treat runtime project changes as player-facing, except tests and notes."""
     normalized = path.replace("\\", "/").lstrip("./")
     if not normalized.startswith("godot-cove/"):
         return False
     parts = normalized.split("/")
-    if any(part in {".godot", "test", "tests", "__tests__"} for part in parts[1:]):
+    if any(part in {".godot", "test", "tests", "testing", "__tests__", "tools"} for part in parts[1:]):
+        return False
+    source_suffixes = {".gd", ".cs", ".py", ".tscn", ".tres"}
+    stem = Path(normalized).stem.lower()
+    if Path(normalized).suffix.lower() in source_suffixes and (stem.startswith("test_") or stem.endswith("_test")):
         return False
     if Path(normalized).suffix.lower() in {".md", ".rst", ".txt"}:
         return False
@@ -44,8 +52,8 @@ def validate_note(path: str, pr_number: int, root: Path) -> list[str]:
     note_path = root / Path(*path.split("/"))
     try:
         with note_path.open(encoding="utf-8") as note_file:
-            note = json.load(note_file)
-    except (OSError, json.JSONDecodeError) as exc:
+            note = json.load(note_file, parse_constant=reject_json_constant)
+    except (OSError, json.JSONDecodeError, ValueError) as exc:
         return errors + [f"Could not read valid JSON from {path}: {exc}."]
 
     if not isinstance(note, dict):

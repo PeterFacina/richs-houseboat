@@ -41,6 +41,12 @@ class ReleaseNoteCheckTests(unittest.TestCase):
         errors = check_release_notes(["godot-cove/job_board.gd", path], 123, self.root)
         self.assertTrue(any("Could not read valid JSON" in error for error in errors))
 
+    def test_non_standard_json_constant_fails(self) -> None:
+        path = "godot-cove/release-notes/pr-123.json"
+        (self.root / path).write_text('{"pr": 123, "player_facing": true, "bullets": ["ok"], "x": NaN}', encoding="utf-8")
+        errors = check_release_notes(["godot-cove/job_board.gd", path], 123, self.root)
+        self.assertTrue(any("Could not read valid JSON" in error for error in errors))
+
     def test_wrong_number_and_missing_fields_fail(self) -> None:
         note = {"pr": 122, "player_facing": False, "bullets": []}
         path = self.write_note(123, note)
@@ -63,6 +69,8 @@ class ReleaseNoteCheckTests(unittest.TestCase):
             "godot-cove/GAME GUIDE AND ASSET CREDITS.md",
             "godot-cove/deep_river/tv/README.txt",
             "godot-cove/tests/job_board_test.gd",
+            "godot-cove/job_board_test.gd",
+            "godot-cove/tools/release_note_helper.py",
             "godot-cove/.godot/editor/project_metadata.cfg",
             "tools/release-notes/check_release_notes.py",
         ):
