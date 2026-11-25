@@ -13,6 +13,7 @@ const Swisha = preload("res://swisha_dam.gd")
 const Town = preload("res://deep_river_buildings.gd")
 const BuildingsDriveways = preload("res://deep_river_driveways.gd")
 const TownHall = preload("res://deep_river_town_hall.gd")
+const EssoPlaza = preload("res://deep_river_esso_plaza.gd")
 const PropertySites = preload("res://deep_river_properties.gd")
 const RoadNetwork = preload("res://deep_river_roads.gd")
 const PublicWorks = preload("res://public_works.gd")
@@ -264,7 +265,7 @@ func build() -> void:
 				or town_walkways.clears_tree(point) \
 				or RoadNetwork.clears_champlain_tree(point, street_start, street_axis) \
 				or RoadNetwork.CivicParking.covers(point) \
-				or PropertySites.clears_tree(point) \
+				or PropertySites.clears_tree(point) or EssoPlaza.clears_tree(point) \
 				or highway_has_tree_conflict(point, highway_clearance) \
 				or point.distance_squared_to(RiverbankPark.GAZEBO_SITE) < 36.0 \
 				or (lamure_patch != null and pines.place_from_survey(foot, height)))
@@ -673,7 +674,8 @@ func build_town(paving_texture: Texture2D, terrain: Material) -> BuildingsDrivew
 	var buildings := Town.new()
 	var footprints: Array = meta.buildings.filter(func(building: Dictionary) -> bool:
 		return not PublicWorks.REPLACED_FOOTPRINTS.has(building.id) and building.id != RiverbankPark.GAZEBO_FOOTPRINT \
-			and not TownHall.FOOTPRINTS.has(building.id) and not PropertySites.replaces(building.id))
+			and not TownHall.FOOTPRINTS.has(building.id) and not PropertySites.replaces(building.id) \
+			and not EssoPlaza.REPLACED_FOOTPRINTS.has(building.id))
 	if lamure_patch != null:
 		var shelter := Vector2(meta.lamure.shelter[0], meta.lamure.shelter[1])
 		footprints = footprints.filter(func(building: Dictionary):
@@ -695,6 +697,9 @@ func build_town(paving_texture: Texture2D, terrain: Material) -> BuildingsDrivew
 	town_hall.build(ground_height, concrete_scan, waterfront.render_trees)
 	bind_day_sky(town_hall.glass)
 	bind_day_sky(town_hall.glass_alt)
+	var esso := EssoPlaza.new()
+	add_child(esso)
+	esso.build(ground_height, asphalt_scan, concrete_scan)
 	return buildings.driveways
 
 
