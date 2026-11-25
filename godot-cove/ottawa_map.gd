@@ -25,6 +25,7 @@ const GRAVEL_SCAN = preload("res://ottawa/materials/gravel_road_diff_1k.jpg")
 const GRAVEL_NORMAL = preload("res://ottawa/materials/gravel_road_nor_gl_1k.jpg")
 const TILE := 44
 const PLAZA_PORTICO_TREE := Vector2(18000.5215, 13239.9229)
+var town_walkways: RoadNetwork.Walkways
 
 class TerrainPatch:
 	var area: Rect2
@@ -227,7 +228,7 @@ func build() -> void:
 			for col in range(0, detail.grid.x - 1, TILE):
 				tile(col, row, ground, detail)
 	build_water()
-	var residential_driveways := build_town(paving_texture)
+	var residential_driveways := build_town(paving_texture, ground)
 	property_sites = PropertySites.build(self, ground_height, concrete_scan, scanned_surface("brick"), wood_scan)
 	build_landmarks()
 	var park := RiverbankPark.new()
@@ -256,6 +257,7 @@ func build() -> void:
 				return true
 			return PublicWorks.cleared_for_construction(foot) or park.owns_tree(foot) \
 				or residential_driveways.clears_tree(point) \
+				or town_walkways.clears_tree(point) \
 				or RoadNetwork.clears_champlain_tree(point, street_start, street_axis) \
 				or RoadNetwork.CivicParking.covers(point) \
 				or PropertySites.clears_tree(point) \
@@ -660,7 +662,7 @@ func set_surface_slick(data: Vector4) -> void:
 	near_water.set_shader_parameter("surface_slick", data)
 
 
-func build_town(paving_texture: Texture2D) -> BuildingsDriveways:
+func build_town(paving_texture: Texture2D, terrain: Material) -> BuildingsDriveways:
 	var tile_image := Image.load_from_file(BASE + "deep_river_roofs.png")
 	tile_image.generate_mipmaps()
 	var textures := ImageTexture.create_from_image(tile_image)
@@ -682,6 +684,7 @@ func build_town(paving_texture: Texture2D) -> BuildingsDriveways:
 	buildings.build(self, footprints, textures, ground_height, meta.distance_scale,
 		scanned_surface("brick"), asphalt_scan, wood_scan, roads.paved, meta.streets,
 		regional_streets, meta.buildings, concrete_scan)
+	town_walkways = roads.build_walkways(buildings.driveways, concrete_scan, asphalt_scan, terrain)
 	windows = buildings.windows
 	bind_day_sky(windows)
 	add_child(town_hall)

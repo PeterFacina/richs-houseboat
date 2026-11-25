@@ -6,7 +6,9 @@ const CivicParking = preload("res://deep_river_civic_parking.gd")
 const Furniture = preload("res://deep_river_champlain_furniture.gd")
 const StreetSigns = preload("res://deep_river_street_signs.gd")
 const TrafficControls = preload("res://deep_river_traffic_controls.gd")
+const Walkways = preload("res://deep_river_walkways.gd")
 const ROAD_DETAILS = preload("res://ottawa/deep_river_road_details.json")
+const MCANULTY_FEEDERS := [0, 2]
 const ROAD_LAYER := 1 << 18
 const CHUNK_SIZE := 256.0
 const JUNCTION_LIFT := .043
@@ -39,10 +41,20 @@ enum Marking { NONE, SOLID, BROKEN, HIGHWAY }
 # Packed into vertex alpha for town_street.gdshader. Standard meshes use alpha 1.
 enum RoadSurface { CHAMPLAIN, BROCKHOUSE, CEDAR, YARD_DRIVE, STANDARD }
 
+class Junction:
+	var center: Vector2
+	var inner: float
+	var grade: float
+	var slope: Vector2
+	var gravel: float
+
+
 class Span:
 	var street: int
 	var road_surface: RoadSurface
 	var gravel_ranges: Array
+	var unpaved := false
+	var edge_profiles: Array
 	var order: int
 	var start: Vector2
 	var end: Vector2
@@ -61,6 +73,7 @@ class Span:
 	var pavement_bounds: Rect2
 	var outline: PackedVector2Array
 	var neighbors: Array[Span] = []
+	var junctions: Array[Junction] = []
 
 
 var ground: Callable
@@ -73,6 +86,7 @@ var gravel: ShaderMaterial
 var spans: Array[Span] = []
 var chunks: Dictionary = {}
 var town_paving: Image
+var road_root: Node3D
 
 
 func build(map: Node3D, data: Dictionary, elevation: Callable, parking_mask: Texture2D,
@@ -124,13 +138,18 @@ func build(map: Node3D, data: Dictionary, elevation: Callable, parking_mask: Tex
 			add_street(index, streets[index], 3.4)
 	add_street(streets.size(), PublicWorks.CEDAR_ROAD, 3.4, RoadSurface.CEDAR)
 	add_street(streets.size() + 1, PublicWorks.YARD_DRIVE, 2.85, RoadSurface.YARD_DRIVE)
+	# The middle regional segment follows the surveyed atlas road. Join only its two extensions.
+	for index: int in MCANULTY_FEEDERS:
+		add_street(streets.size() + 2 + index, map.regional_streets[index], 3.2, RoadSurface.STANDARD, true)
 	find_neighbors()
+	build_junction_grades()
 	for span: Span in spans:
 		build_span(span)
 
 	var network := Node3D.new()
 	network.name = "DeepRiverRoads"
 	map.add_child(network)
+	road_root = network
 	var signals := SIGNALS.new()
 	network.add_child(signals)
 	signals.build(streets, ground)
@@ -153,13 +172,20 @@ func build(map: Node3D, data: Dictionary, elevation: Callable, parking_mask: Tex
 			for point in span.outline:
 				outline.append(point - CivicParking.ORIGIN)
 			edges.append(outline)
-		span.neighbors.clear()
 	CivicParking.new().build(network, ground, paved, edges, ROAD_LAYER)
 	Furniture.new().build(network, streets[CHAMPLAIN], ground, champlain_half_width)
 	StreetSigns.new().build(network, map, ROAD_DETAILS.data.junctions)
 	TrafficControls.new().build(network, map)
 	chunks.clear()
+
+
+func build_walkways(driveways: RefCounted, concrete: Texture2D, asphalt: Texture2D, terrain: Material) -> Walkways:
+	var walks := Walkways.new()
+	walks.build(road_root, self, driveways, concrete, asphalt, terrain)
+	for span: Span in spans:
+		span.neighbors.clear()
 	spans.clear()
+	return walks
 
 
 static func highway_line(streets: Array) -> Array:
@@ -217,7 +243,7 @@ static func champlain_walk_end(side: float) -> float:
 	return CHAMPLAIN_WALK_END.x if side < 0.0 else CHAMPLAIN_WALK_END.y
 
 
-func add_street(street: int, line: Array, width: float, road_surface := RoadSurface.STANDARD) -> void:
+func add_street(street: int, line: Array, width: float, road_surface := RoadSurface.STANDARD, unpaved := false) -> void:
 	var centers := PackedVector2Array()
 	for pair: Array in line:
 		var point := Vector2(pair[0], pair[1])
@@ -239,7 +265,9 @@ func add_street(street: int, line: Array, width: float, road_surface := RoadSurf
 		var span := Span.new()
 		span.street = street
 		span.road_surface = road_surface
+		span.unpaved = unpaved
 		span.gravel_ranges = ROAD_DETAILS.data.gravel.get(str(street), [])
+		span.edge_profiles = Walkways.edges_for(street)
 		span.order = spans.size()
 		span.start = centers[i - 1]
 		span.end = centers[i]
@@ -285,15 +313,100 @@ func find_neighbors() -> void:
 				b.neighbors.append(a)
 
 
+func build_junction_grades() -> void:
+	var junctions: Array[Junction] = []
+	for a: Span in spans:
+		for b: Span in a.neighbors:
+			if a.order >= b.order or a.street == b.street or not a.pavement_bounds.intersects(b.pavement_bounds):
+				continue
+			var overlap := Geometry2D.intersect_polygons(a.outline, b.outline)
+			if overlap.is_empty():
+				continue
+			var position: Variant = Geometry2D.segment_intersects_segment(a.start, a.end, b.start, b.end)
+			if position == null:
+				# Some T approaches stop at the edge of the through road.
+				for tip: Vector2 in [a.start, a.end, b.start, b.end]:
+					var other := b if tip in [a.start, a.end] else a
+					var projected := Geometry2D.get_closest_point_to_segment(tip, other.start, other.end)
+					if tip.distance_to(projected) < other.width + .35:
+						position = tip.lerp(projected, .5)
+						break
+			if position == null:
+				continue
+			var center: Vector2 = position
+			var inner := 5.0
+			for polygon: PackedVector2Array in overlap:
+				for point: Vector2 in polygon:
+					inner = maxf(inner, center.distance_to(point) + .65)
+			var unpaved := minf(gravel_at(a, center), gravel_at(b, center))
+			var existing := junctions.find_custom(func(site: Junction) -> bool:
+				return site.center.distance_squared_to(center) < 4.0 * 4.0)
+			if existing >= 0:
+				var previous := junctions[existing]
+				previous.inner = maxf(previous.inner, minf(inner + previous.center.distance_to(center), 15.0))
+				previous.gravel = minf(previous.gravel, unpaved)
+				continue
+			var site := Junction.new()
+			site.center = center
+			site.inner = minf(inner, 15.0)
+			site.gravel = unpaved
+			site.grade = ground.call(center.x, center.y)
+			site.slope = Vector2(
+				ground.call(center.x + 3.0, center.y) - ground.call(center.x - 3.0, center.y),
+				ground.call(center.x, center.y + 3.0) - ground.call(center.x, center.y - 3.0)) / 6.0
+			junctions.append(site)
+	for span: Span in spans:
+		for site: Junction in junctions:
+			if span.pavement_bounds.grow(site.inner + 7.0).has_point(site.center):
+				span.junctions.append(site)
+
+
+func junction_grade(span: Span, point: Vector2) -> Vector3:
+	var weight := 0.0
+	var sum := 0.0
+	var grade := 0.0
+	var surface := 0.0
+	for site: Junction in span.junctions:
+		var offset := point - site.center
+		var share := 1.0 - smoothstep(site.inner, site.inner + 7.0, offset.length())
+		weight = maxf(weight, share)
+		sum += share
+		grade += (site.grade + site.slope.dot(offset)) * share
+		surface += site.gravel * share
+	return Vector3(weight, grade / maxf(.0001, sum), surface / maxf(.0001, sum))
+
+
+func gravel_at(span: Span, point: Vector2) -> float:
+	if span.unpaved:
+		return 1.0
+	var axis := (span.end - span.start) / span.length
+	var station := span.station + clampf((point - span.start).dot(axis), 0.0, span.length)
+	var surface := 0.0
+	for section: Array in span.gravel_ranges:
+		surface = maxf(surface, smoothstep(section[0] - 7.0, section[0] + 7.0, station)
+			* (1.0 - smoothstep(section[1] - 7.0, section[1] + 7.0, station)))
+	return surface
+
+
 func build_span(span: Span) -> void:
 	var spacing := .78 if span.fine else 4.6
 	var divisions := maxi(1, ceili(span.length / spacing))
 	var columns := PackedFloat32Array([-1.0, -.5, 0.0, .5, 1.0])
 	if not span.fine:
 		columns = PackedFloat32Array([-1.0, 0.0, 1.0])
-	var first := 0.0
+	var rows := PackedFloat32Array([0.0])
 	for row in divisions:
-		var last := float(row + 1) / divisions
+		var start := float(row) / divisions
+		var finish := float(row + 1) / divisions
+		var bounds := Rect2(span.start.lerp(span.end, start), Vector2.ZERO).expand(span.start.lerp(span.end, finish))
+		var close := span.junctions.any(func(site: Junction) -> bool:
+			return bounds.grow(site.inner + span.width + 7.0).has_point(site.center))
+		var subdivisions := maxi(1, ceili(span.length / divisions / 1.15)) if close else 1
+		for sub in range(1, subdivisions + 1):
+			rows.append(lerpf(start, finish, float(sub) / subdivisions))
+	for row in range(1, rows.size()):
+		var first := rows[row - 1]
+		var last := rows[row]
 		var start := span.start.lerp(span.end, first)
 		var end := span.start.lerp(span.end, last)
 		var middle := (start + end) * .5
@@ -332,7 +445,6 @@ func build_span(span: Span) -> void:
 			if not batch.has("sidewalk"):
 				batch.sidewalk = new_surface()
 			emit_champlain_sidewalk(batch.sidewalk, span, first, last, origin)
-		first = last
 
 
 func emit_champlain_sidewalk(surface: SurfaceTool, span: Span, first: float, last: float, origin: Vector2) -> void:
@@ -381,31 +493,34 @@ func emit_strip(surface: SurfaceTool, span: Span, first: float, last: float, lef
 	var corners := PackedVector2Array([
 		at(span, first, left), at(span, first, right),
 		at(span, last, right), at(span, last, left)])
-	var parts: Array[PackedVector2Array] = [corners]
 	var bounds := Rect2(corners[0], Vector2.ZERO).expand(corners[1]).expand(corners[2]).expand(corners[3])
+	# Polygon operations run in the same local coordinates as the mesh.
+	var to_chunk := Transform2D(0.0, -origin)
+	var local_corners := to_chunk * corners
+	var parts: Array[PackedVector2Array] = [local_corners]
 	for other: Span in nearby:
 		if (not shoulder and other.order > span.order) or not other.pavement_bounds.intersects(bounds):
 			continue
-		if Geometry2D.intersect_polygons(corners, other.outline).is_empty():
+		var outline := to_chunk * other.outline
+		if Geometry2D.intersect_polygons(local_corners, outline).is_empty():
 			continue
 		var remainder: Array[PackedVector2Array] = []
 		for part: PackedVector2Array in parts:
-			remainder.append_array(Geometry2D.clip_polygons(part, other.outline))
+			remainder.append_array(Geometry2D.clip_polygons(part, outline))
 		parts = remainder
+		if parts.is_empty():
+			break
 	for polygon: PackedVector2Array in parts:
-		var local := PackedVector2Array()
-		for point: Vector2 in polygon:
-			local.append(point - polygon[0])
-		var indices := Geometry2D.triangulate_polygon(local)
-		for i in range(0, indices.size(), 3):
-			for j in 3:
-				var point := polygon[indices[i + j]]
-				emit_vertex(surface, span, point, nearby, origin, shoulder)
+		for index: int in Geometry2D.triangulate_polygon(polygon):
+			emit_vertex(surface, span, polygon[index] + origin, nearby, origin, shoulder)
 
 
 func at(span: Span, fraction: float, lateral: float) -> Vector2:
-	return span.start.lerp(span.end, fraction) + span.left.lerp(span.right, fraction) * lateral \
-		* (span_width_at(span, fraction, lateral) / span.width)
+	# Follow the same straight polygon edges used to cut intersecting spans.
+	var offset := lateral / span.width
+	var first := span.start + span.left * (offset * span_width_at(span, 0.0, lateral))
+	var last := span.end + span.right * (offset * span_width_at(span, 1.0, lateral))
+	return first.lerp(last, fraction)
 
 
 func span_width_at(span: Span, fraction: float, lateral: float) -> float:
@@ -420,6 +535,7 @@ func emit_vertex(surface: SurfaceTool, span: Span, point: Vector2, nearby: Array
 	var lateral := (point - span.start).dot(axis.orthogonal())
 	var width := span_width_at(span, (station - span.station) / span.length, lateral)
 	var edge := clampf(absf(lateral) / width, 0.0, 1.0)
+	var junction := junction_grade(span, point)
 	var joins := 0.0
 	var paint := 1.0
 	for other: Span in nearby:
@@ -446,27 +562,31 @@ func emit_vertex(surface: SurfaceTool, span: Span, point: Vector2, nearby: Array
 		paint *= smoothstep(26.0, 40.0, point.distance_to(PLAZA_FRONTAGE))
 	var style := float(span.marking) / 3.0
 	var edges := 1.0 if span.street in HIGHWAY or (span.street == BROCKHOUSE and not downtown.has_point(point)) else 0.0
+	var curb := Walkways.curb_strength(span.edge_profiles, station, signf(lateral))
 	# Blue is gravel coverage on pavement and opacity on the separate shoulder mesh.
 	var surface_gravel := 0.0
 	if shoulder:
-		surface_gravel = (1.0 - joins) * end_blend * (1.0 - apron)
+		surface_gravel = (1.0 - joins) * end_blend * (1.0 - apron) * (1.0 - curb)
 	else:
-		for section: Array in span.gravel_ranges:
-			surface_gravel = maxf(surface_gravel, smoothstep(section[0] - 7.0, section[0] + 7.0, station)
-				* (1.0 - smoothstep(section[1] - 7.0, section[1] + 7.0, station)))
+		surface_gravel = lerpf(gravel_at(span, point), junction.z, junction.x)
 		# Match the shoulder material at the asphalt lip where a soft verge exists.
-		var verge := (1.0 - joins) * end_blend * (1.0 - apron)
+		var verge := (1.0 - joins) * end_blend * (1.0 - apron) * (1.0 - curb)
 		if downtown.has_point(point):
 			var outside := point + axis.orthogonal() * (signf(lateral) * .4)
 			verge *= 0.0 if span.street == CHAMPLAIN else unpaved_ground(outside)
 		var street_wear := fposmod(float(span.street + 19) * .618034, 1.0)
-		surface.set_custom(0, Color(width, verge, street_wear, 0.0))
+		surface.set_custom(0, Color(width, verge * (1.0 - junction.x), street_wear, junction.x))
 	surface.set_color(Color(style, edges, surface_gravel,
 		float(span.road_surface) / float(RoadSurface.STANDARD)))
 	surface.set_uv(Vector2(lateral, station))
 	surface.set_uv2(Vector2(shoulder_mix if shoulder else paint * end_blend, transverse))
 	var height := ground.call(point.x, point.y) as float
-	surface.add_vertex(Vector3(point.x - origin.x, height + lift, point.y - origin.y))
+	var road_height := height + lift
+	if not shoulder and junction.x > 0.0:
+		# The shared grade follows the terrain and stays above the rendered ground.
+		var shared_height := maxf(height + .041, lerpf(height, junction.y, .38) + JUNCTION_LIFT)
+		road_height = lerpf(road_height, shared_height, junction.x * (1.0 - maxf(plaza, apron)))
+	surface.add_vertex(Vector3(point.x - origin.x, road_height, point.y - origin.y))
 
 
 func apron_coverage(point: Vector2) -> float:
@@ -490,12 +610,12 @@ static func new_surface(pavement := false) -> SurfaceTool:
 	var surface := SurfaceTool.new()
 	surface.begin(Mesh.PRIMITIVE_TRIANGLES)
 	if pavement:
-		surface.set_custom_format(0, SurfaceTool.CUSTOM_RGB_FLOAT)
+		surface.set_custom_format(0, SurfaceTool.CUSTOM_RGBA_FLOAT)
 	return surface
 
 
 static func install(parent: Node3D, surface: SurfaceTool, origin: Vector3,
-		material: Material, label: String, collision: bool) -> void:
+		material: Material, label: String, collision: bool, road_contact := true) -> void:
 	if not surface.get_aabb().has_surface():
 		return
 	surface.index()
@@ -504,7 +624,10 @@ static func install(parent: Node3D, surface: SurfaceTool, origin: Vector3,
 	mesh.name = label
 	mesh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	if collision:
-		add_collision(mesh)
+		if road_contact:
+			add_collision(mesh)
+		else:
+			mesh.create_trimesh_collision()
 
 
 static func add_collision(mesh: MeshInstance3D) -> void:

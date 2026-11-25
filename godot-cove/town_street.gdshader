@@ -11,6 +11,7 @@ const int CEDAR_SURFACE = 2;
 const int YARD_DRIVE_SURFACE = 3;
 const float STANDARD_SURFACE = 4.0;
 const vec4 SILVIE_APPROACH = vec4(18475.5, 13812.15, -.8252, .5649);
+const vec4 GLENDALE_STOP_BAR = vec4(17974.76, 13436.25, -.0206, .9998);
 
 uniform vec2 champlain_access = vec2(0.0);
 uniform vec4 champlain_bays = vec4(24.0, 3.25, .59, 3.5);
@@ -21,11 +22,11 @@ uniform vec2 parking_aisle = vec2(0.0);
 uniform vec4 laurier_crossing = vec4(0.0);
 uniform vec4 deep_river_crossing = vec4(0.0);
 varying vec2 world_xz;
-varying vec3 verge_and_wear;
+varying vec4 verge_and_wear;
 
 void vertex() {
 	world_xz = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xz;
-	verge_and_wear = CUSTOM0.rgb;
+	verge_and_wear = CUSTOM0;
 }
 
 float paint_line(float value, float half_width) {
@@ -90,13 +91,16 @@ void fragment() {
 	float civic = 1.0 - smoothstep(.92, 1.16, max(blocks.x, blocks.y));
 	float style = round(COLOR.r * 3.0);
 	float road_age = mix(.42, .91, verge_and_wear.z);
+	float junction = parking_lot ? 0.0 : verge_and_wear.w;
 	float condition = mix(mix(road_age, .46, step(2.5, style)), .10, civic) * mix(1.0, .31, school_paving);
+	condition = mix(condition, mix(.54, .10, civic), junction);
 	float unpaved = parking_lot ? 0.0 : COLOR.b;
 	vec3 asphalt = vec3(0.0);
 	if (unpaved < .999) {
 		asphalt = weathered_asphalt(world_xz, eye, condition);
 		if (road_surface == int(STANDARD_SURFACE) && !parking_lot) {
-			asphalt *= mix(mix(.93, 1.075, verge_and_wear.z), 1.0, max(civic, step(2.5, style)));
+			float local_age = mix(.93, 1.075, verge_and_wear.z);
+			asphalt *= mix(local_age, 1.0, max(max(civic, step(2.5, style)), junction));
 			asphalt *= 1.0 - reference_repairs(world_xz);
 		}
 	}
@@ -117,17 +121,18 @@ void fragment() {
 	} else {
 		float apron = marina_gravel_mask(world_xz);
 		if (road_surface == CEDAR_SURFACE) {
-			asphalt *= 1.0 + cedar_wear(UV, world_xz);
+			asphalt *= 1.0 + cedar_wear(UV, world_xz) * (1.0 - junction);
 		} else if (road_surface == YARD_DRIVE_SURFACE) {
-			asphalt *= 1.0 + yard_drive_dust(UV, world_xz);
+			asphalt *= 1.0 + yard_drive_dust(UV, world_xz) * (1.0 - junction);
 		} else if (school_paving > 0.0) {
 			// A faint longitudinal paving join and fewer patches near the school.
 			float mottling = road_noise(world_xz * .37);
 			float join = paint_line(UV.x + .17 + (mottling - .5) * .09, .022);
-			asphalt *= 1.0 - school_paving * (.09 + .04 * mottling + .09 * join);
+			asphalt *= 1.0 - school_paving * (.09 + .04 * mottling + .09 * join) * (1.0 - junction);
 		}
 		if (unpaved > .001) {
-			asphalt = mix(asphalt, road_gravel(world_xz, UV.x, 3.4), unpaved);
+			vec3 loose_gravel = mix(road_gravel(world_xz, UV.x, 3.4), gravel_color(world_xz), junction);
+			asphalt = mix(asphalt, loose_gravel, unpaved);
 		}
 		if (verge_and_wear.y > .01) {
 			float distance_to_edge = verge_and_wear.x - abs(UV.x);
@@ -178,7 +183,7 @@ void fragment() {
 				float seal = paint_line(seam, .028) * mix(.44, 1.0, mottling);
 				float patch = 1.0 - smoothstep(.82, 1.0, max(
 					abs(UV.x - 2.4 + .33 * mottling) / .93, abs(along_frontage - 3.0) / 3.7));
-				asphalt *= 1.0 + frontage * (1.0 - gravel) * (bay_age - .29 * seal - .13 * patch);
+				asphalt *= 1.0 + frontage * (1.0 - gravel) * (bay_age - .29 * seal - .13 * patch) * (1.0 - junction);
 				white *= 1.0 - frontage * (1.0 - smoothstep(.05, .27, abs(seam))) * .36;
 			}
 		}
@@ -187,6 +192,11 @@ void fragment() {
 		white = max(white, max(walk, stop) * (1.0 - step(3.22, abs(UV.x))));
 		yellow *= 1.0 - gravel;
 		white *= 1.0 - gravel;
+		if (distance(world_xz, GLENDALE_STOP_BAR.xy) < 4.0) {
+			vec2 at = crossing_coordinates(world_xz, GLENDALE_STOP_BAR);
+			float lane = smoothstep(-3.32, -3.21, at.x) * (1.0 - smoothstep(-.18, -.06, at.x));
+			white = max(white, paint_line(at.y, .137) * lane);
+		}
 		if (distance(world_xz, laurier_crossing.xy) < 5.0) {
 			vec2 at = crossing_coordinates(world_xz, laurier_crossing);
 			white = max(white, paint_line(abs(at.y) - 1.12, .10)

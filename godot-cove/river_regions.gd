@@ -19,7 +19,6 @@ func setup(scene: Node3D) -> void:
 	name = "RegionalTravel"
 	data = JSON.parse_string(FileAccess.get_file_as_string("res://ottawa/regional_access.json"))
 	init_helipad()
-	for points: Array in data.mcanulty_roads: road(points, 6.4)
 	var outline: Array = data.cemetery
 	var center := Vector2.ZERO
 	for index in outline.size() - 1: center += Vector2(outline[index][0], outline[index][1])
@@ -82,8 +81,7 @@ func road(points: Array, width: float, raised := false) -> void:
 			var row := index + corner.x
 			var p := centers[row] + edges[row] * corner.y
 			var at := ground(p)
-			# Keep narrow terrain-following surfaces above the terrain and the
-			# older atlas street ribbons where their paths cross or overlap.
+			# Keep the narrow terrain-following trail above the ground.
 			at.y = heights[row] if raised else at.y + .10
 			vertices.set_uv(Vector2(width * .5 * corner.y, 0.0))
 			vertices.add_vertex(at)
