@@ -20,7 +20,7 @@ var head_turn := 0.0
 var jaw := 0.0
 
 
-func build() -> void:
+func build(with_props := true) -> void:
 	var shorts := ShaderMaterial.new()
 	shorts.shader = preload("res://rich_boardshorts.gdshader")
 	var shirt := fabric(Color("#c6a5a0"), .80)
@@ -50,8 +50,9 @@ func build() -> void:
 	build_head(arm_skin)
 	for side: float in [-1.0, 1.0]:
 		build_arm(side, shirt, collar, arm_skin)
-	build_wrench(wrists[0])
-	build_beer(wrists[1])
+	if with_props:
+		build_wrench(wrists[0])
+		build_beer(wrists[1])
 
 
 func build_leg(side: float, shorts: Material, skin: Material) -> void:

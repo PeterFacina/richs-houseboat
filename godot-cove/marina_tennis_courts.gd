@@ -2,6 +2,7 @@ extends RefCounted
 
 const Kit = preload("res://scenery.gd")
 const Beach = preload("res://lamure_beach.gd")
+const TennisMatch = preload("res://marina_tennis_match.gd")
 const COURT_COUNT := 6
 const COURT_PITCH := 12.5
 const COATING_LIFT := .085
@@ -224,8 +225,8 @@ func build_nets() -> void:
 	for index in segments:
 		var a := lerpf(-NET_HALF_SPAN, NET_HALF_SPAN, float(index) / segments)
 		var b := lerpf(-NET_HALF_SPAN, NET_HALF_SPAN, float(index + 1) / segments)
-		var left := Vector3(a, .915 + .153 * pow(a / NET_HALF_SPAN, 2.0), 0.0)
-		var right := Vector3(b, .915 + .153 * pow(b / NET_HALF_SPAN, 2.0), 0.0)
+		var left := Vector3(a, net_height(a), 0.0)
+		var right := Vector3(b, net_height(b), 0.0)
 		var tape := Vector3.UP * .061
 		add_screen_quad(net, Vector3(a, .015, 0), Vector3(b, .015, 0), left - tape, right - tape, a, b, left.y)
 		var lip := Vector3.BACK * .023
@@ -251,6 +252,16 @@ func build_nets() -> void:
 		for side: float in [-1.0, 1.0]:
 			Kit.box_at(frame, Vector3(side * NET_HALF_SPAN, .50, 0), Vector3(.10, 1.19, .10), net_post)
 		Kit.box_at(frame, Vector3(0, .426, 0), Vector3(.050, .852, .027), tape_material)
+		if index == COURT_COUNT - 1:
+			# The last court is nearest the marina approach and open gate.
+			var tennis := TennisMatch.new()
+			tennis.name = "MarinaTennisMatch"
+			frame.add_child(tennis)
+			tennis.build(ground, NET_HALF_SPAN, net_height)
+
+
+static func net_height(x: float) -> float:
+	return .915 + .153 * pow(x / NET_HALF_SPAN, 2.0)
 
 
 func build_light(foot: Vector3, inward: Vector3, paired := false) -> void:

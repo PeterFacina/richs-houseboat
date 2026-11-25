@@ -413,6 +413,30 @@ func request_rescue() -> void:
 		rescue_driver(crew.my_id(), active)
 
 
+func recover_restoration_wagon() -> bool:
+	if crew.is_guest() or drivers[0] != 0:
+		return false
+	var car := cars[0]
+	var parking := bay(0.0, 0.0)
+	var wheels := car.footprint(parking, LOT_ANGLE)
+	parking.y = car.mean_height(wheels)
+	var clearance := PhysicsShapeQueryParameters3D.new()
+	var volume := BoxShape3D.new()
+	volume.size = car.body_size + Vector3(.18, .04, .14)
+	clearance.shape = volume
+	clearance.transform = Transform3D(car.ground_basis(LOT_ANGLE, wheels), parking + Vector3.UP * (volume.size.y * .5 + .16))
+	clearance.exclude = [car.get_rid()]
+	clearance.collision_mask = 1
+	if not get_world_3d().direct_space_state.intersect_shape(clearance, 1).is_empty():
+		return false
+	car.heading = LOT_ANGLE
+	car.global_transform = Transform3D(car.ground_basis(LOT_ANGLE, wheels), parking)
+	car.speed = 0.0
+	car.steer = 0.0
+	car.reset_physics_interpolation()
+	return true
+
+
 func rescue_driver(peer: int, which: int) -> void:
 	if which < 0 or which >= cars.size() or drivers[which] != peer:
 		return

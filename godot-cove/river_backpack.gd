@@ -8,6 +8,8 @@ const MenuTheme = preload("res://river_menu_theme.gd")
 const NONE := -2
 const FISTS := -1
 const ROD := 0
+const REPAIR := 1
+const Restoration = preload("res://houseboat_restoration.gd")
 const HOTBAR_KEYS := [KEY_1, KEY_2, KEY_3, KEY_4, KEY_5, KEY_6, KEY_7]
 const SLOT_WIDTH := 57
 const HOTBAR_SECONDS := 2.7
@@ -35,6 +37,10 @@ var icons: Array[HotbarIcon] = []
 var slot_labels: Array[Label] = []
 var gear_buttons: Dictionary = {}
 var gear_states: Dictionary = {}
+var gear_names: Dictionary = {}
+var rod_available := true
+var rod_description := "Fishing rod"
+var loaned_tool := ""
 var shortcut_buttons: Array[Button] = []
 var backpack_button: Button
 var equip_button: Button
@@ -300,6 +306,8 @@ func build_inventory() -> void:
 	selected_hover.set_border_width_all(2)
 	add_gear(gear_row, ROD)
 	add_gear(gear_row, FISTS)
+	add_gear(gear_row, REPAIR)
+	gear_buttons[REPAIR].hide()
 
 	var detail_margin := MenuTheme.panel(column, MenuTheme.PAPER, MenuTheme.SAND, 9, 12)
 	var details := HBoxContainer.new()
@@ -374,7 +382,9 @@ func add_gear(parent: HBoxContainer, gear: int) -> void:
 	labels.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	labels.add_theme_constant_override("separation", 1)
 	row.add_child(labels)
-	labels.add_child(MenuTheme.text(gear_name(gear), 19, MenuTheme.NAVY, true))
+	var title := MenuTheme.text(gear_name(gear), 19, MenuTheme.NAVY, true)
+	labels.add_child(title)
+	gear_names[gear] = title
 	var state := MenuTheme.text("", 14, MenuTheme.MUTED)
 	labels.add_child(state)
 	option.pressed.connect(select_gear.bind(gear))
@@ -392,6 +402,32 @@ func set_equipped(gear: int) -> void:
 	if gear != NONE:
 		selected = gear
 	refresh()
+
+
+func set_story_gear(rod_owned_or_loaned: bool, rod_label: String, tool: String) -> void:
+	if rod_available == rod_owned_or_loaned and rod_description == rod_label and loaned_tool == tool:
+		return
+	rod_available = rod_owned_or_loaned
+	rod_description = rod_label
+	loaned_tool = tool
+	gear_buttons[REPAIR].visible = not tool.is_empty()
+	if tool.is_empty():
+		var index := shortcuts.find(REPAIR)
+		if index >= 0:
+			shortcuts[index] = NONE
+	elif not shortcuts.has(REPAIR):
+		var index := shortcuts.find(NONE)
+		if index >= 0:
+			shortcuts[index] = REPAIR
+	if not gear_available(equipped):
+		equip_requested.emit(NONE)
+	if not gear_available(selected):
+		selected = FISTS
+	refresh()
+
+
+func gear_available(gear: int) -> bool:
+	return (gear != ROD or rod_available) and (gear != REPAIR or not loaned_tool.is_empty())
 
 
 func assign_to(slot: int) -> void:
@@ -420,17 +456,28 @@ func refresh() -> void:
 		var option: Button = gear_buttons[gear]
 		var label: Label = gear_states[gear]
 		label.text = "Equipped" if gear == equipped else "Stowed"
+		if gear == REPAIR and not loaned_tool.is_empty():
+			label.text += " · Property of Big Rich"
+		if not gear_available(gear):
+			label.text = "Ask Big Rich for a rod"
+		gear_names[gear].text = gear_name(gear)
 		label.add_theme_color_override("font_color", MenuTheme.BLUE if gear == equipped else MenuTheme.MUTED)
 		option.accessibility_name = "%s, %s" % [gear_name(gear), label.text]
 		option.set_pressed_no_signal(gear == selected)
 	equip_button.text = "Stow" if selected == equipped else "Equip"
-	gear_detail.text = "R  ·  Cast or reel" if selected == ROD else "Left click  ·  Punch"
+	equip_button.disabled = not gear_available(selected)
+	match selected:
+		ROD: gear_detail.text = rod_description + "  ·  R to cast or reel"
+		REPAIR: gear_detail.text = "Aim at the damaged part and hold E"
+		_: gear_detail.text = "Left click  ·  Punch"
 
 
 func gear_name(gear: int) -> String:
-	if gear == NONE:
-		return "Empty"
-	return "Fists" if gear == FISTS else "Rod"
+	match gear:
+		NONE: return "Empty"
+		FISTS: return "Fists"
+		REPAIR: return Restoration.TOOLS.get(loaned_tool, "Repair tool")
+	return "Rod"
 
 
 func make_label(value: String, size: int, tint: Color) -> Label:

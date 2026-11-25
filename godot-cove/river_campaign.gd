@@ -11,6 +11,7 @@ const Boat = preload("res://houseboat.gd")
 const Kit = preload("res://scenery.gd")
 const CrewPlay = preload("res://crew_play.gd")
 const Rich = preload("res://rich_npc.gd")
+const Story = preload("res://rich_story.gd")
 const BoatsMenu = preload("res://marina_boats_menu.gd")
 const Princecraft = preload("res://princecraft.gd")
 const PrincecraftScene = preload("res://princecraft.tscn")
@@ -30,6 +31,9 @@ var dive := Sub.new()
 var crew := Crew.new()
 var crewplay := CrewPlay.new()
 var rich := Rich.new()
+var story := Story.new()
+const STORY_ARRIVAL := -30
+const STORY_ENGINE_TEST := -38
 var amenities := Amenities.new()
 var board: Board
 var boats_menu := BoatsMenu.new()
@@ -77,17 +81,20 @@ var rich_high_bilge := false
 var rich_chat_requests := {}
 
 
-func setup(fishing_game: Node3D) -> void:
+func load_trip(fishing_game: Node3D) -> bool:
+	if fishing_game.multiplayer_trip:
+		ledger.save_path = Ledger.CREW_SAVE
+	else:
+		ledger.save_path = fishing_game.SoloSaves.CAMPAIGNS[fishing_game.solo_slot]
+	return not ledger.load_file()
+
+
+func setup(fishing_game: Node3D, new_game: bool) -> void:
 	game = fishing_game
 	name = "RiverCampaign"
 	marina_fuel = game.river.waterfront.gas_bar
 	marina_fuel.bind(game, self)
 	houseboat = game.vessel as Boat
-	if game.multiplayer_trip:
-		ledger.save_path = Ledger.CREW_SAVE
-	else:
-		ledger.save_path = game.SoloSaves.CAMPAIGNS[game.solo_slot]
-	ledger.load_file()
 	houseboat.set_modern_design(ledger.state.modern_houseboat)
 	crew.name = "Crew"
 	crew.local_profile = ledger.profile_id()
@@ -115,6 +122,7 @@ func setup(fishing_game: Node3D) -> void:
 	rich.setup(houseboat, game.hud)
 	crew.rich_heard.connect(rich.play)
 	rich.spoken.connect(share_rich_line)
+	story.setup(self, new_game)
 	add_child(dive)
 	dive.setup(game.river, game.eye)
 	var page := CanvasLayer.new()
@@ -156,7 +164,15 @@ func setup(fishing_game: Node3D) -> void:
 	elif ledger.state.craft == "princecraft":
 		select_craft("princecraft", 0)
 		princecraft.berth_at(houseboat.center, houseboat.heading)
-		keep_player_on_deck(princecraft, princecraft.board_anchor())
+		if not story.shore_arrival():
+			keep_player_on_deck(princecraft, princecraft.board_anchor())
+	elif new_game:
+		var wharf = game.river.waterfront.wharf
+		var berth: Vector3 = wharf.launch_center(houseboat.launch_half_beam())
+		if houseboat.can_place(berth, wharf.launch_heading):
+			houseboat.berth_at(berth, wharf.launch_heading)
+	if dock < 0 and story.restore_boat_pose() and not story.shore_arrival():
+		keep_player_on_deck(game.vessel, game.vessel.board_anchor())
 	update_target()
 	update_route_map()
 
@@ -201,14 +217,12 @@ func actor_site(person: Dictionary) -> int:
 
 
 func can_fish_from_shore() -> bool:
-	var at: Vector3 = game.player.global_position
-	return not dive.active and at.y < 6.0 \
-		and (near_landing_water() or (at.y > .3 and game.river.waterfront.docks.blocks(at)))
+	return not dive.active and shore_fishing_at(game.player.global_position)
 
 
-func near_landing_water() -> bool:
-	var at: Vector3 = game.player.global_position
-	return landings.site_range(at, 86.0, false) >= 0 or landings.site_range(at, 55.0, true) >= 0
+func shore_fishing_at(at: Vector3) -> bool:
+	return at.y < 6.0 and (landings.site_range(at, 86.0, false) >= 0 or landings.site_range(at, 55.0, true) >= 0 \
+		or (at.y > .3 and game.river.waterfront.docks.blocks(at)))
 
 
 func controls_blocked() -> bool:
@@ -249,7 +263,10 @@ func handle_modal(event: InputEventKey, key: Key) -> bool:
 		return true
 	if key == KEY_B and not game.cabin.busy():
 		var place := local_site()
-		open_board("Build" if place >= 0 and not game.aboard() and not game.chart.visible else "River")
+		if place >= 0 and not game.aboard():
+			open_board("Build")
+		else:
+			game.open_notebook()
 		return true
 	return false
 
@@ -308,6 +325,7 @@ func local_interact() -> bool:
 	if game.properties.interact(): return true
 	if game.helicopter.interact(): return true
 	if amenities.interact(): return true
+	if story.interact(): return true
 	var launch_action := launch_interaction()
 	if launch_action != "":
 		match launch_action:
@@ -370,15 +388,20 @@ func launch_interaction() -> String:
 	var wharf = game.river.waterfront.wharf
 	var feet: Vector3 = game.player.global_position
 	var boat: Boat = game.vessel
+	if not boat.visible:
+		return ""
 	var alongside := at_launch_berth(boat)
 	if game.aboard():
 		if alongside and feet.distance_to(boat.to_global(boat.board_anchor())) < 1.75 \
 				and aiming(wharf.launch_mark, 5.5, .84) and (not rich.seated or not at_rich()):
 			return "Step ashore"
 	elif wharf.at_launch_station(feet):
+		var aims_at_boat := alongside and aiming(boat.to_global(boat.board_anchor()) + Vector3.UP * .8, 5.5, .62)
+		if story.managed() and not story.owns_houseboat() and aims_at_boat:
+			return "Board boat"
 		if aiming(wharf.launch_mark, 3.65, .87):
 			return "Boats"
-		if alongside and aiming(boat.to_global(boat.board_anchor()) + Vector3.UP * .8, 5.5, .62):
+		if aims_at_boat:
 			return "Board boat"
 	return ""
 
@@ -408,10 +431,15 @@ func step_ashore_at_launch(peer: int, person: Dictionary) -> void:
 		boat.departed = false
 		boat.speed = 0.0
 		boat.throttle = 0.0
+		story.docked(peer, 0)
+		changed()
 		tell(peer, "Tied up at the launch dock.", LAUNCH_ASHORE)
 
 
 func spawn_at_marina(peer: int, person: Dictionary, choice: String) -> void:
+	if story.managed() and not story.owns_houseboat():
+		tell(peer, "Rich manages the boat loans and restoration from his yard.", LAUNCH_REFUSED)
+		return
 	var wharf = game.river.waterfront.wharf
 	if not BoatsMenu.BOATS.has(choice) or person.onboard or not wharf.at_launch_station(person.at):
 		tell(peer, "Choose a boat at the launch dock sign.", LAUNCH_REFUSED)
@@ -460,6 +488,33 @@ func spawn_at_marina(peer: int, person: Dictionary, choice: String) -> void:
 	tell(peer, "%s ready alongside. Look at it and press E to board." % BoatsMenu.BOATS[choice], LAUNCH_READY)
 
 
+func place_story_craft(craft: String) -> bool:
+	var wharf = game.river.waterfront.wharf
+	var boat := craft_for(craft, 0)
+	var berth: Vector3 = wharf.launch_center(boat.launch_half_beam())
+	if captain != 0 or not boat.can_place(berth, wharf.launch_heading):
+		return false
+	dock = -1
+	ledger.state.last_dock = -1
+	ledger.state.craft = craft
+	ledger.state.tow = false
+	marina_fuel.disconnect_fillers()
+	boat.berth_at(berth, wharf.launch_heading)
+	select_craft(craft, 0)
+	revision += 1
+	return true
+
+
+func return_story_princecraft() -> void:
+	stop_captain()
+	dock = -1
+	ledger.state.last_dock = -1
+	ledger.state.craft = "houseboat"
+	ledger.state.rich_story.erase("boat_pose")
+	select_craft("houseboat", 0)
+	revision += 1
+
+
 func at_rich() -> bool:
 	return rich.hull == game.vessel and game.aboard() and (rich.seated or not game.driving) \
 		and rich.focused(game.eye, game.player)
@@ -472,6 +527,11 @@ func share_rich_line(line_id: String, toward: Vector3) -> void:
 
 func start_rich_chat(peer: int) -> bool:
 	var person := actor(peer)
+	if rich.hull == story.yard.rich_stand:
+		if not story.npc_in_reach(person):
+			return false
+		rich.talk(rich.hull.to_local(person.at) + Vector3.UP * 1.57)
+		return true
 	if rich.hull != game.vessel or (peer == captain and not rich.seated) \
 			or not person.get("onboard", false) or not rich.close_enough(person.at):
 		return false
@@ -497,7 +557,8 @@ func tick_rich(delta: float) -> void:
 			rich.react("underway", toward)
 		rich_underway = moving
 		rich_high_bilge = knee_deep
-	var see_subtitles: bool = rich_aboard and world_hud_available() and not dive.active
+	var see_subtitles: bool = rich.visible and (rich_aboard or rich.hull == story.yard.rich_stand) \
+		and world_hud_available() and not dive.active
 	var on_deck: Array[Vector3] = []
 	if author and rich_aboard:
 		if game.aboard():
@@ -509,7 +570,7 @@ func tick_rich(delta: float) -> void:
 					on_deck.append(rich.hull.to_local(person.at))
 		if game.vessel == princecraft:
 			tick_princecraft_dialogue(delta, on_deck)
-	rich.tick(delta, game.clock, game.eye, see_subtitles, author, on_deck)
+	rich.tick(delta, game.clock, game.eye, see_subtitles, author and rich_aboard, on_deck)
 
 
 func begin_preview(id: String) -> void:
@@ -662,9 +723,7 @@ func select_craft(requested: String, index: int) -> void:
 	crewplay.fit(chosen)
 	if chosen == princecraft:
 		reset_princecraft_dialogue()
-		rich.mount(princecraft, true, princecraft.passenger_anchor())
-	else:
-		rich.mount(houseboat, false)
+	story.sync_world()
 	rich_underway = false
 	rich_high_bilge = false
 
@@ -719,6 +778,8 @@ func step_boat(delta: float, rudder: float) -> void:
 	if crew.is_guest():
 		tick_client_ship(delta)
 		return
+	if story.restrict_boat() and vessel == houseboat:
+		return
 	if dock >= 0:
 		vessel.throttle = 0.0
 		vessel.departed = false
@@ -739,11 +800,14 @@ func step_boat(delta: float, rudder: float) -> void:
 	consume_power(delta)
 	var limiting: float = ledger.state.charge if vessel.uses_battery() else ledger.state.fuel
 	vessel.throttle_cap = (.18 if limiting < .015 else 1.0) * lerpf(1.0, .52, smoothstep(.48, 1.0, ledger.state.bilge))
-	vessel.top_speed = vessel.speed_limit(ledger.state.tow)
+	var rebuilt_engine := vessel == houseboat and Story.Parts.upgrade_installed(story.state(), "outboard")
+	vessel.top_speed = vessel.speed_limit(ledger.state.tow) * (1.18 if rebuilt_engine else 1.0)
 	var before := vessel.center
 	vessel.sail(delta, game.clock, captain != 0 or game.driving, rudder * (1.0 + skill_effect(captain, "experienced_captain") / 100.0))
 	if dock < 0 and absf(vessel.throttle) > .1 and absf(vessel.speed) > .3:
-		travel_progress(captain, "boat", before.distance_to(vessel.center), 20.0 * delta)
+		var distance := before.distance_to(vessel.center)
+		travel_progress(captain, "boat", distance, 20.0 * delta)
+		story.powered_distance(captain, distance, delta)
 	var active := ledger.active_job()
 	if not active.is_empty() and active.kind == "freight" and absf(vessel.throttle) > .21:
 		ledger.state.freight_run += before.distance_to(vessel.center)
@@ -772,8 +836,11 @@ func consume_power(delta: float) -> void:
 	elif vessel.uses_battery():
 		state.charge = maxf(0.0, state.charge - delta * load * (.014 + vessel.foil_lift * .010))
 	else:
-		state.fuel = maxf(0.0, state.fuel - delta * load * .040 * (1.0 - skill_effect(captain, "fuel_conservation") / 100.0))
+		var companion_use := 1.0 - Story.FUEL_SAVING if story.companion_aboard() else 1.0
+		state.fuel = maxf(0.0, state.fuel - delta * load * .040 * companion_use * (1.0 - skill_effect(captain, "fuel_conservation") / 100.0))
 		state.charge = minf(capacity(), state.charge + delta * load * .0035)
+	if vessel == houseboat and Story.Parts.upgrade_installed(story.state(), "solar") and game.river.last_evening < .5:
+		state.charge = minf(capacity(), state.charge + delta * .0028)
 	if load > .2:
 		var motion := absf(vessel.wave_pose.y) + absf(vessel.wave_pose.z)
 		state.bilge = minf(1.0, state.bilge + delta * load * (.002 + motion * .022 * (1.0 - skill_effect(captain, "smooth_sailing") / 100.0)))
@@ -806,6 +873,7 @@ func work_radius(kind: String) -> float:
 
 func tick(delta: float, has_input: bool) -> void:
 	var vessel: Boat = game.vessel
+	story.tick_work()
 	tick_preview()
 	tick_lift(delta)
 	if dive.active and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
@@ -830,6 +898,7 @@ func tick(delta: float, has_input: bool) -> void:
 		save_elapsed += delta
 		if save_elapsed >= 30.0:
 			save_elapsed = 0.0
+			story.save_boat_pose()
 			ledger.save_file()
 	update_info()
 
@@ -847,7 +916,10 @@ func remote_request(peer: int, action: String, value: Variant) -> void:
 		crewplay.welcome(peer)
 		amenities.welcome(peer)
 		game.helicopter.welcome(peer)
-		crew.result.rpc_id(peer, "Welcome aboard. B opens the shared notebook.", dock, actor_site(actor(1)) < 0)
+		if story.shore_arrival():
+			crew.result.rpc_id(peer, "Welcome to Deep River Marina. B opens the notebook.", STORY_ARRIVAL - story.use_guest_slot(peer), false)
+		else:
+			crew.result.rpc_id(peer, "Welcome aboard. B opens the notebook.", dock, actor_site(actor(1)) < 0)
 		crew.enter_river.rpc_id(peer, ship_packet())
 		return
 	if crew.started:
@@ -870,6 +942,8 @@ func receive_result(text: String, at_site: int, to_boat: bool) -> void:
 		return
 	if at_site == LAUNCH_READY:
 		boats_menu.report(text, true)
+	elif at_site == STORY_ENGINE_TEST:
+		story.test_sound.play()
 	elif at_site == LAUNCH_ASHORE:
 		var wharf = game.river.waterfront.wharf
 		game.release_line()
@@ -879,6 +953,8 @@ func receive_result(text: String, at_site: int, to_boat: bool) -> void:
 		game.yaw = wharf.launch_heading + PI
 		game.pitch = -.10
 		game.update_view()
+	elif at_site <= STORY_ARRIVAL and at_site > STORY_ARRIVAL - story.yard.arrivals.size():
+		story.arrive(STORY_ARRIVAL - at_site)
 	elif at_site == -3:
 		begin_dive()
 	elif at_site >= 0:
@@ -895,7 +971,9 @@ func receive_result(text: String, at_site: int, to_boat: bool) -> void:
 
 func changed(persist := true) -> void:
 	houseboat.set_modern_design(ledger.state.get("modern_houseboat", false))
+	story.sync_world()
 	if persist and not crew.is_guest():
+		story.save_boat_pose()
 		ledger.save_file()
 		if not ledger.error.is_empty():
 			message = ledger.error
@@ -949,6 +1027,7 @@ func travel_progress(peer: int, kind: String, distance: float, maximum: float) -
 
 func snapshot_for(peer: int) -> Dictionary:
 	var snapshot := ledger.state.duplicate(false)
+	snapshot.erase("player_position")
 	var personal := progression_for(peer).duplicate(false)
 	personal.erase("events")
 	snapshot.progression = {"self": personal}
@@ -1027,6 +1106,9 @@ func perform(peer: int, action: String, value: Variant) -> void:
 	if person.is_empty():
 		tell(peer, "Move a step so the host can see where you are.", LAUNCH_REFUSED if action == "marina_launch" else -2)
 		return
+	if action == Story.ACTION:
+		story.perform(peer, value, person)
+		return
 	if action.begins_with("crew_"):
 		crewplay.act(peer, action, value, person)
 		return
@@ -1103,7 +1185,9 @@ func perform(peer: int, action: String, value: Variant) -> void:
 		"work":
 			work_at_buoy(peer, person)
 		"catch":
-			if (person.onboard or place >= 0) and value is Array and value.size() == 2 and value[0] is String and value[1] is int:
+			if not value is Array or value.size() != 2 or not value[0] is String or not value[1] is int:
+				return
+			if person.onboard or place >= 0:
 				count_catch(peer, String(value[0]).substr(0, 42), clampi(value[1], 2, 200), person.at)
 				if person.onboard and game.vessel == rich.hull:
 					rich.react("catch", rich.hull.to_local(person.at) + Vector3.UP * 1.57)
@@ -1146,6 +1230,15 @@ func use_dock(peer: int, person: Dictionary, place: int) -> void:
 	if not person.onboard or (captain != 0 and captain != peer) or absf(boat.speed) > 1.6:
 		tell(peer, "Slow below 6 km/h and press L to tie up.")
 		return
+	if story.managed() and at_launch_berth(boat):
+		stop_captain()
+		boat.departed = false
+		boat.speed = 0.0
+		boat.throttle = 0.0
+		story.docked(peer, 0)
+		changed()
+		tell(peer, "Tied up at the public launch.", LAUNCH_ASHORE)
+		return
 	var berth := landings.site_range(boat.center, 22.0, true)
 	if berth < 0:
 		tell(peer, "Get within 22 m of a landing before tying up. See B → River.")
@@ -1159,6 +1252,7 @@ func use_dock(peer: int, person: Dictionary, place: int) -> void:
 		keep_player_on_deck(boat, local)
 	revision += 1
 	XP.award(progression_for(peer), "discovery", "berth:%d" % berth)
+	story.docked(peer, berth)
 	save_berth(berth)
 	tell(peer, "Tied up at %s. L boards again." % Data.dock_name(berth), berth)
 
@@ -1180,10 +1274,14 @@ func use_helm(peer: int, person: Dictionary) -> void:
 		tell(peer, "Set down the gear or release the light before taking the wheel.")
 		return
 	var boat: Boat = game.vessel
+	if story.restrict_boat() and boat == houseboat:
+		return
 	if Vector3(person.at).distance_to(boat.to_global(boat.helm_anchor())) > 1.33:
 		return
 	dock = -1
 	boat.departed = true
+	if story.managed():
+		ledger.state.last_dock = -1
 	captain = peer
 	crew.set_meta("captain", captain)
 	if peer == crew.my_id():
@@ -1192,6 +1290,7 @@ func use_helm(peer: int, person: Dictionary) -> void:
 
 
 func save_berth(index: int) -> void:
+	ledger.state.player_position.clear()
 	ledger.state.last_dock = index
 	if not ledger.state.visited.has(index) and not ledger.state.visited.has(float(index)):
 		ledger.state.visited.append(index)
@@ -1510,6 +1609,7 @@ func tick_lift(delta: float) -> void:
 
 
 func count_catch(peer: int, species: String, length: int, at: Vector3) -> void:
+	story.record_catch(peer, at)
 	var previous: Dictionary = ledger.state.records.get(species, {})
 	var worthy := int(previous.get("length", 0)) < length
 	if worthy:
@@ -1599,6 +1699,9 @@ func begin_dive() -> void:
 
 
 func member_left(peer: int) -> void:
+	story.guest_slots.erase(peer)
+	story.work.erase(peer)
+	story.equipped_tools.erase(peer)
 	if not crew.started:
 		return
 	game.helicopter.remove_peer(peer)
@@ -1663,6 +1766,7 @@ func sync_guest(data: Dictionary, new_dock: int, new_captain: int, change: int) 
 	var was_local := not first and old_dock >= 0 and local_site() == old_dock
 	var previous: Boat = game.vessel
 	ledger.state = data
+	story.normalize()
 	select_craft(data.craft, maxi(new_dock, 0))
 	var switching: bool = previous != game.vessel
 	dock = new_dock
@@ -1736,10 +1840,10 @@ func button_selected(action: String, value: Variant) -> void:
 			guide_site = int(value)
 			close_board()
 		"chart", "catch_journal":
-			board.hide()
+			close_board()
 			game.open_chart(action == "catch_journal")
 		"fish_guide":
-			board.hide()
+			close_board()
 			game.open_fish_guide(board.active_page)
 		"leave":
 			var error: String = game.leave_trip()
@@ -1963,6 +2067,9 @@ func action_hint() -> String:
 			"Look at a level spot within the plot  •  Q rotate"
 	if dive.active:
 		return dive.status_text()
+	var story_hint := story.hint()
+	if not story_hint.is_empty():
+		return story_hint
 	var launch_action := launch_interaction()
 	if launch_action != "":
 		return "E  " + launch_action
@@ -1995,7 +2102,7 @@ func action_hint() -> String:
 
 
 func world_hud_available() -> bool:
-	return not boats_menu.visible and not board.visible and not game.chart.visible and not game.fish_guide.visible and not game.backpack.inventory.visible
+	return not boats_menu.visible and not board.visible and not game.notebook.visible and not game.backpack.inventory.visible
 
 
 func update_info() -> void:

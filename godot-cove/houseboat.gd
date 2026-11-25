@@ -4,6 +4,7 @@ const SceneKit = preload("res://scenery.gd")
 const Swell = preload("res://swell.gd")
 const Outboard = preload("res://outboard.gd")
 const Panorama = preload("res://houseboat_panorama.gd")
+const RestorationModel = preload("res://rich_houseboat_model.gd")
 const FuelTank = preload("res://boat_fuel_tank.gd")
 const HelmConsole = preload("res://boat_helm_console.gd")
 const Tools = preload("res://crew_tools.gd")
@@ -49,6 +50,8 @@ var foil := false
 var foil_lift := 0.0
 var throttle_cap := 1.0
 var modern_design := false
+var restoration_design := false
+var restoration_model: RestorationModel
 var classic_exterior: Node3D
 var panorama_exterior: Node3D
 var fuel_filler: Marker3D
@@ -464,7 +467,7 @@ func band(low: float, high: float, low_scale: float, high_scale: float, material
 
 
 func set_modern_design(enabled: bool) -> void:
-	if skiff or modern_design == enabled:
+	if skiff or restoration_design or modern_design == enabled:
 		return
 	if panorama_exterior == null:
 		panorama_exterior = Node3D.new()
@@ -484,6 +487,12 @@ func set_modern_design(enabled: bool) -> void:
 func geometry() -> void:
 	if skiff:
 		skiff_geometry()
+		return
+	if restoration_design:
+		restoration_model = RestorationModel.new()
+		restoration_model.build(self, false)
+		build_classic_wheel(SceneKit.paint(Color("#a99461")), SceneKit.paint(Color("#30474b")),
+			SceneKit.paint(Color("#293237")), SceneKit.paint(Color("#c8bc9e")))
 		return
 	classic_exterior = Node3D.new()
 	classic_exterior.name = "ClassicExterior"
@@ -558,6 +567,18 @@ func geometry() -> void:
 	SceneKit.box_at(classic_exterior, Vector3(-0.66, 2.91, 2.04), Vector3(0.23, 0.42, 0.28), black)
 	SceneKit.box_at(classic_exterior, Vector3(-0.66, 3.13, 2.04), Vector3(0.28, 0.06, 0.33), brass)
 	SceneKit.beam(classic_exterior, Vector3(0.45, 2.67, 1.72), Vector3(0.45, 3.69, 1.72), 0.042, black)
+	build_classic_wheel(brass, hull, black, cream)
+	var sign := Label3D.new()
+	sign.text = hull_name
+	sign.font_size = 40
+	sign.pixel_size = 0.0037
+	sign.position = Vector3(-1.444, 0.54, 0.39)
+	sign.rotation.y = -PI / 2.0
+	sign.modulate = Color("#eeddb1")
+	classic_exterior.add_child(sign)
+
+
+func build_classic_wheel(brass: Material, hull: Material, black: Material, cream: Material) -> void:
 	var console_z := -2.47 if river_engine else -.87
 	var console_y := 1.56 if river_engine else 1.49
 	SceneKit.box_at(self, Vector3(0, 1.09, console_z), Vector3(.52, .69, .36), hull)
@@ -577,15 +598,6 @@ func geometry() -> void:
 	for i in 6:
 		var angle := i * TAU / 6.0
 		SceneKit.beam(helm_wheel, Vector3.ZERO, Vector3(cos(angle), sin(angle), 0) * 0.221, 0.024, brass)
-	var sign := Label3D.new()
-	sign.text = hull_name
-	sign.font_size = 40
-	sign.pixel_size = 0.0037
-	sign.position = Vector3(-1.444, 0.54, 0.39)
-	sign.rotation.y = -PI / 2.0
-	sign.modulate = Color("#eeddb1")
-	classic_exterior.add_child(sign)
-	# The old ladder across the aft bulkhead is removed for the new doorway.
 
 
 func skiff_geometry() -> void:

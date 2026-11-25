@@ -1,7 +1,12 @@
 extends RefCounted
 
 const CAP := 50
-const REWARDS := {"route": 250, "fish_delivery": 125, "delivery": 100, "fish": 30, "trophy": 100, "small_fish": 15, "grass": 10, "commercial": 400, "boat": 20, "road": 15, "discovery": 50}
+const REWARDS := {
+	"route": 250, "fish_delivery": 125, "delivery": 100, "fish": 30, "trophy": 100, "small_fish": 15,
+	"grass": 10, "commercial": 400, "boat": 20, "road": 15, "discovery": 50,
+	"story_meet": 35, "story_fish": 60, "story_parts": 50, "story_repair": 75,
+	"story_engine": 75, "story_electrical": 80, "story_fuel": 45, "story_voyage": 100, "story_retire": 120,
+}
 const REWARD_SKILLS := {
 	"fish": ["experienced_angler", "master_angler"], "small_fish": ["experienced_angler", "master_angler"],
 	"trophy": ["experienced_angler", "master_angler", "trophy_hunter"],
