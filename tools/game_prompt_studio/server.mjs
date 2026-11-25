@@ -125,14 +125,14 @@ export function createStudio({ options = config(), storage = dataDir, project = 
     const author = privateMode ? user.name : input.author || user.name;
     void (async () => {
       try {
-        const { selection, ...knowledge } = prepareKnowledge ? await prepareKnowledge(input) : {};
+        const { selection, preparedEvidence, generationGuidance, ...knowledge } = prepareKnowledge ? await prepareKnowledge(input) : {};
         if (controller.signal.aborted) return;
         const facts = projectProfile(db);
         const manifest = prepareKnowledge ? indexedKnowledge(db) : null;
         if (prepareKnowledge && (!manifest || manifest.revision !== knowledge.commit)) {
           throw new Error('Studio cannot match the source index to the generation.');
         }
-        const evidence = findEvidence(db, input.note, input.focus, settings.context === 4096 ? 3400 : 5800,
+        const evidence = preparedEvidence ?? findEvidence(db, input.note, input.focus, settings.context === 4096 ? 3400 : 5800,
           { manifest, selection });
         if (input.parentId) {
           const attachments = db.prepare("SELECT id,name,description,origin,actor,created_at FROM attachments WHERE record_id=? AND description<>'' ORDER BY id LIMIT 4").all(input.parentId);
@@ -142,7 +142,8 @@ export function createStudio({ options = config(), storage = dataDir, project = 
               provenance: { author: image.actor, label: image.origin, created_at: image.created_at } });
           }
         }
-        const { payload, metrics } = await ollama.generate({ input, facts, evidence, settings, signal: controller.signal });
+        const { payload, metrics } = await ollama.generate({ input, facts, evidence, settings,
+          signal: controller.signal, guidance: generationGuidance });
         if (controller.signal.aborted) return;
         const brief = buildDraft(payload, input.title, facts, evidence, input.note);
         const prompt = knowledge.commit ? 'Game knowledge revision ' + knowledge.commit +
