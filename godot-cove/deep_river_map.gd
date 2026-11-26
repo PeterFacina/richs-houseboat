@@ -15,6 +15,7 @@ const BuildingsDriveways = preload("res://deep_river_driveways.gd")
 const TownHall = preload("res://deep_river_town_hall.gd")
 const EssoPlaza = preload("res://deep_river_esso_plaza.gd")
 const PropertySites = preload("res://deep_river_properties.gd")
+const MarioProperty = preload("res://mario_property.gd")
 const RoadNetwork = preload("res://deep_river_roads.gd")
 const PontoonWorkshop = preload("res://pontoon_workshop.gd")
 const PublicWorks = preload("res://public_works.gd")
@@ -262,6 +263,7 @@ func build(checkpoint := Callable()) -> void:
 	if checkpoint.is_valid():
 		await checkpoint.call("Building properties and waterfront")
 	property_sites = PropertySites.build(self, ground_height, concrete_scan, brick, wood_scan)
+	MarioProperty.build(self, ground_height, wood_scan)
 	build_landmarks()
 	if meta.has("riverbank"):
 		var surface := Image.load_from_file(BASE + "riverbank_surface.png")
@@ -293,7 +295,8 @@ func build(checkpoint := Callable()) -> void:
 				or town_walkways.clears_tree(point) \
 				or RoadNetwork.clears_champlain_tree(point, street_start, street_axis) \
 				or RoadNetwork.CivicParking.covers(point) \
-				or PropertySites.clears_tree(point) or EssoPlaza.clears_tree(point) \
+					or PropertySites.clears_tree(point) or MarioProperty.clears_tree(point) \
+					or EssoPlaza.clears_tree(point) \
 				or highway_has_tree_conflict(point, highway_clearance) \
 				or point.distance_squared_to(RiverbankPark.GAZEBO_SITE) < 36.0 \
 				or (lamure_patch != null and pines.place_from_survey(foot, height)))
@@ -528,6 +531,7 @@ func trees_for_tile(col: int, row: int, rng: RandomNumberGenerator, tree: Mesh, 
 		var location := Vector2(x, z)
 		if swisha_patch.area.has_point(location) or marina_patch.area.has_point(location) or canopy_area.has_point(location) \
 				or PublicWorks.road_clearance(location) or PropertySites.clears_tree(location) \
+				or MarioProperty.clears_tree(location) \
 				or PontoonWorkshop.clears_tree(location) \
 				or highway_has_tree_conflict(location, near_highway):
 			continue
@@ -723,6 +727,7 @@ func build_town(paving_texture: Texture2D, terrain: Material, brick: Texture2D,
 	var footprints: Array = meta.buildings.filter(func(building: Dictionary) -> bool:
 		return not PublicWorks.REPLACED_FOOTPRINTS.has(building.id) and building.id != RiverbankPark.GAZEBO_FOOTPRINT \
 			and not TownHall.FOOTPRINTS.has(building.id) and not PropertySites.replaces(building.id) \
+			and not MarioProperty.replaces(building.id) \
 			and not EssoPlaza.REPLACED_FOOTPRINTS.has(building.id))
 	if lamure_patch != null:
 		var shelter := Vector2(meta.lamure.shelter[0], meta.lamure.shelter[1])
