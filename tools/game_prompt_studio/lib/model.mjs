@@ -31,7 +31,7 @@ const unsafe = [
   [/https?:\s*\/|(?:\bftp|\bfile):\/|(?:^|[\s("'=])www\./i, 'External or file URL'],
   [/\b(?:ignore|override|disregard|forget|bypass)\b.{0,75}\b(?:instructions|rules|guardrails|permissions|polic(?:y|ies)|system prompt)\b/i, 'Instruction override'],
   [/\b(?:disable|bypass|weaken|remove|turn off)\b.{0,60}\b(?:authentication|access checks|security checks|certificate validation|sign-in|password protection)\b/i, 'Security or access changes outside the game task'],
-  [/\b(?:send|upload|post|transmit|exfiltrate|publish|forward|disclose|leak|transfer|share)\b.{0,100}\b(?:repo(?:sitory)?|source code|files?|secrets?|credentials?|tokens?|passwords?|project data|prompt)\b/i, 'Potential project data disclosure'],
+  [/\b(?:send|upload|post|transmit|exfiltrate|publish|forward|disclose|leak|transfer|share)\b[^.!?;]{0,100}\b(?:repo(?:sitory)?|source code|files?|secrets?|credentials?|tokens?|passwords?|project data|prompt)\b/i, 'Potential project data disclosure'],
   [/\b(?:invoke-webrequest|invoke-restmethod|curl(?:\.exe)?|wget|certutil|powershell(?:\.exe)?\s+[-/]|cmd(?:\.exe)?\s+\/c|git\s+push|rm\s+-[rf]|remove-item\s+-|schtasks|frombase64string)\b/i, 'Unrelated or sensitive shell operation'],
   [/\b(?:reveal|read|access|print|dump|collect|export|find)\b.{0,75}\b(?:system prompt|credentials?|api[_ -]?keys?|passwords?|environment secrets?|access tokens?)\b/i, 'Sensitive data request']
 ];

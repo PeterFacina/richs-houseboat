@@ -46,6 +46,7 @@ async function github(path, method = 'GET', body) {
 }
 
 const retryAt = new Map();
+const guardHolds = new Map();
 async function poll(generate, linkBrief) {
   const waiting = [];
   for await (const batch of pages(github, '/issues?state=open&sort=created&direction=asc')) {
@@ -53,8 +54,10 @@ async function poll(generate, linkBrief) {
   }
   const open = new Set(waiting.map(issue => issue.number));
   for (const number of retryAt.keys()) if (!open.has(number)) retryAt.delete(number);
+  for (const number of guardHolds.keys()) if (!open.has(number)) guardHolds.delete(number);
   for (const issue of waiting) {
     if (stop.signal.aborted) break;
+    if (guardHolds.get(issue.number) === queuedReport(issue)) continue;
     if ((retryAt.get(issue.number) ?? 0) > Date.now()) continue;
     try {
       const result = await processGpuIssue(issue, github, generate, linkBrief);
@@ -62,6 +65,11 @@ async function poll(generate, linkBrief) {
       retryAt.delete(issue.number);
     } catch (error) {
       if (!stop.signal.aborted) {
+        if (error.code === 'GUARD_REVIEW_REQUIRED') {
+          guardHolds.set(issue.number, queuedReport(issue));
+          console.error('Issue #' + issue.number + ': ' + error.message);
+          continue;
+        }
         retryAt.set(issue.number, Date.now() + 120_000);
         console.error('Issue #' + issue.number + ': ' + error.message);
       }

@@ -1,6 +1,12 @@
 const repository = 'https://github.com/PeterFacina/richs-houseboat';
 const validNumber = number => Number.isSafeInteger(number) && number > 0;
 
+// Historical filenames are not current-task source evidence. Keep their exact
+// spelling in the original review, linked below, rather than export them as citations.
+export const historicalProse = text => text.replace(
+  /(?:res:\/\/)?(?:[A-Za-z0-9_.-]+[\\/])*[A-Za-z0-9_-][A-Za-z0-9_.-]*\.(?:gdshaderinc|gdshader|gd|tscn|tres|godot|png|webp|jpe?g|glb|gltf|fbx|cs|py|js)\b/gi,
+  'the historical source');
+
 export function lessonSection(evidence) {
   const item = evidence.find(entry => entry.kind === 'verified-lesson');
   if (!item || !/^S[1-9]\d*$/.test(item.id) || !validNumber(item.issue) || !validNumber(item.pull)) return null;
@@ -11,10 +17,10 @@ export function lessonSection(evidence) {
   return { sourceLine, text: [
     'VERIFIED LESSON FROM A COMPLETED TASK',
     `- Use [${item.id}] as background for the current report.`,
-    '- Previously failed approach: ' + item.failed,
-    '- Merged solution: ' + item.succeeded,
-    '- Review feedback: ' + item.feedback,
-    '- Verification: ' + item.verification,
+    '- Previously failed approach: ' + historicalProse(item.failed),
+    '- Merged solution: ' + historicalProse(item.succeeded),
+    '- Review feedback: ' + historicalProse(item.feedback),
+    '- Verification: ' + historicalProse(item.verification),
     sourceLine,
   ].join('\n') };
 }
