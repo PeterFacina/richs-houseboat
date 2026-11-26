@@ -4,8 +4,8 @@ shader_type spatial;
 render_mode cull_disabled, diffuse_burley;
 
 group_uniforms Blade;
-uniform float blade_height : hint_range(0.1, 1.0) = 0.30;
-uniform float blade_width : hint_range(0.02, 0.2) = 0.038;
+uniform float blade_height : hint_range(0.1, 1.0) = 0.20;
+uniform float blade_width : hint_range(0.02, 0.2) = 0.034;
 uniform float wind_strength : hint_range(0.0, 2.0) = 0.38;
 uniform sampler2D wind_noise : repeat_enable, filter_linear;
 

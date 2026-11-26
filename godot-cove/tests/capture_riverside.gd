@@ -1,6 +1,7 @@
 extends SceneTree
 
 const Cycle = preload("res://river_day_cycle.gd")
+const Weather = preload("res://river_weather.gd")
 
 func _initialize() -> void:
 	call_deferred("capture")
@@ -34,6 +35,14 @@ func capture() -> void:
 			await process_frame
 	game.graphics.level = 0 if OS.get_cmdline_user_args().has("--preset=performance") else (2 if OS.get_cmdline_user_args().has("--preset=scenic") else 1)
 	game.graphics.apply(game.river, game.eye)
+	if OS.get_cmdline_user_args().has("--riverside-grass-prototype"):
+		var minute: float = game.campaign.ledger.state.work_minutes
+		var weather_state: Dictionary = game.campaign.ledger.state.weather
+		var clear: Vector4 = Weather.CONDITIONS[Weather.CLEAR]
+		weather_state.merge({"kind": Weather.CLEAR, "from": [clear.x, clear.y, clear.z, clear.w],
+			"start": minute, "end": minute, "advance": minute + 1000.0,
+			"wet": 0.0, "strength": 1.0, "wind": -1.0}, true)
+		game.weather_fx.update(game, weather_state, minute, .2)
 	print("RENDER_PROFILE opt_in=", game.river.riverside_enabled, " preset=", game.graphics.description())
 	var pavilion: Array = game.river.meta.marina.pavilion
 	var x := float(pavilion[0])
