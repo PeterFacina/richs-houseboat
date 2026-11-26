@@ -767,8 +767,8 @@ func prepare_compact_boat(boat: Boat, index: int) -> void:
 	boat.center = landings.sites[index].berth
 	boat.water_check = shallow_route
 	boat.marina_check = game.river.marina_hull_clear
-	boat.water_flow = game.river.downstream
-	boat.wave_sampler = game.river.wave_height
+	boat.water_flow = game.river.boat_flow
+	boat.wave_sampler = game.river.wave_height.bind(boat.get_instance_id())
 	boat.river_engine = true
 	boat.collision_layer = 0
 	boat.hide()
@@ -1902,12 +1902,14 @@ func ship_packet() -> Dictionary:
 		"charge": ledger.state.charge, "fuel": ledger.state.fuel, "deck": crewplay.moving_parts(),
 		"wallet": ledger.wallet_cents(), "pumps": marina_fuel.packet(),
 		"rich": rich.patrol_packet(), "ignition": boat.ignition, "wheel": boat.wheel_angle,
-		"mooring": boat.mooring.packet(), "departed": boat.departed}
+		"mooring": boat.mooring.packet(), "departed": boat.departed,
+		"wakes": game.river.wakes.encode(false)}
 
 
 func initial_ship_packet() -> Dictionary:
 	var packet := ship_packet()
 	packet.weather = ledger.state.get("weather", {})
+	packet.wakes = game.river.wakes.encode(true)
 	return packet
 
 
@@ -1936,6 +1938,7 @@ func send_ship() -> void:
 
 func receive_ship(packet: Dictionary) -> void:
 	if crew.mode == "guest" and int(packet.revision) >= last_guest_revision:
+		game.river.wakes.receive(packet.get("wakes", PackedVector4Array()), float(packet.clock))
 		marina_fuel.receive(packet.get("pumps", []), not remote_ship.has("pumps"))
 		remote_ship = packet
 		crewplay.update_moving_parts(packet.get("deck", {}))
