@@ -104,6 +104,7 @@ var asphalt_scan: ImageTexture
 var concrete_scan: ImageTexture
 var wood_scan: ImageTexture
 var windows: ShaderMaterial
+var esso_plaza: EssoPlaza
 var canopy_area := Rect2()
 var waterfront := Marina.new()
 var lamure := LamureBeach.new()
@@ -646,6 +647,7 @@ func set_evening(amount: float) -> void:
 	sky_paint.set_shader_parameter("evening", amount)
 	windows.set_shader_parameter("evening", amount)
 	town_hall.set_evening(amount)
+	esso_plaza.glazing.set_shader_parameter("evening", amount)
 	for material: ShaderMaterial in [near_water, far_water, headpond_water]:
 		material.set_shader_parameter("evening", amount)
 		material.set_shader_parameter("sun_direction", sun_direction)
@@ -700,9 +702,10 @@ func build_town(paving_texture: Texture2D, terrain: Material) -> BuildingsDrivew
 	town_hall.build(ground_height, concrete_scan, waterfront.render_trees)
 	bind_day_sky(town_hall.glass)
 	bind_day_sky(town_hall.glass_alt)
-	var esso := EssoPlaza.new()
-	add_child(esso)
-	esso.build(ground_height, asphalt_scan, concrete_scan, brick)
+	esso_plaza = EssoPlaza.new()
+	add_child(esso_plaza)
+	esso_plaza.build(ground_height, asphalt_scan, concrete_scan, brick)
+	bind_day_sky(esso_plaza.glazing)
 	return buildings.driveways
 
 
