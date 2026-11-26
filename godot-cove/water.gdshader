@@ -253,8 +253,6 @@ void fragment() {
 		}
 		hue = mix(basin, reflection, fresnel);
 	}
-	float sun_glint = pow(max(dot(reflect(-sun_direction, n), view), 0.0), 72.0);
-	float moon_glint = pow(max(dot(reflect(sun_direction, n), view), 0.0), 89.0);
 	float crest_breaks = ripple.x + 0.35 * sin(dot(flow, vec2(0.83, -1.58)) + clock * 1.7);
 	float flecks = smoothstep(0.14, 0.22, wave_height) * smoothstep(0.63, 1.33, crest_breaks);
 	float foam = (1.0 - smoothstep(0.011, 0.045, abs(shore - 0.92 + sin(clock + world.z * 0.27) * 0.008)))
@@ -319,8 +317,14 @@ void fragment() {
 		}
 	}
 	ALBEDO *= mix(vec3(.16, .20, .31), vec3(1.0), smoothstep(0.0, .62, sun_strength));
-	ALBEDO += sun_color.rgb * sun_glint * sun_strength * .35;
-	ALBEDO += vec3(.58, .71, 1.0) * moon_glint * moon_strength * .85;
+	if (sun_strength > 0.0) {
+		float sun_glint = pow(max(dot(reflect(-sun_direction, n), view), 0.0), 72.0);
+		ALBEDO += sun_color.rgb * sun_glint * sun_strength * .35;
+	}
+	if (moon_strength > 0.0) {
+		float moon_glint = pow(max(dot(reflect(sun_direction, n), view), 0.0), 89.0);
+		ALBEDO += vec3(.58, .71, 1.0) * moon_glint * moon_strength * .85;
+	}
 	if (bow_light.w > 0.0 && !distant && !headpond) {
 		vec3 span = world - bow_light.xyz;
 		float distance_to_lamp = length(span);

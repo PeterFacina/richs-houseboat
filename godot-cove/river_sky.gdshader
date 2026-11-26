@@ -7,7 +7,7 @@ uniform bool use_day_cycle = false;
 
 void sky() {
 	if (use_day_cycle) {
-		COLOR = timed_river_sky(EYEDIR, 1.0);
+		COLOR = timed_river_sky(EYEDIR, AT_CUBEMAP_PASS ? .5 : 1.0);
 	} else {
 		COLOR = river_sky(EYEDIR, 1.0, 0.0);
 		if (LIGHT0_ENABLED) {

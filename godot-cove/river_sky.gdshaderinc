@@ -64,11 +64,17 @@ vec3 timed_river_sky(vec3 ray, float detail) {
 	float warm_air = pow(toward_sun, 6.0) * (1.0 - night_weight) * exp(-height * 3.0);
 	vec3 air = mix(sky_horizon.rgb, sky_zenith.rgb, sky_gradient);
 	air = mix(air, sky_glow.rgb, .8 * warm_air);
-	vec2 cloud_uv = ray.xz / (height + .22) * vec2(2.0, 2.72) + vec2(6.7, 10.2);
-	float cover = sky_grain(cloud_uv) * .72 + sky_grain(cloud_uv * 2.13 + 4.8) * .28;
-	float clouds = smoothstep(.48, .70, cover) * smoothstep(.015, .22, height);
-	vec3 cloud = mix(sky_horizon.rgb * .9, mix(vec3(.83), sky_glow.rgb, warm_air), .54 * (1.0 - night_weight));
-	air = mix(air, cloud, clouds * .7);
+	float clouds = 0.0;
+	// Reflections use a filtered panorama and the same sky colours. Reserve
+	// fine procedural clouds for the backdrop when the photograph fades out.
+	float cloud_weight = 1.0 - smoothstep(.23, .52, photo_weight);
+	if (detail > .8 && cloud_weight > 0.0) {
+		vec2 cloud_uv = ray.xz / (height + .22) * vec2(2.0, 2.72) + vec2(6.7, 10.2);
+		float cover = sky_grain(cloud_uv) * .72 + sky_grain(cloud_uv * 2.13 + 4.8) * .28;
+		clouds = smoothstep(.48, .70, cover) * smoothstep(.015, .22, height) * cloud_weight;
+		vec3 cloud = mix(sky_horizon.rgb * .9, mix(vec3(.83), sky_glow.rgb, warm_air), .54 * (1.0 - night_weight));
+		air = mix(air, cloud, clouds * .7);
+	}
 	if (has_day_sky && photo_weight > .0) {
 		// Use the existing panorama for cloud detail without its baked lighting.
 		vec3 photo = daylight_color(ray, detail);
@@ -76,11 +82,15 @@ vec3 timed_river_sky(vec3 ray, float detail) {
 		air *= mix(1.0, mix(.69, 1.35, smoothstep(.16, .74, texture_tone)),
 			photo_weight * smoothstep(.005, .23, height));
 	}
-	float toward_moon = max(dot(ray, -sun_direction), 0.0);
-	float sun_disc = smoothstep(.99979, .99993, toward_sun);
-	float moon_disc = smoothstep(.99980, .99991, toward_moon);
-	air += sun_color.rgb * sun_strength * (.36 * pow(toward_sun, 42.0) + 1.75 * sun_disc);
-	air += vec3(.59, .69, 1.0) * moon_strength * (.57 * pow(toward_moon, 33.0) + 2.4 * moon_disc);
+	if (sun_strength > 0.0) {
+		float sun_disc = smoothstep(.99979, .99993, toward_sun);
+		air += sun_color.rgb * sun_strength * (.36 * pow(toward_sun, 42.0) + 1.75 * sun_disc);
+	}
+	if (moon_strength > 0.0) {
+		float toward_moon = max(dot(ray, -sun_direction), 0.0);
+		float moon_disc = smoothstep(.99980, .99991, toward_moon);
+		air += vec3(.59, .69, 1.0) * moon_strength * (.57 * pow(toward_moon, 33.0) + 2.4 * moon_disc);
+	}
 	if (detail > .8 && night_weight > 0.0 && height > .025) {
 		// Cubic direction cells have no panorama seam.
 		vec3 p = ray * 210.0;
