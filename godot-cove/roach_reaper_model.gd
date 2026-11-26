@@ -5,12 +5,12 @@ const Hands = preload("res://river_hands.gd")
 const Actions = preload("res://river_hand_actions.gd")
 const Props = preload("res://cabin_props.gd")
 
-var jacket := Kit.paint(Color("#657652"))
-var denim := Kit.paint(Color("#364558"))
-var skin := Kit.paint(Color("#bc8c6b"))
-var boot := Kit.paint(Color("#39302a"))
-var cap := Kit.paint(Color("#cb8a4b"))
+var sweatshirt := Kit.paint(Color("#77736f"))
+var sweatpants := Kit.paint(Color("#37363a"))
+var skin := Kit.paint(Color("#d8ac94"))
+var sneaker := Kit.paint(Color("#49443f"))
 var torso: MeshInstance3D
+var hood: MeshInstance3D
 var arms: Array[MeshInstance3D] = []
 var legs: Array[MeshInstance3D] = []
 var head := Node3D.new()
@@ -23,22 +23,20 @@ var smoke: CPUParticles3D
 
 
 func _ready() -> void:
-	torso = rounded(self, Vector3.ZERO, Vector3(.43, .48, .30), jacket)
+	torso = rounded(self, Vector3.ZERO, Vector3(.43, .48, .30), sweatshirt)
+	hood = rounded(self, Vector3.ZERO, Vector3(.32, .22, .16), sweatshirt)
+	rounded(hood, Vector3(0, .13, .27), Vector3(.78, .63, .51), Kit.paint(Color("#4d4947")))
 	for index in 4:
-		arms.append(rounded(self, Vector3.ZERO, Vector3.ONE, jacket))
-		legs.append(rounded(self, Vector3.ZERO, Vector3.ONE, denim))
+		arms.append(rounded(self, Vector3.ZERO, Vector3.ONE, sweatshirt))
+		legs.append(rounded(self, Vector3.ZERO, Vector3.ONE, sweatpants))
+	var sole := Kit.paint(Color("#968776"))
 	for side: float in [-1.0, 1.0]:
-		rounded(self, Vector3(side * .14, .09, -.59), Vector3(.14, .17, .27), boot)
+		rounded(self, Vector3(side * .14, .079, -.59), Vector3(.145, .137, .27), sneaker)
+		rounded(self, Vector3(side * .14, .031, -.60), Vector3(.149, .054, .276), sole)
 	add_child(head)
-	rounded(head, Vector3.ZERO, Vector3(.21, .27, .22), skin)
-	rounded(head, Vector3(0, -.006, .103), Vector3(.045, .045, .047), skin)
-	rounded(head, Vector3(0, -.086, .048), Vector3(.173, .067, .164), boot)
-	for side: float in [-1.0, 1.0]:
-		rounded(head, Vector3(side * .044, .020, .097), Vector3(.021, .015, .012), boot)
-	rounded(head, Vector3(0, .088, -.008), Vector3(.231, .115, .221), cap)
-	rounded(head, Vector3(0, .058, .097), Vector3(.212, .025, .167), cap)
+	build_head()
 	add_child(phone)
-	Kit.box_at(phone, Vector3.ZERO, Vector3(.068, .012, .125), boot)
+	Kit.box_at(phone, Vector3.ZERO, Vector3(.068, .012, .125), sneaker)
 	var screen := Kit.paint(Color("#78858e"))
 	screen.emission_enabled = true
 	screen.emission = Color("#8098ad")
@@ -67,6 +65,49 @@ func _ready() -> void:
 	add_child(smoke)
 
 
+func build_head() -> void:
+	var hair := Kit.paint(Color("#513828"))
+	var hair_light := Kit.paint(Color("#6b4d36"))
+	var brow := Kit.paint(Color("#6f503d"))
+	var stubble := Kit.paint(Color("#ac8068"))
+	var lips := Kit.paint(Color("#a56760"))
+	var eye_white := Kit.paint(Color("#e3d5ba"))
+	var iris := Kit.paint(Color("#514031"))
+	var headphones := Kit.paint(Color("#26272c"))
+	var headphone_trim := Kit.paint(Color("#9d3339"))
+
+	rounded(head, Vector3(0, .015, -.003), Vector3(.211, .255, .213), skin)
+	rounded(head, Vector3(0, -.065, .039), Vector3(.148, .131, .133), skin)
+	rounded(head, Vector3(0, -.016, .106), Vector3(.041, .065, .042), skin)
+	rounded(head, Vector3(0, -.068, .101), Vector3(.065, .012, .019), lips)
+	for side: float in [-1.0, 1.0]:
+		rounded(head, Vector3(side * .103, -.013, -.013), Vector3(.031, .062, .041), skin)
+		rounded(head, Vector3(side * .043, .023, .100), Vector3(.045, .019, .015), eye_white)
+		rounded(head, Vector3(side * .041, .024, .108), Vector3(.015, .014, .008), iris)
+		var eyebrow := rounded(head, Vector3(side * .043, .044, .101), Vector3(.051, .009, .012), brow)
+		eyebrow.rotation.z = side * .10
+		var moustache := rounded(head, Vector3(side * .017, -.050, .106), Vector3(.033, .010, .008), stubble)
+		moustache.rotation.z = -side * .34
+		rounded(head, Vector3(side * .103, -.008, -.025), Vector3(.045, .091, .071), headphones)
+		rounded(head, Vector3(side * .124, -.008, -.025), Vector3(.017, .079, .061), headphone_trim)
+		rounded(head, Vector3(side * .131, -.008, -.025), Vector3(.016, .068, .051), headphones)
+
+	rounded(head, Vector3(0, .095, -.024), Vector3(.237, .152, .218), hair)
+	# Layer the crown and fringe at different angles to keep an uneven silhouette.
+	var locks := [
+		Vector4(-.091, .099, .059, -.65), Vector4(-.064, .137, .037, -.82),
+		Vector4(-.028, .124, .082, .66), Vector4(.006, .153, .027, -.35),
+		Vector4(.042, .135, .065, .75), Vector4(.081, .117, .051, 1.0),
+		Vector4(.098, .092, .043, .68), Vector4(-.087, .109, -.049, -.76),
+		Vector4(-.035, .148, -.060, -.52), Vector4(.054, .142, -.063, .54),
+	]
+	for index in locks.size():
+		var lock: Vector4 = locks[index]
+		var strand := rounded(head, Vector3(lock.x, lock.y, lock.z), Vector3(.083, .111, .097),
+			hair_light if index in [0, 2, 4, 8] else hair)
+		strand.rotation = Vector3(-.38, lock.w * .18, lock.w)
+
+
 func set_smoke_mesh(mesh: Mesh) -> void:
 	smoke.mesh = mesh
 	var fade := Gradient.new()
@@ -82,6 +123,9 @@ func animate(clock: float, smoke_age: float) -> void:
 	var hips := Vector3(0, .51, -.32).lerp(Vector3(0, .60, -.47), rise)
 	var shoulders := Vector3(.035 * scanning, .61, .14).lerp(Vector3(0, .96, -.29), rise)
 	segment(torso, hips, shoulders, .36, .23)
+	var back := torso.basis.orthonormalized()
+	hood.position = shoulders + back * Vector3(0, -.035, -.10)
+	hood.rotation = back.get_euler()
 	head.position = shoulders + Vector3(.064 * scanning * (1.0 - rise), .075, .207).lerp(Vector3(0, .20, .051), rise)
 	head.rotation = Vector3(lerpf(.61 + .18 * scanning, -.09, rise), .46 * scanning * (1.0 - rise), 0)
 	var wrist := Vector3(.23 + .10 * scanning, .20 + .04 * cos(clock * 1.09), .44 + .11 * scanning)

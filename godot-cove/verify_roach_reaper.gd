@@ -78,14 +78,22 @@ func exercise_solo() -> void:
 	check(state().progress == 0 and campaign.progression_for(1).get("xp", 0) == 0, "Distant pickup or early turn-in was accepted")
 	var active_save := Ledger.new()
 	var secret: String = campaign.crew.progression_secret.sha256_text()
-	for index in quest.pickups.size():
+	check(quest.pickups.size() == 12, "Expected twelve pickup locations")
+	var route := [0, 10, 2, 3, 11, 4, 5, 6, 7, 8]
+	for step in route.size():
+		var index: int = route[step]
 		collect_locally(index)
 		if index == 0:
 			check(active_save.load_file(), "Partial quest did not save")
 			campaign.ledger.state.progression[secret] = active_save.state.progression[secret]
 			quest.tick(0.0)
 		campaign.request(Quest.ID, ["pickup", index])
-		check(state().progress == index + 1 and not quest.pickups[index].visible, "Pickup duplicated or remained available")
+		check(state().progress == step + 1 and not quest.pickups[index].visible, "Pickup duplicated or remained available")
+	var unused := quest.pickups[1]
+	game.player.global_position = unused.global_position
+	campaign.request(Quest.ID, ["pickup", 1])
+	check(state().progress == Quest.TARGET and state().picked.size() == Quest.TARGET
+		and not unused.visible and not quest.pickups[9].visible, "Extra pickups remained available after reaching ten")
 	check(game.backpack.quest_items.visible and game.backpack.quest_items.text.ends_with("10"), "Backpack count missing")
 	check(active_save.load_file(), "Active quest did not save")
 	var saved: Dictionary = active_save.state.progression[secret][Quest.ID]
@@ -187,7 +195,7 @@ func exercise_network() -> void:
 		check(not guest_state("Other").has(Quest.ID), "Another guest received private quest state")
 		guest.order.rpc_id(1, Quest.ID, ["accept", Quest.ID])
 		check(await until(func(): return guest_state("Guest").get(Quest.ID, {}).get("accepted", false)), "Guest acceptance did not replicate")
-		for index in quest.pickups.size():
+		for index in Quest.TARGET:
 			check(await send_pose(guest, quest.pickups[index].global_position, false), "Guest pickup pose missing")
 			guest.order.rpc_id(1, Quest.ID, ["pickup", index])
 			guest.order.rpc_id(1, Quest.ID, ["pickup", index])

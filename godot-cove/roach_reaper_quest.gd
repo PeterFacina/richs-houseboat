@@ -39,9 +39,10 @@ func setup(world: Node3D, host: Node) -> void:
 	place(npc, 15.0, 5.4)
 	npc.rotation.y = atan2(street[1].x - street[0].x, street[1].y - street[0].y)
 	npc.hide()
+	# Append new spots so existing saves keep the same pickup IDs.
 	var spots := [Vector2(8, 3.0), Vector2(12, -3.7), Vector2(19, 4.6), Vector2(22, -5.25),
 		Vector2(27, 5.0), Vector2(34, -4.8), Vector2(43, 3.6), Vector2(53, -5.0),
-		Vector2(64, 4.5), Vector2(77, -4.5)]
+		Vector2(64, 4.5), Vector2(77, -4.5), Vector2(30, 4.15), Vector2(47, -4.25)]
 	for spot: Vector2 in spots:
 		var pickup := Node3D.new()
 		add_child(pickup)
@@ -119,8 +120,8 @@ func tick(delta: float) -> void:
 		if modified:
 			campaign.changed()
 	var quest := state(peer)
-	var active: bool = quest.get("accepted", false)
-	var ended: bool = quest.get("failed", false) or Chain.status(quest, QUESTS) == Chain.Status.FINISHED
+	var status := Chain.status(quest, QUESTS)
+	var ended: bool = quest.get("failed", false) or status == Chain.Status.FINISHED
 	if not ended:
 		smoke_left = 0.0
 	if finishing and not game.story_offer.visible:
@@ -132,7 +133,7 @@ func tick(delta: float) -> void:
 	smoke_left = maxf(0.0, smoke_left - delta)
 	var picked: Array = quest.get("picked", [])
 	for index in pickups.size():
-		pickups[index].visible = active and str(index) not in picked
+		pickups[index].visible = status == Chain.Status.IN_PROGRESS and str(index) not in picked
 	game.backpack.set_quest_items(int(quest.get("progress", 0)))
 	game.notebook.set_side_quest(quest, status_text(quest))
 	if game.story_offer.visible and game.story_offer.npc_id == ID:
