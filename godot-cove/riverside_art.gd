@@ -5,6 +5,9 @@ const Graphics = preload("res://river_graphics.gd")
 const CHUNK := 16.0
 const COVER_RADIUS := 178.0
 const COVER_SPACING := .55
+const PROTOTYPE_RADIUS := 17.0
+const PROTOTYPE_DENSITY := 100.0 # Individual blades per square metre; GodotGrass near density.
+const PROTOTYPE_OFFSET := Vector2(-42.0, 12.0) # Relative to the pavilion.
 const ASSET_DIR := "res://third_party/quaternius_nature/"
 const TREE_MODELS := ["CommonTree_1", "CommonTree_2", "Pine_1", "Pine_3"]
 const TREE_PALETTES := [
@@ -151,13 +154,18 @@ func build_ground_cover(parent: Node3D, pavilion: Vector3, ground: Callable, sho
 				bounds = bounds.expand(point)
 			reserved.append({"bounds": bounds.grow(1.2), "zone": polygon})
 	var counts := {"candidates": 0, "eligible": 0, "masked": 0, "mowing": 0}
-	var span := ceili(COVER_RADIUS / COVER_SPACING)
+	var prototype := OS.get_cmdline_user_args().has("--riverside-grass-prototype")
+	var spacing := 1.0 / sqrt(PROTOTYPE_DENSITY) if prototype else COVER_SPACING
+	var radius := PROTOTYPE_RADIUS if prototype else COVER_RADIUS
+	var center := pavilion + Vector3(PROTOTYPE_OFFSET.x, 0.0, PROTOTYPE_OFFSET.y) if prototype else pavilion
+	var span := ceili(radius / spacing)
 	for z in range(-span, span + 1):
 		for x in range(-span, span + 1):
-			var p := pavilion + Vector3(x * COVER_SPACING + random.randf_range(-.31, .31), 0,
-				z * COVER_SPACING + random.randf_range(-.31, .31))
+			var jitter := spacing * .34 if prototype else .31
+			var p := center + Vector3(x * spacing + random.randf_range(-jitter, jitter), 0,
+				z * spacing + random.randf_range(-jitter, jitter))
 			var local := Vector2(p.x - pavilion.x, p.z - pavilion.z)
-			if local.length_squared() > COVER_RADIUS * COVER_RADIUS:
+			if Vector2(p.x - center.x, p.z - center.z).length_squared() > radius * radius:
 				continue
 			counts.candidates += 1
 			var sand := local - Vector2(-23.1, 5.8)
@@ -201,9 +209,11 @@ func build_ground_cover(parent: Node3D, pavilion: Vector3, ground: Callable, sho
 			if not grass_cells.has(cell):
 				var tuft: Array[Transform3D] = []
 				grass_cells[cell] = tuft
-			var scale := Vector3(random.randf_range(1.10, 1.48), random.randf_range(.65, 1.12),
-				random.randf_range(1.10, 1.48))
+			var scale := Vector3.ONE if prototype else Vector3(random.randf_range(1.10, 1.48),
+				random.randf_range(.65, 1.12), random.randf_range(1.10, 1.48))
 			grass_cells[cell].append(Transform3D(Basis(Vector3.UP, random.randf_range(0.0, TAU)).scaled_local(scale), p))
+			if prototype:
+				continue
 			if random.randf() < .0007 and local.length_squared() > 12.0 * 12.0:
 				shrubs.append(Transform3D(Basis(Vector3.UP, random.randf_range(0.0, TAU)).scaled_local(
 					Vector3(random.randf_range(.7, 1.3), random.randf_range(.6, 1.0), random.randf_range(.7, 1.3))),
@@ -217,10 +227,22 @@ func build_ground_cover(parent: Node3D, pavilion: Vector3, ground: Callable, sho
 			if random.randf() < .0002:
 				rocks.append(Transform3D(Basis(Vector3.UP, random.randf_range(0.0, TAU)).scaled_local(
 					Vector3(random.randf_range(.25, .55), random.randf_range(.17, .34), random.randf_range(.24, .48))), p))
-	print("RIVERSIDE_COVER ", counts, " chunks=", grass_cells.size())
-	var grass_mesh := grass_blades()
+	print("RIVERSIDE_COVER prototype=", prototype, " ", counts, " chunks=", grass_cells.size())
+	var grass_mesh := godotgrass_blade() if prototype else grass_blades()
 	var grass_material := ShaderMaterial.new()
-	grass_material.shader = preload("res://riverside_grass.gdshader")
+	if prototype:
+		grass_material.shader = preload("res://riverside_godotgrass.gdshader")
+		var wind_noise := FastNoiseLite.new()
+		wind_noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+		wind_noise.frequency = .0275
+		var wind_texture := NoiseTexture2D.new()
+		wind_texture.width = 256
+		wind_texture.height = 256
+		wind_texture.seamless = true
+		wind_texture.noise = wind_noise
+		grass_material.set_shader_parameter("wind_noise", wind_texture)
+	else:
+		grass_material.shader = preload("res://riverside_grass.gdshader")
 	var kit := Kit.new()
 	for transforms: Array in grass_cells.values():
 		var typed: Array[Transform3D] = []
@@ -229,6 +251,8 @@ func build_ground_cover(parent: Node3D, pavilion: Vector3, ground: Callable, sho
 		batch.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		batch.set_meta("riverside_count", typed.size())
 		Graphics.batch(batch, "riverside_grass")
+	if prototype:
+		return
 	scatter_model(parent, "Bush_Common", shrubs)
 	scatter_model(parent, "Fern_1", ferns)
 	for name: String in ["Flower_3_Group", "Flower_4_Group"]:
@@ -313,6 +337,25 @@ static func fallen_leaves() -> ArrayMesh:
 			surface.set_normal(Vector3.UP)
 			surface.set_uv(Vector2(float(leaf) / 6.0, 0))
 			surface.add_vertex(vertex)
+	return surface.commit()
+
+
+## Five tapered sections following GodotGrass's 11-vertex high-detail blade.
+## Source: https://github.com/2Retr0/GodotGrass (MIT, see third_party/godot_grass/LICENSE).
+static func godotgrass_blade() -> ArrayMesh:
+	var surface := SurfaceTool.new()
+	surface.begin(Mesh.PRIMITIVE_TRIANGLES)
+	for section in 5:
+		var low := float(section) / 5.0
+		var high := float(section + 1) / 5.0
+		var lower_width := .05 * (1.0 - low * low)
+		var upper_width := .05 * (1.0 - high * high)
+		for point: Vector2 in [Vector2(-1.0, low), Vector2(1.0, low),
+				Vector2(-1.0, high), Vector2(-1.0, high), Vector2(1.0, low), Vector2(1.0, high)]:
+			var width := upper_width if point.y == high else lower_width
+			surface.set_normal(Vector3.FORWARD)
+			surface.set_uv(Vector2((point.x + 1.0) * .5, point.y))
+			surface.add_vertex(Vector3(point.x * width, point.y * .75, 0.0))
 	return surface.commit()
 
 
