@@ -1903,7 +1903,9 @@ func ship_packet() -> Dictionary:
 		"wallet": ledger.wallet_cents(), "pumps": marina_fuel.packet(),
 		"rich": rich.patrol_packet(), "ignition": boat.ignition, "wheel": boat.wheel_angle,
 		"mooring": boat.mooring.packet(), "departed": boat.departed,
-		"wakes": game.river.wakes.encode(false)}
+		"wakes": game.river.wakes.encode(false),
+		"pedestrians": game.town_residents.snapshot() if is_instance_valid(game.town_residents)
+			else PackedVector3Array()}
 
 
 func initial_ship_packet() -> Dictionary:

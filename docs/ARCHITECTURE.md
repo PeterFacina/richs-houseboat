@@ -19,6 +19,7 @@ This is a short navigation map, not a complete specification. Source in the curr
 | Camera, contextual interaction, idle poses, dynamic weather | [Gameplay polish](systems/GAMEPLAY-POLISH.md) |
 | XP, jobs, economy and saves | [Progression and economy](systems/PROGRESSION-ECONOMY.md) |
 | Town, roads and vehicles | `deep_river_*.gd`, `marina_car*.gd`, `vehicle_driver.gd` (search actual callers) |
+| Residents and pedestrian routes | [Gameplay polish](systems/GAMEPLAY-POLISH.md#deep-river-residents) |
 | Mowing | `lawn_mower.gd`, `shannon_job.gd`, `mowing_routes.gd` |
 | Big Rich, Shannon Lapping, shared quest state | [Quests and character stories](systems/QUESTS.md) |
 | AI and Discord workflow | [AI workflow status](AI-WORKFLOW.md), [team workflow](TEAM-WORKFLOW.md) |
