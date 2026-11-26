@@ -23,6 +23,7 @@ const Amenities = preload("res://boat_amenities.gd")
 
 var game: Node3D
 const XP = preload("res://progression.gd")
+const ReaperQuest = preload("res://roach_reaper_quest.gd")
 
 var ledger := Ledger.new()
 var landings := Landings.new()
@@ -82,6 +83,7 @@ var route_map_version := ""
 var rich_underway := false
 var rich_high_bilge := false
 var rich_chat_requests := {}
+var reaper := ReaperQuest.new()
 
 
 func load_trip(game_world: Node3D) -> bool:
@@ -129,6 +131,8 @@ func setup(game_world: Node3D, new_game: bool) -> void:
 	crew.rich_heard.connect(rich.play)
 	rich.spoken.connect(share_rich_line)
 	story.setup(self, new_game)
+	add_child(reaper)
+	reaper.setup(game, self)
 	add_child(dive)
 	dive.setup(game.river, game.eye)
 	var page := CanvasLayer.new()
@@ -962,6 +966,7 @@ func tick(delta: float, has_input: bool) -> void:
 	crewplay.tick(delta)
 	amenities.tick(delta)
 	tick_rich(delta)
+	reaper.tick(delta)
 	if not crew.is_guest() and dock >= 0:
 		save_elapsed += delta
 		if save_elapsed >= 30.0:
@@ -1183,6 +1188,9 @@ func perform(peer: int, action: String, value: Variant) -> void:
 		return
 	if action == Story.ACTION:
 		story.perform(peer, value, person)
+		return
+	if action == ReaperQuest.ID:
+		reaper.perform(peer, value)
 		return
 	if action.begins_with("crew_"):
 		crewplay.act(peer, action, value, person)
@@ -1811,6 +1819,7 @@ func begin_dive() -> void:
 
 
 func member_left(peer: int) -> void:
+	reaper.inside.erase(peer)
 	story.guest_slots.erase(peer)
 	story.work.erase(peer)
 	story.equipped_tools.erase(peer)

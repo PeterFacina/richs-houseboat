@@ -674,6 +674,8 @@ func _physics_process(delta: float) -> void:
 		elif mower.rider != null:
 			if not mower.dismount():
 				notify_angling("Move to clear, level ground to get off the mower.", 2.4)
+		elif campaign.reaper.interact():
+			pass
 		elif office_leaf >= 0:
 			public_works.toggle_office(office_leaf, eye)
 		elif can_talk_to_shannon() and shannon_job.in_range():
@@ -1623,6 +1625,8 @@ func render_fishing(delta: float, lift: bool) -> void:
 
 func capture_crew_pose() -> Dictionary:
 	var data := campaign.crewplay.style()
+	data.cabin_high = cabin.high_until > cabin.clock
+	data.roach_on_foot = can_talk_to_shannon() and not in_aircraft()
 	data.move = ground_motion if grounded_motion else player.velocity
 	data.sprint = sprint_blend if grounded_motion else 0.0
 	data.crouch = smoothstep(0, 1, crouch_camera_blend)
@@ -1720,6 +1724,8 @@ func build_story_ui() -> void:
 	story_offer.chosen.connect(func(npc: String, id: String, action: String):
 		if npc == project_tomorrow.ACTION:
 			campaign.request(project_tomorrow.ACTION, [action, id])
+		elif npc == campaign.ReaperQuest.ID:
+			campaign.request(npc, [action, id])
 		else:
 			campaign.request(RichStory.ACTION, [npc, id, action])
 		if action in ["invite", "dismiss"]:
@@ -1798,6 +1804,13 @@ func notebook_input(event: InputEvent) -> void:
 var story_upgrade_offer := false
 
 
+func open_reaper_offer() -> void:
+	if not story_offer.visible:
+		offer_mouse_mode = Input.mouse_mode
+		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	story_offer.present(campaign.reaper.offer())
+
+
 func open_story_offer(upgrades := false) -> void:
 	if not story_offer.visible:
 		offer_mouse_mode = Input.mouse_mode
@@ -1871,12 +1884,21 @@ func refresh_story_ui() -> void:
 	if notebook.visible:
 		notebook.refresh(campaign.story)
 	if story_offer.visible:
-		present_story_offer()
+		if story_offer.npc_id == campaign.ReaperQuest.ID:
+			story_offer.present(campaign.reaper.offer())
+		else:
+			present_story_offer()
 	update_story_tracker()
 
 
 func update_story_tracker() -> void:
 	var quest := campaign.story.current()
+	var side := campaign.reaper.state(campaign.crew.my_id())
+	var side_active: bool = side.get("accepted", false)
+	if side_active and notebook.track_quest and not menu_blocks_play() and not in_aircraft() and not tennis.active:
+		story_tracker.show()
+		story_tracker.text = "%s\n%s" % [campaign.ReaperQuest.TITLE, campaign.reaper.status_text(side)]
+		return
 	story_tracker.visible = notebook.track_quest and not quest.is_empty() and not menu_blocks_play() \
 		and not in_aircraft() and not tennis.active
 	if story_tracker.visible:
@@ -2221,6 +2243,10 @@ func update_hud() -> void:
 			marker.show()
 	if play_input() and can_challenge_rich():
 		instruction.text = "E  Challenge Big Rich to tennis"
+	elif play_input() and clock >= note_until:
+		var reaper_hint := campaign.reaper.prompt()
+		if not reaper_hint.is_empty():
+			instruction.text = reaper_hint
 	objective.visible = not objective.text.is_empty()
 
 

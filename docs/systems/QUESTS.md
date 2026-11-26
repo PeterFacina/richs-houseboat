@@ -1,6 +1,6 @@
 # Quests and character stories
 
-[`quest_chain.gd`](../../godot-cove/quest_chain.gd) provides ordered quest state, acceptance, objective credit and completion using a supplied state dictionary and quest definitions. [`npc_quest_offer.gd`](../../godot-cove/npc_quest_offer.gd) displays the offer and emits the selected response. [`player_notebook.gd`](../../godot-cove/player_notebook.gd) displays quests, local characters, the fish index, the river chart and the catch log. Its quest page currently reads Big Rich's story directly.
+[`quest_chain.gd`](../../godot-cove/quest_chain.gd) provides ordered quest state, acceptance, objective credit and completion using a supplied state dictionary and quest definitions. [`npc_quest_offer.gd`](../../godot-cove/npc_quest_offer.gd) displays the offer and emits the selected response. [`player_notebook.gd`](../../godot-cove/player_notebook.gd) displays Big Rich's story, discovered side quests, local characters, the fish index, the river chart and the catch log.
 
 ## Big Rich's introductory chain
 
@@ -24,6 +24,8 @@ During New Legs, borrow the Envoy at Big Rich’s workbench, then find it in the
 The existing `story_parts` objectives and loan flags drive the workshop rack, hatch and strapped cargo on each peer. A saved game with pontoons already collected resumes at delivery. Parked Envoy position is saved during the loan, and the host still validates pickup, delivery and turn-in.
 
 ## Additional characters
+
+[`roach_reaper_quest.gd`](../../godot-cove/roach_reaper_quest.gd) uses the quest chain operations for a one-time rare side quest. Enter Silvie Street on foot while the cabin high effect is active to discover the Roach Reaper. Accepting starts a six-hour deadline on the existing in-game work clock. The player can collect any ten of twelve pickups. The backpack and notebook show their progress, and the remaining pickups disappear when the player has enough to turn in. The high effect can wear off after discovery. The host stores the deadline, pickup IDs and outcome in the player's campaign progression profile and validates proximity before crediting or completing the quest. Turn-in clears the items and awards up to 250 XP through the standard progression cap and reward deduplication. Expiry clears the items and permanently fails the quest in that campaign. The character is visible only to the participating player.
 
 [`shannon_job.gd`](../../godot-cove/shannon_job.gd), [`shannon_model.gd`](../../godot-cove/shannon_model.gd) and [`shannon_voice.gd`](../../godot-cove/shannon_voice.gd) implement Shannon at Public Works and the repeatable mowing job. Shannon Lapping's independent questline is planned. Future chains can have their own state, quest givers and optional links to other characters. As those chains arrive, evaluate how to route their state and notebook entries through the existing framework. Consider main and side quests, repeatable and optional objectives, equipment, skill, research and economic requirements, and persistent multiplayer participation.
 
