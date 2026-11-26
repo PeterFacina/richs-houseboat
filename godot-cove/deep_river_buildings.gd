@@ -24,7 +24,7 @@ var driveways := Driveways.new()
 
 func build(parent: Node3D, buildings: Array, texture: Texture2D, ground: Callable, scale: float,
 		brick: Texture2D, aggregate: Texture2D, wood: Texture2D, road_material: ShaderMaterial, streets: Array,
-		regional_streets: Array, mapped_footprints: Array, concrete: Texture2D) -> void:
+		regional_streets: Array, mapped_footprints: Array, concrete: Texture2D, checkpoint := Callable()) -> void:
 	ground_height = ground
 	residential.catalogue(streets + regional_streets)
 	driveways.setup(streets, regional_streets, mapped_footprints, ground)
@@ -62,6 +62,8 @@ func build(parent: Node3D, buildings: Array, texture: Texture2D, ground: Callabl
 	windows = ShaderMaterial.new()
 	windows.shader = preload("res://deep_river_glass.gdshader")
 	for block: Array in chunks.values():
+		if checkpoint.is_valid():
+			await checkpoint.call("Building town buildings and collisions")
 		town = Node3D.new()
 		district.add_child(town)
 		roof = SurfaceTool.new()

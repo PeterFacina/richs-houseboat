@@ -103,7 +103,7 @@ func setup(scene: Node3D) -> void:
 	aim_marker = Control.new()
 	aim_marker.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	game.hud.add_child(aim_marker)
-	ignition_prompt = game.label("Hold E to start", 16, Color("#fff1bc"))
+	ignition_prompt = game.label("Engine stopped", 16, Color("#fff1bc"))
 	aim_marker.add_child(ignition_prompt)
 	ignition_prompt.position = Vector2(20, -11)
 	ignition_prompt.hide()
@@ -492,7 +492,7 @@ func tick(delta: float, has_input: bool) -> void:
 	var key_focused := aim_marker.visible and at_ignition_key()
 	update_ignition_hold(delta, key_focused and ignition != Boat.Ignition.RUN)
 	ignition_prompt.visible = key_focused
-	ignition_prompt.text = "Press E to shut down" if ignition == Boat.Ignition.RUN else "Hold E to start"
+	ignition_prompt.text = "Engine running" if ignition == Boat.Ignition.RUN else "Engine stopped"
 	update_door_prompt(seat, has_input and not key_focused)
 	if aim_marker.visible:
 		update_aim_marker()
@@ -523,7 +523,7 @@ func update_door_prompt(seat: int, has_input: bool) -> void:
 	door_prompt.visible = has_input and landed_and_stopped() and (seat >= 0 or seats.size() < SEATS.size()) \
 		and focused_on_door(seat)
 	if door_prompt.visible:
-		door_prompt.text = "Press E to exit" if seat >= 0 else "Press E to board"
+		door_prompt.text = "Exit available" if seat >= 0 else "Press E to board"
 		door_prompt.position = game.eye.unproject_position(door_at(seat)) + Vector2(18.0, -11.0)
 
 

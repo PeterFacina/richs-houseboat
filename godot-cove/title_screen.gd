@@ -240,17 +240,21 @@ func launch(multiplayer_trip: bool, slot := 0) -> void:
 
 
 func finish_loading() -> void:
-	var progress := ResourceLoader.load_threaded_get_status(PLAY_SCENE)
-	if progress == ResourceLoader.THREAD_LOAD_IN_PROGRESS:
+	var progress := []
+	var load_status := ResourceLoader.load_threaded_get_status(PLAY_SCENE, progress)
+	if load_status == ResourceLoader.THREAD_LOAD_IN_PROGRESS:
+		if not progress.is_empty():
+			status.text = "Loading game resources  ·  %d%%" % floori(float(progress[0]) * 100.0)
 		return
 	loading = false
-	if progress != ResourceLoader.THREAD_LOAD_LOADED:
+	if load_status != ResourceLoader.THREAD_LOAD_LOADED:
 		launch_failed(ERR_CANT_OPEN)
 		return
 	var packed := ResourceLoader.load_threaded_get(PLAY_SCENE) as PackedScene
 	var game := packed.instantiate()
 	game.multiplayer_trip = open_lobby
 	game.solo_slot = solo_slot
+	game.show_loading_screen = true
 	var error := get_tree().change_scene_to_node(game)
 	if error != OK:
 		game.free()
