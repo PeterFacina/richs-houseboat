@@ -96,6 +96,7 @@ var spans: Array[Span] = []
 var chunks: Dictionary = {}
 var town_paving: Image
 var road_root: Node3D
+var champlain_walk_edges := PackedVector3Array()
 
 
 func build(map: Node3D, data: Dictionary, elevation: Callable, parking_mask: Texture2D,
@@ -199,6 +200,8 @@ func build(map: Node3D, data: Dictionary, elevation: Callable, parking_mask: Tex
 func build_walkways(driveways: RefCounted, concrete: Texture2D, asphalt: Texture2D, terrain: Material) -> Walkways:
 	var walks := Walkways.new()
 	walks.build(road_root, self, driveways, concrete, asphalt, terrain)
+	walks.pedestrian_edges.append_array(champlain_walk_edges)
+	champlain_walk_edges.clear()
 	for span: Span in spans:
 		span.neighbors.clear()
 	spans.clear()
@@ -493,6 +496,11 @@ func emit_champlain_sidewalk(surface: SurfaceTool, span: Span, first: float, las
 		var end := champlain_walk_end(side)
 		if middle >= end or (side < 0.0 and absf(middle - CIVIC_ACCESS.x) < CIVIC_ACCESS.y):
 			continue
+		for fraction: float in [first, last]:
+			var station := span.station + fraction * span.length
+			var offset := champlain_walk_width(station, side) * .5
+			var point := at(span, fraction, span.width * side) + span.left.lerp(span.right, fraction) * side * offset
+			champlain_walk_edges.append(Vector3(point.x, ground.call(point.x, point.y) + .15, point.y))
 		for strip in 4:
 			surface.set_color(Color(1, 0, 0) if strip == 1 else Color.BLACK)
 			var left := strip

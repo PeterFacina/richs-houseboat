@@ -17,7 +17,7 @@ const Backpack = preload("res://river_backpack.gd")
 const Cheats = preload("res://river_cheats.gd")
 const LawnMower = preload("res://lawn_mower.gd")
 const ShannonJob = preload("res://shannon_job.gd")
-const RiverbankResidents = preload("res://riverbank_residents.gd")
+const TownResidents = preload("res://town_residents.gd")
 const PublicWorks = preload("res://public_works.gd")
 const PauseMenu = preload("res://river_pause.gd")
 const Safety = preload("res://river_safety.gd")
@@ -169,7 +169,7 @@ var ignition_ring: IgnitionRing
 var mower := LawnMower.new()
 var spare_mower := LawnMower.new()
 var shannon_job := ShannonJob.new()
-var riverbank_residents: RiverbankResidents
+var town_residents: TownResidents
 var public_works := PublicWorks.new()
 var flying := false
 var pause_menu := PauseMenu.new()
@@ -364,11 +364,14 @@ func _ready() -> void:
 	add_child(shannon_job)
 	shannon_job.setup(self, mower, public_works.to_global(Vector3(PublicWorks.SHANNON.x, public_works.office_floor, PublicWorks.SHANNON.y)),
 		PublicWorks.HEADING, public_works.monitor_focus)
-	if not multiplayer_trip and river.meta.has("riverbank"):
-		riverbank_residents = RiverbankResidents.new()
-		riverbank_residents.name = "RiverbankResidents"
-		add_child(riverbank_residents)
-		riverbank_residents.setup(river.ground_height)
+	town_residents = TownResidents.new()
+	town_residents.name = "TownResidents"
+	add_child(town_residents)
+	var movable: Array[RID] = [player.get_rid(), vessel.get_rid(), mower.get_rid(), spare_mower.get_rid()]
+	for car in marina_cars.cars:
+		movable.append(car.get_rid())
+	town_residents.setup(river.town_walkways.pedestrian_edges, river.waterfront_walk,
+		river.pedestrian_entries, river.ground_height, movable)
 	campaign.story.setup_transport()
 	safety.setup(self)
 	hud.add_child(pause_menu)
@@ -896,8 +899,8 @@ func _physics_process(delta: float) -> void:
 	marina_cars.hide_drivers()
 	campaign.story.tick_transport(delta, has_input and not cabin.busy())
 	shannon_job.tick(delta, play_input() and can_talk_to_shannon())
-	if riverbank_residents != null:
-		riverbank_residents.tick(delta, campaign.ledger.state.work_minutes, player.global_position, clock)
+	if not multiplayer_trip or campaign.crew.started:
+		tick_residents(delta)
 	update_tennis(delta, has_input and get_window().has_focus())
 	camera_motion.update(eye, player, delta, camera_mode(),
 		ground_motion.length() if grounded_motion else 0.0, sprint_blend, crouch_camera_blend)
@@ -906,6 +909,19 @@ func _physics_process(delta: float) -> void:
 		campaign.mark_world()
 	regions.tick(delta)
 	safety.tick(delta)
+
+
+func tick_residents(delta: float) -> void:
+	var crew = campaign.crew
+	var peers: Array[Dictionary] = []
+	if crew.on_server():
+		for peer: int in crew.people:
+			if peer != crew.my_id():
+				var pose: Dictionary = crew.last_pose(peer)
+				if not pose.is_empty():
+					peers.append(pose)
+	town_residents.tick(delta, campaign.ledger.state.work_minutes, eye, clock, peers,
+		not crew.is_guest(), campaign.remote_ship.get("pedestrians", PackedVector3Array()))
 
 
 func play_input() -> bool:

@@ -22,13 +22,15 @@ Pause **Settings** saves camera smoothing, head bob, weather effects, rain parti
 
 In a Godot debug build, the solo player or crew host can open **F2 → Environment and camera** to force a preset, set intensity and wind, advance the clock, trigger lightning, preview a Big Rich idle, toggle camera motion, or display the active reticle category.
 
-## Riverbank Park residents
+## Deep River residents
 
-Five fictional residents walk short, authored routes on the Riverbank Park lookout during solo trips. [Riverbank Residents](../../godot-cove/riverbank_residents.gd) uses the campaign calendar to choose stops. Each resident has weekday and weekend timetables with a stable daily offset. When a trip loads, residents start at the stops for the saved time. After a clock change during play, they walk to their next stops. They pause when a physics body obstructs their route and continue when it clears. Distant idle avatars skip pose updates.
+Twenty fictional residents leave residential entrances in the morning, walk to stops along connected sidewalks and waterfront paths, and return home in the evening. Stable house assignments come from the mapped entrances and walkable approaches. Departure times vary by resident, day and weekend. When a player is near or has a clear view of an entrance, the resident waits before appearing or stepping out of view. House interiors are implicit.
 
-This first stage covers the lookout and uses the existing crew avatar appearance and animation. Residents remain at a park stop overnight. Homes, jobs, dialogue, relationships, weather reactions and shared crew simulation are future stages.
+[Town residents](../../godot-cove/town_residents.gd) controls departures, walking, pauses and recovery. [Pedestrian routes](../../godot-cove/pedestrian_routes.gd) builds its graph from mapped walk surfaces, using the residential builder's front entrances. Route candidates keep home walkups clear of traffic lanes. Residents avoid an obstructed link and try a different destination. Distant residents update less frequently, and avatars are animated close to the local player. The host owns resident motion on crew trips and sends positions and headings with ship state, including the reliable initial packet.
 
-The full-world `res://tests/verify_riverbank_residents.gd` fixture checks schedules and movement on the actual lookout, including an obstruction that appears and clears. Use a fresh APPDATA directory containing `houseboat-142`.
+Routes cover connected pieces of the existing sidewalks and Riverbank Park paths. The Laurier and Deep River Road crossing markings currently lack connected walk approaches on both sides of the graph. Crossing coverage needs map work. Dialogue, persistent relationships, activity-specific routines and weather responses remain future work.
+
+Run `res://tests/verify_town_residents.gd` with isolated APPDATA containing `houseboat-144`. The full-world fixture checks resident distribution, departures, actual walking, blocked-route recovery and late-join state over ENet.
 
 ## Implementation files
 
