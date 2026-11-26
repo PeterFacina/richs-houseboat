@@ -90,7 +90,7 @@ vec3 timed_river_sky(vec3 ray, float detail) {
 		vec2 cloud_uv = ray.xz / (height + .29) * vec2(4.2, 4.8)
 			+ vec2(6.7 + riverside_cloud_phase, 10.2 + riverside_cloud_phase * .56);
 		float broad = sky_grain(cloud_uv * .78);
-		float contour = sky_grain(cloud_uv * 1.73 + 4.8);
+		float contour = detail > .8 ? sky_grain(cloud_uv * 1.73 + 4.8) : .5;
 		float wisp = detail > .8 ? sky_grain(cloud_uv * 3.4 - 7.1) : .5;
 		float cover = broad * .54 + contour * .38 + wisp * .08;
 		float mass = smoothstep(.66, .80, cover) * smoothstep(.026, .19, height)

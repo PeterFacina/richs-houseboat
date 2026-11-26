@@ -218,6 +218,7 @@ void fragment() {
 		}
 	}
 	float rain = river_weather_rain * use_weather;
+	riverside *= 1.0 - rain * .6;
 	if (rain > .01) {
 		vec2 rain_cell = fract(flow * 2.7) - .5;
 		float rain_radius = length(rain_cell);
@@ -279,7 +280,7 @@ void fragment() {
 		* smoothstep(-0.17, 0.80, ripple.x);
 	if (mapped) {
 		foam = mapped_bank * smoothstep(0.05, 0.85, ripple.x * 0.55 + ripple.y * 0.45);
-		float broken_edge = water_noise(flow * .57 + vec2(clock * .08, -clock * .06));
+		float broken_edge = irregularity + .5;
 		foam += riverside * mapped_bank * smoothstep(.43, .72, broken_edge + ripple.x * .09) * .38;
 	}
 	ALBEDO = hue

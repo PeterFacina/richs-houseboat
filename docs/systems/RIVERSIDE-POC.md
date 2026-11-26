@@ -6,7 +6,7 @@ Issue #132 tests a stylized Canadian riverside direction in the existing Deep Ri
 
 The original marina uses surveyed tree positions but presents nearby crowns mostly through foliage cards. The terrain, sky, water, and dock materials already have substantial shader logic. Mowing relies on the original `park_grass` MultiMesh and exact indices in `grass_transforms`; changing its instance order would break cut and regrow behavior. These source relationships, rather than a terrain or physics defect, explain the limited visual density and set the boundary for this change.
 
-The opt-in profile adds curated CC0 Quaternius tree meshes at surveyed marina canopy positions, local shrubs and flowers, and chunked procedural grass clumps. Natural ground cover avoids the mowing routes, paths, docks, playground sand, and pavilion. A separate blade batch follows each existing mowable tuft's index so trimming and regrowth remain tied to gameplay state. The existing graphics presets control the distance and density of added batches. The opt-in sky palette/clouds, mapped marina water, ground, and timber use the existing day cycle and water shaders. The regional map and water physics are unchanged. Shader and asset provenance is in [the asset manifest](../../godot-cove/third_party/quaternius_nature/MANIFEST.md).
+The opt-in profile adds curated CC0 Quaternius tree meshes at surveyed marina canopy positions, local shrubs and flowers, and chunked procedural grass clumps. Natural ground cover avoids the mowing routes, paths, docks, playground sand, and pavilion. A separate blade batch follows each existing mowable tuft's index so trimming and regrowth remain tied to gameplay state. The existing graphics presets control the distance and density of added batches. The opt-in sky palette/clouds, mapped marina water, ground, and timber use the existing day cycle and water shaders. The regional map and water physics are unchanged. The merged weather system applies after the Riverside daytime palette; storm cloud coverage suppresses the added cloud layer and rainfall softens the Riverside water colour treatment. Shader and asset provenance is in [the asset manifest](../../godot-cove/third_party/quaternius_nature/MANIFEST.md).
 
 The experiment is geographically focused near the pavilion. Terrain colour fades from 125 to 170 m and mapped water from 175 to 280 m. Sky and lighting are shared world systems and switch when the local camera crosses a 240 m radius; this can produce a visible transition and warrants human review. The tree models are a visual treatment of surveyed positions, not a precise species survey.
 
@@ -16,17 +16,17 @@ Run `godot --path godot-cove --rendering-method gl_compatibility --script res://
 
 For 720p Performance pass `--preset=performance --capture-resolution=720` after `--`. The capture script temporarily disables a locally saved fullscreen preference and sets the window to 1280 × 720; both the script's earlier resize and Godot's startup `--resolution` option were overridden by that preference. Check the `CAPTURE` dimensions printed in the log. For each view, the script samples 300 frames after a short settle, reports median and 95th percentile wall time between rendered frames and draw calls, then checks mower index identity, cut, regrow, and profile deactivation outside the marina. This is a single stationary-camera run, not the requested three 30-second moving samples; it includes desktop scheduling and can show outliers. It does not provide a separate GPU timer or measure VRAM. See the draft PR for the measured results and test gaps.
 
-The local 1080p Balanced run used Godot 4.7.2, OpenGL Compatibility 3.3, NVIDIA GTX 1050, driver 582.66, and the same saved VSync preference for both profiles. Values below are median / p95 milliseconds; draw calls are original → profile.
+The final local 1080p Balanced run was repeated on the branch rebased onto `f7cc233`. It used Godot 4.7.2, OpenGL Compatibility 3.3, NVIDIA GTX 1050, driver 582.66, and the same saved VSync preference for both profiles. Values below are median / p95 milliseconds; draw calls are original → profile. An earlier pass showed a boat-view median over 20% slower; after removing redundant water/cloud noise samples, a fresh matched run showed a 5.3% median increase there. The large p95 variation still calls for moving-camera playtesting.
 
 | View | Original | Riverside | Draw calls |
 | --- | ---: | ---: | ---: |
-| Public wharf | 20.86 / 49.67 | 18.02 / 45.52 | 3968 → 4005 |
-| Marina park | 12.62 / 27.45 | 12.92 / 34.77 | 2829 → 2889 |
-| Boat viewpoint | 15.84 / 39.15 | 17.33 / 33.77 | 4230 → 4268 |
-| Golden hour | 21.70 / 44.28 | 23.24 / 45.93 | 5310 → 5371 |
-| Night marina | 17.45 / 43.57 | 18.37 / 33.69 | 4105 → 4157 |
+| Public wharf | 19.11 / 44.83 | 19.36 / 40.86 | 3968 → 4005 |
+| Marina park | 13.25 / 26.50 | 13.71 / 31.36 | 2829 → 2889 |
+| Boat viewpoint | 16.53 / 36.39 | 17.41 / 45.05 | 4230 → 4268 |
+| Golden hour | 22.31 / 54.89 | 23.16 / 56.30 | 5310 → 5371 |
+| Night marina | 18.32 / 44.64 | 19.02 / 47.81 | 4105 → 4157 |
 
-The matched 720p Performance pass used the same engine, renderer, and GPU. Values are again median / p95 milliseconds. VSync remained enabled from the local preference, so this is a frame pacing comparison rather than an uncapped GPU throughput test.
+The matched 720p Performance pass used the same engine, renderer, and GPU, but was recorded against the task's original base (`a9ff38b`) before weather PR #127 merged. It is retained as an indicative lower-preset comparison; the 1080p Balanced pair was repeated after the rebase. Values are again median / p95 milliseconds. VSync remained enabled from the local preference, so this is a frame pacing comparison rather than an uncapped GPU throughput test.
 
 | View | Original | Riverside | Draw calls |
 | --- | ---: | ---: | ---: |
