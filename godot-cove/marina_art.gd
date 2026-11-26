@@ -45,6 +45,7 @@ var riverside_enabled := false
 var riverside_center := Vector3.ZERO
 var riverside_art := RiversideArt.new()
 var riverside_tufts := {}
+var riverside_masks := {}
 
 
 func build(parent: Node3D, layout: Dictionary, ground_lookup: Callable, shore_lookup: Callable,
@@ -94,7 +95,8 @@ func build(parent: Node3D, layout: Dictionary, ground_lookup: Callable, shore_lo
 	docks.finish()
 	build_bank_cover(marina, layout, shore_lookup, clear_route)
 	if riverside_enabled:
-		riverside_art.build_ground_cover(marina, park, ground, shore_lookup, mowing_routes, docks, clear_route)
+		riverside_art.build_ground_cover(marina, park, ground, shore_lookup, mowing_routes, docks,
+			clear_route, riverside_masks, layout)
 		build_riverside_mowable_cover(marina, park)
 
 
@@ -102,13 +104,14 @@ func build_riverside_mowable_cover(parent: Node3D, pavilion: Vector3) -> void:
 	var cells := {}
 	for index in grass_transforms.size():
 		var tuft: Transform3D = grass_transforms[index]
-		if not RiversideArt.near_marina(tuft.origin, pavilion):
+		if Vector2(tuft.origin.x, tuft.origin.z).distance_squared_to(Vector2(pavilion.x, pavilion.z)) \
+				> RiversideArt.COVER_RADIUS * RiversideArt.COVER_RADIUS:
 			continue
 		var cell := Vector2i(floori(tuft.origin.x / RiversideArt.CHUNK), floori(tuft.origin.z / RiversideArt.CHUNK))
 		if not cells.has(cell):
 			cells[cell] = {"transforms": [], "indices": []}
 		var scaled := tuft
-		scaled.basis = tuft.basis.scaled_local(Vector3(1.10, 1.55, 1.10))
+		scaled.basis = tuft.basis.scaled_local(Vector3(2.15, 1.70, 2.15))
 		cells[cell].transforms.append(scaled)
 		cells[cell].indices.append(index)
 	var material := ShaderMaterial.new()

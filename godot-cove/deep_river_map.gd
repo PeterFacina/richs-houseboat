@@ -235,7 +235,10 @@ func build(checkpoint := Callable()) -> void:
 		ground.set_shader_parameter("brockhouse_bounds", Vector4(span[0], span[1], span[2], span[3]))
 	var apron := BASE + "marina_paving.png"
 	if FileAccess.file_exists(apron):
-		marina_paving = ImageTexture.create_from_image(Image.load_from_file(apron))
+		var apron_image := Image.load_from_file(apron)
+		marina_paving = ImageTexture.create_from_image(apron_image)
+		if riverside_enabled:
+			waterfront.riverside_masks["apron"] = [apron_image, patch_bounds(marina_patch)]
 		bind_marina_paving(ground)
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 7268
@@ -273,11 +276,19 @@ func build(checkpoint := Callable()) -> void:
 	if meta.has("riverbank"):
 		var surface := Image.load_from_file(BASE + "riverbank_surface.png")
 		park.clear_old_path_paint(surface)
+		if riverside_enabled:
+			waterfront.riverside_masks["path"] = [surface, Vector4(
+				park.bounds.position.x, park.bounds.position.y, park.bounds.size.x, park.bounds.size.y)]
 		surface.generate_mipmaps()
 		ground.set_shader_parameter("riverbank_path_mask", ImageTexture.create_from_image(surface))
 		ground.set_shader_parameter("riverbank_path_bounds", Vector4(
 			park.bounds.position.x, park.bounds.position.y, park.bounds.size.x, park.bounds.size.y))
 	waterfront.riverside_enabled = riverside_enabled
+	if riverside_enabled:
+		var road := PackedVector2Array()
+		for pair: Array in meta.streets[RoadNetwork.MARINA_APPROACH]:
+			road.append(Vector2(pair[0], pair[1]))
+		waterfront.riverside_masks["approach"] = road
 	waterfront.build(self, meta.marina, ground_height, wet_clearance, wood_scan, concrete_scan, riverbed,
 		park.near_trail, meta.get("riverbank", {}).get("pier_approach", []))
 	for material: ShaderMaterial in [near_water, far_water]:

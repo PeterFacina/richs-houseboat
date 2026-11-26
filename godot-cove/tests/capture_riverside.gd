@@ -38,14 +38,27 @@ func capture() -> void:
 	var pavilion: Array = game.river.meta.marina.pavilion
 	var x := float(pavilion[0])
 	var z := float(pavilion[1])
+	var meadow_y: float = game.river.ground_height(x - 42.0, z + 12.0)
+	var ridge_y: float = game.river.ground_height(x - 122.0, z + 88.0)
 	var views := [
 		["public_wharf", Vector3(x + 83.0, 2.2, z + 15.0), Vector3(x + 17.0, 1.5, z + 125.0), Cycle.MIDDAY],
 		["marina_park", Vector3(x + 9.0, 2.1, z + 8.0), Vector3(x - 28.0, 2.8, z - 14.0), Cycle.MIDDAY],
+		["wide_meadow", Vector3(x - 42.0, meadow_y + 2.2, z + 12.0), Vector3(x - 112.0,
+			game.river.ground_height(x - 112.0, z + 78.0) + 1.4, z + 78.0), Cycle.MIDDAY],
+		["inland_ridge", Vector3(x - 122.0, ridge_y + 2.2, z + 88.0), Vector3(x - 24.0,
+			game.river.ground_height(x - 24.0, z + 34.0) + 1.4, z + 34.0), Cycle.MIDDAY],
+		["elevated_marina", Vector3(x + 15.0, 34.0, z - 70.0), Vector3(x - 65.0, 2.0, z + 2.0), Cycle.MIDDAY],
 		["from_boat", Vector3(x + 46.0, 2.0, z + 91.0), Vector3(x + 19.0, 2.7, z + 2.0), Cycle.MIDDAY],
 		["golden_hour", Vector3(x + 83.0, 2.2, z + 15.0), Vector3(x - 45.0, 2.1, z + 140.0), Cycle.GOLDEN_HOUR],
 		["night_marina", Vector3(x + 83.0, 2.2, z + 15.0), Vector3(x + 17.0, 1.5, z + 125.0), Cycle.NIGHT],
 	]
+	var selected := ""
+	for argument in OS.get_cmdline_user_args():
+		if argument.begins_with("--view="):
+			selected = argument.trim_prefix("--view=")
 	for view in views:
+		if selected != "" and view[0] != selected:
+			continue
 		game.river.update_day_cycle(view[3])
 		game.eye.global_position = view[1]
 		game.eye.look_at(view[2], Vector3.UP)

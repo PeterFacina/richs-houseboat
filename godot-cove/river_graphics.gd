@@ -5,9 +5,9 @@ const NAMES := ["Performance", "Balanced", "Scenic"]
 const DRAW_DISTANCE := [2400.0, 4200.0, 8700.0]
 const SHADOW_DISTANCE := [72.0, 125.0, 230.0]
 const WATER_GRID := [72, 112, 180]
-const RIVERSIDE_GRASS_DENSITY := [.38, .70, 1.0]
 const RANGES := {
-	"riverside_grass": [45.0, 78.0, 118.0],
+	"riverside_grass": [55.0, 72.0, 118.0],
+	"riverside_leaves": [55.0, 82.0, 120.0],
 	"riverside_tree": [105.0, 175.0, 240.0],
 	"tree_detail": [135.0, 235.0, 360.0],
 	"tree_silhouette": [1220.0, 2150.0, 4150.0],
@@ -54,8 +54,12 @@ func apply(river: Node3D, view: Camera3D) -> void:
 			item.visibility_range_end = RANGES[kind][level]
 			item.visibility_range_end_margin = 14.0
 			if kind == "riverside_grass" and item is MultiMeshInstance3D:
-				var batch := item as MultiMeshInstance3D
-				batch.multimesh.visible_instance_count = maxi(1, roundi(int(batch.get_meta("riverside_count", 0)) * RIVERSIDE_GRASS_DENSITY[level]))
+				var grass_batch := item as MultiMeshInstance3D
+				grass_batch.multimesh.visible_instance_count = -1
+				if grass_batch.material_override is ShaderMaterial:
+					var material := grass_batch.material_override as ShaderMaterial
+					material.set_shader_parameter("fade_start", RANGES[kind][level] - 24.0)
+					material.set_shader_parameter("fade_end", RANGES[kind][level] - 4.0)
 			if kind == "tree_silhouette":
 				item.visibility_range_begin = RANGES["tree_detail"][level]
 				item.visibility_range_begin_margin = 14.0
