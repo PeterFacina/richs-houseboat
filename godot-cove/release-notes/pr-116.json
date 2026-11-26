@@ -1,0 +1,7 @@
+{
+  "pr": 116,
+  "player_facing": true,
+  "bullets": [
+    "Developers can press F8 in debug builds to test Big Rich quests in an isolated session."
+  ]
+}
