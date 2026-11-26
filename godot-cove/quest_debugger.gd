@@ -282,6 +282,6 @@ func refresh_details() -> void:
 	for index in quest.steps.size():
 		var objective: Array = quest.steps[index]
 		var completed := selected_quest < int(saved.get("step", 0)) or (selected_quest == int(saved.get("step", 0)) and objective_done(saved, quest, objective[0]))
-		var active := selected_quest == int(saved.get("step", 0)) and saved.get("accepted", false) and index == int(saved.get("progress", 0.0))
+		var active: bool = selected_quest == int(saved.get("step", 0)) and saved.get("accepted", false) and index == int(saved.get("progress", 0.0))
 		stages.append(("[color=#8fe0bb]✓[/color] " if completed else ("[color=#f3d184]▶[/color] " if active else "○ ")) + str(objective[1]))
 	details.text = "[b]Questline:[/b] Big Rich's introductory restoration chain\n[b]Selected:[/b] %s · stage %d/%d\n[b]Live state:[/b] %s\n[b]Active objective:[/b] %s\n[b]Progress:[/b] %.0f / %.0f\n[b]Flags:[/b] %s\n[b]Houseboat restoration:[/b] %s\n\n%s" % [quest.title, selected_stage + 1, quest.steps.size(), "temporary test copy" if session_active else "saved campaign (read only)", story.progress_text() if session_active else "Debugger closed", float(saved.get("progress", 0.0)), quest.target, ", ".join(flags) if not flags.is_empty() else "none", "complete" if Parts.all_repaired(saved) else "in progress", "\n".join(stages)]
