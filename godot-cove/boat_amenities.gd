@@ -20,6 +20,7 @@ var sound_serial := 0
 var last_sound := -1
 var next_flush := 0.0
 var local_seat := ""
+var focus_kind := ""
 var saved_mask := 1
 var television: SubViewport
 var television_label: Label
@@ -198,21 +199,40 @@ func target(kind: String) -> Vector3:
 	return boat.to_global(Vector3(-.84, 1.2, 4.92) if kind == "bed" else Vector3(.96, 1.3, 5.65) if kind == "toilet" else TV)
 
 
-func interact() -> bool:
+func focused_action() -> String:
 	if seated():
-		escape()
-		return true
-	if game.vessel != boat or game.driving or game.cabin.busy() or campaign.crewplay.hands_busy(): return false
+		return "exit"
+	if game.vessel != boat or game.driving or game.cabin.busy() or campaign.crewplay.hands_busy():
+		return ""
 	for kind in ["bed", "toilet", "tv"]:
 		if campaign.aiming(target(kind), 2.1, .90):
-			campaign.request("amenity_use", kind)
-			return true
-	return false
+			return "occupied" if occupants.values().has(kind) else kind
+	return ""
+
+
+func action_label(kind: String) -> String:
+	match kind:
+		"exit": return "Get up"
+		"bed": return "Lie down"
+		"toilet": return "Sit"
+		"tv": return "Turn television " + ("off" if tv_on else "on")
+	return ""
+
+
+func interact() -> bool:
+	var kind := focused_action()
+	if kind.is_empty():
+		return false
+	if kind == "exit":
+		escape()
+	elif kind != "occupied":
+		campaign.request("amenity_use", kind)
+	return true
 
 
 func input(event: InputEvent) -> bool:
 	if seated() and event is InputEventKey and event.pressed and not event.echo and game.play_input():
-		if event.physical_keycode in [KEY_SPACE, KEY_E]:
+		if (event.physical_keycode == KEY_SPACE or event.is_action_pressed(&"interact")):
 			escape()
 			return true
 		if event.physical_keycode == KEY_F and seat_kind(campaign.crew.my_id()) == "toilet":
@@ -321,12 +341,11 @@ func pin_local() -> void:
 func tick(_delta: float) -> void:
 	apply_local_seat()
 	var kind := seat_kind(campaign.crew.my_id())
+	focus_kind = focused_action()
 	var text := ""
 	if not kind.is_empty(): text = "E / Space  Get up" + ("   ·   F  Flush" if kind == "toilet" else "")
-	elif game.vessel == boat and not game.driving:
-		for item in ["bed", "toilet", "tv"]:
-			if campaign.aiming(target(item), 2.1, .9):
-				text = "E  " + ("Lie down" if item == "bed" else "Sit on toilet" if item == "toilet" else "Turn television " + ("off" if tv_on else "on"))
+	elif focus_kind == "occupied":
+		text = "In use"
 	hint.text = text
 	hint.visible = not text.is_empty() and not game.menu_blocks_play()
 	var elapsed := fposmod(game.clock - tv_epoch, LOOP_SECONDS)

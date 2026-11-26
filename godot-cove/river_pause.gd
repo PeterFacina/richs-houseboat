@@ -10,7 +10,8 @@ var game: Node3D
 var graphics: Graphics
 var preferences := {"volume": .8, "sensitivity": 1.0, "fov": 78.0,
 	"fullscreen": false, "vsync": true, "fps": false, "hand_motion": .65,
-	"toggle_crouch": false, "aircraft_invert_pitch": false}
+	"camera_smoothing": .55, "head_bob": .35, "weather_quality": 1.0, "particle_quality": .7,
+	"reflection_quality": .75, "fog_quality": 1.0, "toggle_crouch": false, "aircraft_invert_pitch": false}
 var name_field: LineEdit
 var status: Label
 var quit_dialog: ConfirmationDialog
@@ -23,7 +24,7 @@ var vehicle_controls_scroll: ScrollContainer
 var windowed_mode := DisplayServer.WINDOW_MODE_WINDOWED
 var title: Label
 var main_page: VBoxContainer
-var settings_page: VBoxContainer
+var settings_page: ScrollContainer
 var vehicle_page: VBoxContainer
 var crew_page: VBoxContainer
 var back: Button
@@ -83,10 +84,17 @@ func setup(scene: Node3D = null) -> void:
 	back = button(header, "Back", func(): close() if game == null else show_main(), &"QuietAction", "back", 36)
 	back.size_flags_horizontal = Control.SIZE_SHRINK_END
 	back.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	settings_page = VBoxContainer.new()
-	settings_page.add_theme_constant_override("separation", 12)
+	settings_page = ScrollContainer.new()
+	settings_page.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	settings_page.follow_focus = true
 	column.add_child(settings_page)
-	build_settings(settings_page)
+	var settings_rows := VBoxContainer.new()
+	settings_rows.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	settings_rows.add_theme_constant_override("separation", 12)
+	settings_page.add_child(settings_rows)
+	build_settings(settings_rows)
+	get_viewport().size_changed.connect(resize_settings)
+	resize_settings()
 	if game == null:
 		back.tooltip_text = "Back · Esc"
 	else:
@@ -170,7 +178,7 @@ func confirm_exit() -> void:
 	quit_dialog.get_cancel_button().grab_focus()
 
 
-func show_page(page: VBoxContainer, caption: String, first: Control) -> void:
+func show_page(page: Control, caption: String, first: Control) -> void:
 	main_page.visible = page == main_page
 	settings_page.visible = page == settings_page
 	vehicle_page.visible = page == vehicle_page
@@ -235,11 +243,21 @@ func build_vehicle_controls(column: VBoxContainer) -> void:
 	text(controls, "F4 cycles draw distance in the world.", 16, MIST)
 
 
+func resize_settings() -> void:
+	settings_page.custom_minimum_size.y = clampf(get_viewport_rect().size.y - 218.0, 300.0, 570.0)
+
+
 func build_settings(settings: VBoxContainer) -> void:
 	slider(settings, "Master volume", "volume", 0, 1, .01)
 	slider(settings, "Mouse sensitivity", "sensitivity", .25, 2.5, .05)
 	slider(settings, "Field of view", "fov", 60, 100, 1)
 	slider(settings, "Hand motion", "hand_motion", 0, 1, .05)
+	slider(settings, "Camera smoothing", "camera_smoothing", 0, 1, .05)
+	slider(settings, "Head bob", "head_bob", 0, 1, .05)
+	slider(settings, "Weather effects", "weather_quality", 0, 1, .25)
+	slider(settings, "Rain particles", "particle_quality", 0, 1, .25)
+	slider(settings, "Weather reflections", "reflection_quality", 0, 1, .25)
+	slider(settings, "Weather fog", "fog_quality", 0, 1, .25)
 	var movement := HBoxContainer.new()
 	settings.add_child(movement)
 	text(movement, "Crouch mode", 16, MIST).size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -339,6 +357,12 @@ func apply_settings() -> void:
 		game.mouse_sensitivity = .0022 * preferences.sensitivity
 		game.eye.fov = preferences.fov
 		game.rig.motion_amount = preferences.hand_motion
+		game.camera_motion.smoothing = clampf(preferences.camera_smoothing, 0, 1)
+		game.camera_motion.bob_amount = clampf(preferences.head_bob, 0, 1)
+		game.weather_fx.weather_quality = clampf(preferences.weather_quality, 0, 1)
+		game.weather_fx.particle_quality = clampf(preferences.particle_quality, 0, 1)
+		game.weather_fx.reflection_quality = clampf(preferences.reflection_quality, 0, 1)
+		game.weather_fx.fog_quality = clampf(preferences.fog_quality, 0, 1)
 		game.fps.visible = preferences.fps
 	if DisplayServer.get_name() != "headless":
 		DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_ENABLED if preferences.vsync else DisplayServer.VSYNC_DISABLED)

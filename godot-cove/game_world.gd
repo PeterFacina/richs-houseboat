@@ -282,6 +282,9 @@ func _ready() -> void:
 	add_child(fish)
 	fish.hide()
 	build_hud()
+	hud.add_child(reticle)
+	reticle.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	crosshair.hide()
 	build_ignition_prompt()
 	build_tension_display()
 	backpack = Backpack.new()
@@ -346,12 +349,15 @@ func _ready() -> void:
 	cheat_center.add_child(cheats)
 	cheats.dismissed.connect(close_cheats)
 	cheats.test_cash_requested.connect(campaign.add_test_cash)
+	if OS.is_debug_build():
+		cheats.setup_environment(self)
 	add_child(public_works)
 	public_works.build(river)
 	add_child(mower)
 	mower.setup(river, public_works.at_ground(PublicWorks.PARKING[0]), PublicWorks.HEADING + PI)
 	add_child(spare_mower)
 	spare_mower.setup(river, public_works.at_ground(PublicWorks.PARKING[1]), PublicWorks.HEADING + PI, mower)
+	add_child(weather_fx)
 	add_child(shannon_job)
 	shannon_job.setup(self, mower, public_works.to_global(Vector3(PublicWorks.SHANNON.x, public_works.office_floor, PublicWorks.SHANNON.y)),
 		PublicWorks.HEADING, public_works.monitor_focus)
@@ -440,7 +446,7 @@ func finish_return_to_title(message: String) -> void:
 
 func update_menu_hud() -> void:
 	var piloting := is_instance_valid(helicopter) and helicopter.my_seat() == 0
-	crosshair.visible = not (piloting or notebook.visible or story_offer.visible)
+	reticle.visible = not (piloting or menu_blocks_play())
 	var show_hud: bool = not (piloting or pause_menu.visible or notebook.visible or story_offer.visible or campaign.board.visible or campaign.boats_menu.visible)
 	(objective.get_parent() as Control).visible = show_hud
 	marker.self_modulate.a = 1.0 if show_hud else 0.0
@@ -524,13 +530,14 @@ func _input(event: InputEvent) -> void:
 		return
 	if key == KEY_F2 and not chart.visible and not fish_guide.visible and not backpack.inventory.visible \
 			and not campaign.controls_blocked() and not cabin.busy() and marina_cars.active < 0 and mower.rider == null:
-		if campaign.crew.mode == "solo":
+		if campaign.crew.mode == "solo" or (OS.is_debug_build() and campaign.crew.on_server()):
+			cheats.configure_for_mode(campaign.crew.mode == "solo")
 			cheat_mouse_mode = Input.mouse_mode
 			sonar_overlay.hide()
 			cheats.show()
 			Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 		else:
-			notify_angling("Cheats are available in solo play.", 3.0)
+			notify_angling("Testing controls are available to the host in a debug build.", 3.0)
 		get_viewport().set_input_as_handled()
 		return
 	if backpack.inventory.visible:
@@ -543,7 +550,7 @@ func _input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 		return
 	if mower.rider != null:
-		if key == KEY_E and play_input():
+		if event.is_action_pressed(&"interact") and play_input():
 			interact_pressed = true
 		elif key == KEY_X and play_input():
 			mower.blades = not mower.blades
@@ -577,6 +584,8 @@ func _input(event: InputEvent) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if event is InputEventMouseMotion:
+		camera_motion.restore(eye)
 	if tennis.active:
 		if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT and play_input():
 			tennis.swing()
@@ -604,10 +613,10 @@ func _unhandled_input(event: InputEvent) -> void:
 			marina_cars.orbit(event.relative)
 			return
 		if event is InputEventKey and event.pressed and not event.echo:
+			if event.is_action_pressed(&"interact"):
+				interact_pressed = play_input()
+				return
 			match event.physical_keycode:
-				KEY_E:
-					interact_pressed = play_input()
-					return
 				KEY_H:
 					if play_input():
 						marina_cars.toggle_lights()
@@ -636,6 +645,12 @@ func _unhandled_input(event: InputEvent) -> void:
 			var gear := backpack.shortcuts[hotbar_slot]
 			equip_gear(Backpack.NONE if gear == backpack.equipped else gear)
 			return
+		if event.is_action_pressed(&"interact"):
+			interact_pressed = play_input() and not chart.visible
+			return
+		if event.is_action_pressed(&"fish_interact") and not driving:
+			rod_pressed = play_input() and not chart.visible
+			return
 		match event.physical_keycode:
 			KEY_F4:
 				change_draw_distance()
@@ -650,8 +665,6 @@ func _unhandled_input(event: InputEvent) -> void:
 					if driving:
 						if play_input():
 							vessel.nudge_throttle(1.0)
-					else:
-						rod_pressed = true
 				return
 			KEY_F:
 				if driving:
@@ -676,9 +689,6 @@ func _unhandled_input(event: InputEvent) -> void:
 				if backpack.equipped == Backpack.PEN and play_input():
 					pen_drop_pressed = true
 					return
-			KEY_E:
-				interact_pressed = Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and not chart.visible
-				return
 	if chart.visible and (event is InputEventMouseButton or event is InputEventMouseMotion):
 		return
 	if event is InputEventMouseButton and event.pressed and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
@@ -705,7 +715,29 @@ func change_draw_distance() -> void:
 	notify_angling("Draw distance · " + graphics.description(), 3.0)
 
 
+var camera_motion := preload("res://player_camera_motion.gd").new()
+
+
+func camera_mode() -> String:
+	if marina_cars.active >= 0:
+		return "car_cab" if marina_cars.cockpit_view else "car_chase"
+	if mower.rider != null:
+		return "mower_chase" if mower.chase_view else "mower"
+	if in_aircraft():
+		return "aircraft"
+	if driving:
+		return "helm"
+	if campaign.amenities.seated():
+		return "seat"
+	if swimming:
+		return "swim"
+	if aboard():
+		return "deck"
+	return "foot"
+
+
 func _physics_process(delta: float) -> void:
+	camera_motion.restore(eye)
 	clock += delta
 	var wants_flight := campaign.crew.mode == "solo" and cheats.flight.button_pressed and not in_aircraft()
 	if wants_flight and marina_cars.active >= 0:
@@ -714,6 +746,7 @@ func _physics_process(delta: float) -> void:
 	if flying != wants_flight:
 		update_flight_mode(wants_flight)
 	var has_input := play_input()
+	var idle_interrupted := interact_pressed or rod_pressed or pen_use_pressed or pen_drop_pressed
 	campaign.run_shortcuts(has_input and not flying and mower.rider == null and marina_cars.active < 0)
 	has_input = play_input()
 	update_ignition(delta, has_input)
@@ -724,7 +757,7 @@ func _physics_process(delta: float) -> void:
 	use_cabin = use_cabin and not in_aircraft()
 	var fuel_press: bool = interact_pressed and has_input and can_use_fuel() and campaign.marina_fuel.interact()
 	var repairing: bool = campaign.story.update_repair(delta, has_input,
-		Input.is_physical_key_pressed(KEY_E) and not fuel_press)
+		Input.is_action_pressed(&"interact") and not fuel_press)
 	var reserved_press := fuel_press or repairing or (interact_pressed and has_input and campaign.launch_interaction() != "")
 	var pen_available := has_input and hands_available() and fishing == Fishing.READY
 	dab_pen.update_focus(pen_available and not reserved_press)
@@ -740,7 +773,7 @@ func _physics_process(delta: float) -> void:
 	pen_drop_pressed = false
 	pen_use_pressed = false
 	var did_use := cabin.update(delta, clock, use_cabin, interact_pressed and not reserved_press and not grabbed_pen,
-		Input.is_physical_key_pressed(KEY_E) and not reserved_press)
+		Input.is_action_pressed(&"interact") and not reserved_press)
 	var can_use_yard := interact_pressed and has_input and can_talk_to_shannon()
 	var office_leaf := public_works.office_handle(eye) if can_use_yard else -1
 	var bay := public_works.nearby_door(eye) if can_use_yard else null
@@ -760,7 +793,7 @@ func _physics_process(delta: float) -> void:
 			pass
 		elif office_leaf >= 0:
 			public_works.toggle_office(office_leaf, eye)
-		elif can_talk_to_shannon() and shannon_job.in_range():
+		elif can_talk_to_shannon() and shannon_focused():
 			shannon_job.interact()
 		elif bay != null:
 			bay.toggle()
@@ -780,7 +813,7 @@ func _physics_process(delta: float) -> void:
 		elif can_board_from_water():
 			campaign.keep_player_on_deck(vessel, vessel.board_anchor())
 			set_swimming(false)
-		elif not marina_cars.interact() and not campaign.local_interact() and (driving or near_wheel()):
+		elif not marina_cars.interact() and not campaign.local_interact() and (driving or helm_focused()):
 			release_line()
 			campaign.helm()
 	interact_pressed = false
@@ -801,7 +834,7 @@ func _physics_process(delta: float) -> void:
 		step_vessel(delta, 0.0)
 	elif mower.rider != null:
 		step_vessel(delta, 0.0)
-		var throttle := axis(KEY_W, KEY_S) if has_input else 0.0
+		var throttle := axis(KEY_W, KEY_S) * (1.0 - .09 * weather_fx.wet * weather.gameplay_strength) if has_input else 0.0
 		var steering := axis(KEY_A, KEY_D) if has_input else 0.0
 		mower.cut_width = .71 * (1.0 + campaign.skill_effect(campaign.crew.my_id(), "sharp_blades") / 100.0)
 		yaw += mower.drive(delta, throttle, steering)
@@ -839,13 +872,19 @@ func _physics_process(delta: float) -> void:
 		if free_hands:
 			use_rod()
 	var lift := free_hands and Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT) and fishing == Fishing.FIGHT
-	tick_fishing(delta, free_hands and Input.is_physical_key_pressed(KEY_R), lift)
+	tick_fishing(delta, free_hands and Input.is_action_pressed(&"fish_interact"), lift)
 	render_fishing(delta, lift)
+	var stationary := has_input and not idle_interrupted and not (flying or swimming or tennis.active or cabin.busy() or campaign.dive.active) \
+		and rig.punch_elapsed >= rig.PUNCH_DURATION and (ground_motion if grounded_motion else player.velocity).length_squared() < .035 \
+		and not Input.is_action_pressed(&"interact") and not Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT)
+	standing_idle.tick(delta, stationary, hands_available() and backpack.equipped == Backpack.NONE and not driving)
 	campaign.tick(delta, has_input)
 	marina_cars.hide_drivers()
 	campaign.story.tick_transport(delta, has_input and not cabin.busy())
 	shannon_job.tick(delta, play_input() and can_talk_to_shannon())
 	update_tennis(delta, has_input and get_window().has_focus())
+	camera_motion.update(eye, player, delta, camera_mode(),
+		ground_motion.length() if grounded_motion else 0.0, sprint_blend, crouch_camera_blend)
 	update_hud()
 	if not tennis.active:
 		campaign.mark_world()
@@ -870,6 +909,7 @@ func update_tennis(delta: float, has_input: bool) -> void:
 
 
 func tennis_reset_player(at: Vector3, toward: Vector3) -> void:
+	camera_motion.previous_feet = Vector3.INF
 	reset_foot_stance()
 	player.global_position = at + Vector3.UP * .10
 	player.velocity = Vector3.ZERO
@@ -938,6 +978,7 @@ func equip_gear(gear: int) -> void:
 			notify_angling("Stow the rod before switching gear.", 3.2)
 			return
 		release_line()
+	standing_idle.tick(0.0, false, false)
 	backpack.set_equipped(gear)
 	if is_instance_valid(campaign.crew) and not campaign.story.repair_tool().is_empty():
 		var tool := campaign.story.repair_tool() if gear == Backpack.REPAIR else ""
@@ -1097,7 +1138,7 @@ func set_crouched(active: bool) -> void:
 
 
 func update_stance_camera(delta: float) -> void:
-	crouch_camera_blend = move_toward(crouch_camera_blend, float(crouched), delta / crouch_transition_time)
+	crouch_camera_blend = move_toward(crouch_camera_blend, float(crouched), delta / crouch_transition_time) if camera_motion.smoothing > 0.0 else float(crouched)
 	var eye_height := lerpf(STANDING_EYE, crouch_height - .10, smoothstep(0, 1, crouch_camera_blend))
 	if crouched and crouch_camera_blend < 1.0:
 		var origin := player.global_position + Vector3.UP * (crouch_height - .10)
@@ -1106,7 +1147,7 @@ func update_stance_camera(delta: float) -> void:
 		var hit := get_world_3d().direct_space_state.intersect_ray(clearance)
 		if not hit.is_empty():
 			eye_height = minf(eye_height, hit.position.y - player.global_position.y - eye.near)
-	step_eye_offset = move_toward(step_eye_offset, 0.0, delta * 1.85)
+	step_eye_offset *= exp(-delta * lerpf(24.0, 7.5, camera_motion.smoothing)) if camera_motion.smoothing > 0.0 else 0.0
 	eye.position.y = eye_height - step_eye_offset
 
 
@@ -1138,7 +1179,8 @@ func can_board_from_water() -> bool:
 		return false
 	var entry: Vector3 = vessel.to_global(vessel.board_anchor())
 	var gap := entry - player.global_position
-	return Vector2(gap.x, gap.z).length_squared() <= 2.15 * 2.15
+	return Vector2(gap.x, gap.z).length_squared() <= 2.15 * 2.15 \
+		and campaign.aiming(entry + Vector3.UP * .16, 3.1, .70, vessel)
 
 
 func step_vessel(delta: float, rudder: float) -> void:
@@ -1154,6 +1196,10 @@ func interact() -> void:
 
 func update_helm_throttle(delta: float, has_input: bool) -> void:
 	vessel.hold_throttle(delta, axis(KEY_R, KEY_F) if has_input else 0.0, axis(KEY_W, KEY_S) if has_input else 0.0)
+
+
+func helm_focused() -> bool:
+	return near_wheel() and campaign.aiming(vessel.helm_wheel.global_position, 2.35, .78, vessel)
 
 
 func at_ignition_key() -> bool:
@@ -1176,7 +1222,7 @@ func update_ignition(delta: float, has_input: bool) -> void:
 	if ignition_hold < 0.0:
 		return
 	var duration := Boat.START_TIME
-	if not focused or not Input.is_physical_key_pressed(KEY_E):
+	if not focused or not Input.is_action_pressed(&"interact"):
 		if ignition_hold < duration:
 			campaign.request("boat_ignition", "cancel")
 		ignition_hold = -1.0
@@ -1427,7 +1473,7 @@ func tick_cast() -> void:
 	if t >= 1.0:
 		effects.break_surface(float_site, .59, "splash")
 		var depth := river.depth_at(cast_site)
-		bite_at = clock + random.randf_range(5.0, 12.5) * companion_bite_factor() + Species.leader(rig_slot, depth) * .17
+		bite_at = clock + random.randf_range(5.0, 12.5) * weather_bite_factor() + Species.leader(rig_slot, depth) * .17
 		if trophy.draws_bait(cast_site, clock):
 			bite_at = maxf(clock + 2.6, trophy.ready_at + 1.1)
 		tap_at = bite_at - random.randf_range(.70, 1.75)
@@ -1449,7 +1495,7 @@ func tick_float(delta: float) -> void:
 	elif fishing == Fishing.BITE and state_age >= BITE_WINDOW:
 		notify_angling("Missed the bite. Strike when the float goes under.", 3.8)
 		change_state(Fishing.WAITING)
-		bite_at = clock + random.randf_range(6.0, 12.0) * companion_bite_factor()
+		bite_at = clock + random.randf_range(6.0, 12.0) * weather_bite_factor()
 		tap_at = bite_at - 1.25
 		tap_done = false
 
@@ -1705,6 +1751,11 @@ func render_fishing(delta: float, lift: bool) -> void:
 	effects.draw_line(rig.tip.global_position, line_end, eye.global_position, slack, clock, leader)
 
 
+var weather := preload("res://river_weather.gd").new()
+var weather_fx := preload("res://river_weather_fx.gd").new()
+var standing_idle := preload("res://character_idle.gd").new()
+
+
 func capture_crew_pose() -> Dictionary:
 	var data := campaign.crewplay.style()
 	data.cabin_high = cabin.high_until > cabin.clock
@@ -1715,6 +1766,7 @@ func capture_crew_pose() -> Dictionary:
 	data.crouch = smoothstep(0, 1, crouch_camera_blend)
 	data.eye_drop = clampf(STANDING_EYE - eye.position.y, 0, 1) if crouch_camera_blend > 0 else 0.0
 	data.pitch = pitch
+	data.idle = standing_idle.packet()
 	data.seat = campaign.amenities.seat_kind(campaign.crew.my_id())
 	if in_aircraft(): data.seat = "heli"
 	data.merge(cabin.visual_packet(), true)
@@ -1978,6 +2030,12 @@ func update_story_tracker() -> void:
 		story_tracker.text = "%s\n%s" % [quest.title, campaign.story.progress_text()]
 
 
+func weather_bite_factor() -> float:
+	var rain := weather_fx.sample.y
+	var adjustment := -.11 * smoothstep(0.0, .38, rain) + .22 * smoothstep(.49, 1.0, rain)
+	return companion_bite_factor() * (1.0 + adjustment * weather.gameplay_strength)
+
+
 func companion_bite_factor() -> float:
 	return 1.0 / RichStory.BITE_RATE if aboard() and campaign.story.companion_aboard() else 1.0
 
@@ -2143,6 +2201,7 @@ func teleport_from_chart() -> void:
 		if not safe.is_finite():
 			chart.set_status("No clear arrival point. Try another waypoint.")
 			return
+		camera_motion.previous_feet = Vector3.INF
 		player.global_position = safe
 		player.velocity = Vector3.ZERO
 		player.reset_physics_interpolation()
@@ -2158,6 +2217,71 @@ func refresh_journal() -> void:
 	for i in mini(9, journal.size()):
 		entries.append(journal[i])
 	chart.journal_label.text = "\n\n".join(entries) if not entries.is_empty() else "No catches yet."
+
+
+var reticle := preload("res://context_reticle.gd").new()
+
+
+func shannon_focused() -> bool:
+	return shannon_job.in_range() and campaign.aiming(shannon_job.global_position + Vector3.UP * 1.37, 3.5, .81)
+
+
+func show_context(legacy_hint: String) -> void:
+	reticle.visible = play_input() and not chart.visible and not campaign.dive.active and helicopter.my_seat() != 0
+	if not reticle.visible:
+		return
+	if reticle.debug:
+		var ray := PhysicsRayQueryParameters3D.create(eye.global_position, eye.global_position - eye.global_basis.z * 6.0, 1, [player.get_rid()])
+		var hit := get_world_3d().direct_space_state.intersect_ray(ray)
+		reticle.debug_target = "Ray clear (6 m)" if hit.is_empty() else "Ray hit %s at %.1f m" % [hit.collider.name, eye.global_position.distance_to(hit.position)]
+	var words := legacy_hint.split("  ·  ", false, 1)[0] if not legacy_hint.is_empty() else ""
+	if tennis.active or ignition_prompt.visible:
+		reticle.present("")
+	elif marina_cars.active >= 0:
+		var stopped := absf(marina_cars.cars[marina_cars.active].speed) <= .55
+		reticle.present("vehicle" if stopped else "disabled", &"interact", "Exit vehicle" if stopped else "")
+	elif mower.rider != null:
+		reticle.present("vehicle", &"interact", "Dismount")
+	elif dab_pen.focused:
+		reticle.present("pickup", &"interact", "Pick up the dab pen")
+	elif cabin.focus == cabin.FRIDGE:
+		reticle.present("storage", &"interact", "Close fridge" if cabin.fridge_open else "Open fridge")
+	elif cabin.focus >= 0:
+		var title := cabin.hint.text.trim_prefix("E  ").trim_prefix("Hold E  ")
+		reticle.present("pickup" if title.begins_with("Grab") else "equipment", &"interact", title, cabin.hint.text.begins_with("Hold E"))
+	elif can_talk_to_shannon() and shannon_focused() and (campaign.crew.is_guest() or not shannon_job.prompt().begins_with("E  ")):
+		reticle.present("disabled")
+	elif marina_cars.focused >= 0 and not flying:
+		var free := marina_cars.can_drive(marina_cars.focused) and marina_cars.drivers[marina_cars.focused] == 0
+		reticle.present("vehicle" if free else "disabled", &"interact", "Enter vehicle" if free else "")
+	elif words == "Rich is talking" or words.ends_with(" in use"):
+		reticle.present("disabled")
+	elif words.begins_with("E  "):
+		var title := words.substr(3)
+		var plain := title.to_lower()
+		var kind := "equipment"
+		if "door" in plain:
+			kind = "door"
+		elif "ice chest" in plain or "storage" in plain:
+			kind = "storage"
+		elif "talk" in plain or "shannon" in plain or "check in" in plain or "tennis" in plain:
+			kind = "dialogue"
+		elif "boat" in plain or "drive" in plain or "mower" in plain or "helm" in plain or "ashore" in plain:
+			kind = "vehicle"
+		elif "shop" in plain or "upgrades" in plain or "jobs" in plain or "listing" in plain:
+			kind = "shop"
+		elif "pick up" in plain or "take" in plain or "collect" in plain:
+			kind = "pickup"
+		reticle.present(kind, &"interact", title)
+	elif driving and not cabin.busy():
+		reticle.present("vehicle", &"interact", "Leave helm")
+	elif not campaign.amenities.focus_kind.is_empty():
+		var amenity := campaign.amenities.focus_kind
+		reticle.present("equipment" if amenity != "occupied" else "disabled", &"interact", campaign.amenities.action_label(amenity))
+	elif fishing == Fishing.READY and can_use_rod() and cast_position().is_finite():
+		reticle.present("fishing", &"fish_interact", "Cast")
+	else:
+		reticle.present("")
 
 
 func update_hud() -> void:
@@ -2188,6 +2312,7 @@ func update_hud() -> void:
 	var in_vehicle := marina_cars.active >= 0 or driving or mower.rider != null or in_aircraft() or campaign.dive.active
 	fps.text = "%d FPS\n%s%s" % [Engine.get_frames_per_second(), graphics.description(), "" if in_vehicle else "   [F4]"]
 	if tennis.active:
+		show_context("")
 		objective.text = tennis.score_text()
 		objective.show()
 		instruction.text = tennis.instruction_text(eye)
@@ -2196,6 +2321,7 @@ func update_hud() -> void:
 		campaign.info.hide()
 		return
 	if marina_cars.active >= 0:
+		show_context("")
 		var car: MarinaCars.RoadCar = marina_cars.cars[marina_cars.active]
 		var reverse := "   ·   REVERSE" if car.speed < -.08 else ""
 		objective.text = "%s   ·   %d km/h%s" % [car.details.label, roundi(absf(car.speed) * 3.6), reverse]
@@ -2252,7 +2378,7 @@ func update_hud() -> void:
 		instruction.text = "Wait for the boat to slow before casting"
 	elif backpack.equipped == Backpack.PEN and cabin.pen_in_hand:
 		instruction.text = "Left click  Use dab pen  ·  Q  Drop"
-	elif near_wheel():
+	elif helm_focused():
 		instruction.text = "E  Take the helm"
 	elif aboard() and not vessel.skiff and vessel.to_local(player.global_position).z > -.30:
 		instruction.text = "Aim at the fridge or a galley item and press E."
@@ -2290,7 +2416,7 @@ func update_hud() -> void:
 			var bay := public_works.nearby_door(eye)
 			if office_leaf >= 0:
 				instruction.text = public_works.office_prompt(office_leaf, eye)
-			elif shannon_job.in_range() and clock >= note_until:
+			elif shannon_focused() and clock >= note_until:
 				instruction.text = shannon_job.prompt()
 			elif bay != null:
 				instruction.text = bay.prompt()
@@ -2321,6 +2447,10 @@ func update_hud() -> void:
 		var reaper_hint := campaign.reaper.prompt()
 		if not reaper_hint.is_empty():
 			instruction.text = reaper_hint
+	show_context(instruction.text)
+	if reticle.visible and instruction.text.begins_with("E  ") and not instruction.text.contains("  ·  ") and not instruction.text.contains(" / ") \
+			and not reticle.prompt.text.is_empty() and reticle.kind != "disabled":
+		instruction.text = ""
 	objective.visible = not objective.text.is_empty()
 	instruction.visible = not instruction.text.is_empty()
 

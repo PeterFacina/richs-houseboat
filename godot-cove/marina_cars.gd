@@ -246,7 +246,7 @@ func follow(delta: float) -> void:
 	var look_at: Vector3 = car.global_position + Vector3.UP * .96 - Vector3.BACK.rotated(Vector3.UP, car.heading) * .72
 	var aim := Basis(Vector3.UP, car.heading + camera_yaw) * Basis(Vector3.RIGHT, -camera_pitch)
 	var target := look_at + aim.z * (5.9 + minf(1.0, absf(car.speed) * .048)) + Vector3.UP * .52
-	camera_position = camera_position.lerp(target, 1.0 - exp(-delta * 10.0))
+	camera_position = camera_position.lerp(target, 1.0 - exp(-delta * lerpf(24.0, 7.0, game.camera_motion.smoothing))) if game.camera_motion.smoothing > 0.0 else target
 	var ray := PhysicsRayQueryParameters3D.create(look_at, camera_position, 1, [car.get_rid()])
 	var hit := get_world_3d().direct_space_state.intersect_ray(ray)
 	eye.global_position = hit.position + (look_at - camera_position).normalized() * .20 if not hit.is_empty() else camera_position
@@ -284,7 +284,8 @@ func step(delta: float, throttle: float, steering: float, brake: bool, has_input
 			if driver != 0 or absf(cars[i].speed) > .005 or not is_zero_approx(cars[i].steer) or cars[i].engine.playing or cars[i].braking:
 				var before := cars[i].global_position
 				var handling := 1.0 + float(game.campaign.skill_effect(driver, "smooth_driver")) / 100.0
-				cars[i].drive(delta, command.x, command.y * handling, command.z > .5, driver != 0, float(game.campaign.skill_effect(driver, "road_veteran")) / 100.0)
+				var grip: float = 1.0 - game.weather_fx.wet * .15 * game.weather.gameplay_strength
+				cars[i].drive(delta, command.x, command.y * handling, command.z > .5, driver != 0, float(game.campaign.skill_effect(driver, "road_veteran")) / 100.0, grip)
 				if absf(command.x) > .1:
 					game.campaign.travel_progress(driver, "road", before.distance_to(cars[i].global_position), 60.0 * delta)
 			elif cars[i].model.running_lights[0].visible != cars[i].lamps_on:

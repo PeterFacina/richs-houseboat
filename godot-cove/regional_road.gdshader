@@ -1,4 +1,5 @@
 shader_type spatial;
+#include "res://weather_pavement.gdshaderinc"
 render_mode cull_disabled;
 
 #include "res://road_asphalt.gdshaderinc"
@@ -13,6 +14,7 @@ void fragment() {
 	float eye = length(VERTEX);
 	ALBEDO = weathered_asphalt(world_xz, eye, .51);
 	NORMAL = road_relief(world_xz, NORMAL, VIEW_MATRIX[0].xyz, eye);
-	ROUGHNESS = .96;
-	SPECULAR = .15;
+	ALBEDO *= 1.0 - river_weather_wet * .23;
+	ROUGHNESS = mix(.96, .52, river_weather_wet);
+	SPECULAR = .15 + river_weather_wet * .27 * river_weather_reflection;
 }

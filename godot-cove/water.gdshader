@@ -1,4 +1,9 @@
 shader_type spatial;
+
+global uniform float river_weather_rain;
+global uniform float river_weather_reflection;
+uniform float weather_wave_scale = 1.0;
+uniform float use_weather = 0.0;
 render_mode unshaded;
 
 #include "res://river_sky.gdshaderinc"
@@ -105,7 +110,7 @@ void vertex() {
 		world.y -= wave_height;
 		vec3 wave = river_wave(world.xz);
 		float shore = channel(world.xz).x;
-		wave *= headpond ? 0.12 : mix(.24, 1.0, smoothstep(0.0, 57.0, shore));
+		wave *= weather_wave_scale * (headpond ? 0.12 : mix(.24, 1.0, smoothstep(0.0, 57.0, shore)));
 		float fade = headpond ? 1.0 : 1.0 - smoothstep(89.0, 112.0, distance(world.xz, center));
 		wave_height = distant ? 0.0 : (wave.x + .03) * fade - (headpond ? 0.0 : .03);
 		slope = wave.yz;
@@ -209,7 +214,14 @@ void fragment() {
 			normal_slope += vec2(ripple.y, ripple.x) * turbulence * boat_wake.w * .045;
 		}
 	}
-	float ripple_strength = (headpond ? 0.015 : 0.024) * fine;
+	float rain = river_weather_rain * use_weather;
+	if (rain > .01) {
+		vec2 rain_cell = fract(flow * 2.7) - .5;
+		float rain_radius = length(rain_cell);
+		float ring = sin(rain_radius * 79.0 - clock * 14.0 + floor(flow.x * 2.7) * 1.7);
+		ripple += rain * ring * (1.0 - smoothstep(.18, .48, rain_radius)) * vec2(1.55, -1.35);
+	}
+	float ripple_strength = (headpond ? 0.015 : 0.024) * fine * weather_wave_scale;
 	vec3 n = normalize(vec3(-normal_slope.x + ripple.x * ripple_strength, 1.0, -normal_slope.y + ripple.y * ripple_strength));
 	vec3 view = normalize(CAMERA_POSITION_WORLD - world);
 	float sky = pow(1.0 - max(dot(n, view), 0.0), 3.2);
@@ -224,7 +236,9 @@ void fragment() {
 		vec3 mirror = reflect(-view, capillary);
 		vec3 reflection = timed_river_sky(mirror, .37) * vec3(0.87, 0.96, 0.97);
 		if (!headpond) {
-			reflection = local_reflection(flow, mirror, reflection);
+			if (river_weather_reflection > .3 || use_weather < .5) {
+				reflection = local_reflection(flow, mirror, reflection);
+			}
 		}
 		float fresnel = 0.037 + pow(1.0 - max(dot(capillary, view), 0.0), 4.25) * 0.79;
 		vec3 basin = mix(vec3(0.047, 0.138, 0.148), vec3(0.157, 0.255, 0.201), shallow);

@@ -1,4 +1,5 @@
 shader_type spatial;
+#include "res://weather_pavement.gdshaderinc"
 render_mode specular_disabled;
 
 uniform sampler2D asphalt_scan : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
@@ -87,5 +88,7 @@ void fragment() {
 	float grit = dot(aggregate, vec3(.2126, .7152, .0722));
 	float wear = .97 + .055 * sin(p.x * 2.1 + sin(p.y * 1.8)) * cos(p.y * 2.8);
 	ALBEDO = mix((grit * .49 + vec3(.236, .223, .202)) * wear, vec3(.087, .079, .068), crack * .76);
-	ROUGHNESS = .92;
+	ALBEDO *= 1.0 - river_weather_wet * .24;
+	ROUGHNESS = mix(.92, .45, river_weather_wet);
+	SPECULAR = .20 + river_weather_wet * .33 * river_weather_reflection;
 }

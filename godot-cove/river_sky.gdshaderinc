@@ -9,6 +9,8 @@ uniform float sun_strength = .82;
 uniform float moon_strength = 0.0;
 uniform float night_weight = 0.0;
 uniform float photo_weight = .45;
+uniform float cloud_coverage = 0.0;
+uniform vec2 weather_cloud_drift = vec2(0.0);
 
 vec3 daylight_color(vec3 ray, float detail) {
 	vec2 uv = vec2(atan(ray.z, ray.x) / TAU + .5, acos(clamp(ray.y, -1.0, 1.0)) / PI);
@@ -67,13 +69,13 @@ vec3 timed_river_sky(vec3 ray, float detail) {
 	float clouds = 0.0;
 	// Reflections use a filtered panorama and the same sky colours. Reserve
 	// fine procedural clouds for the backdrop when the photograph fades out.
-	float cloud_weight = 1.0 - smoothstep(.23, .52, photo_weight);
+	float cloud_weight = max(smoothstep(.10, .86, cloud_coverage), 1.0 - smoothstep(.23, .52, photo_weight));
 	if (detail > .8 && cloud_weight > 0.0) {
-		vec2 cloud_uv = ray.xz / (height + .22) * vec2(2.0, 2.72) + vec2(6.7, 10.2);
+		vec2 cloud_uv = ray.xz / (height + .22) * vec2(2.0, 2.72) + vec2(6.7, 10.2) + weather_cloud_drift;
 		float cover = sky_grain(cloud_uv) * .72 + sky_grain(cloud_uv * 2.13 + 4.8) * .28;
-		clouds = smoothstep(.48, .70, cover) * smoothstep(.015, .22, height) * cloud_weight;
+		clouds = smoothstep(mix(.63, .24, cloud_coverage), mix(.78, .51, cloud_coverage), cover) * smoothstep(.015, .22, height) * cloud_weight;
 		vec3 cloud = mix(sky_horizon.rgb * .9, mix(vec3(.83), sky_glow.rgb, warm_air), .54 * (1.0 - night_weight));
-		air = mix(air, cloud, clouds * .7);
+		air = mix(air, cloud, clouds * mix(.70, .50, cloud_coverage));
 	}
 	if (has_day_sky && photo_weight > .0) {
 		// Use the existing panorama for cloud detail without its baked lighting.
@@ -98,7 +100,7 @@ vec3 timed_river_sky(vec3 ray, float detail) {
 		float seed = fract(sin(dot(cell, vec3(127.1, 311.7, 74.7))) * 43758.55);
 		float star = 1.0 - smoothstep(.10, .23, length(fract(p) - .5));
 		air += vec3(.83, .89, 1.0) * star * smoothstep(.965, .999, seed)
-			* night_weight * smoothstep(.025, .24, height) * (1.0 - clouds * .72);
+			* night_weight * smoothstep(.025, .24, height) * (1.0 - max(cloud_coverage, clouds) * .94);
 	}
 	return mix(air, sky_horizon.rgb * .52, smoothstep(.0, .52, -ray.y));
 }

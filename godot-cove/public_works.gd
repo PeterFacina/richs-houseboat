@@ -235,7 +235,8 @@ func office_handle(eye: Camera3D) -> int:
 			var jamb := office_doors[index].global_position - eye.global_position
 			if jamb.length_squared() < 2.65 * 2.65:
 				alignment = maxf(alignment, jamb.normalized().dot(-eye.global_basis.z) * .94)
-		if alignment > best_alignment:
+		if alignment > best_alignment and preload("res://interaction_sight.gd").clear(eye,
+				office_doors[index].to_global(Vector3(-side * 1.0, -.04, 0)), office_doors[index]):
 			best_alignment = alignment
 			nearest = index
 	return nearest
@@ -490,7 +491,8 @@ func nearby_door(eye: Camera3D) -> Door:
 	for door in doors:
 		var offset := door.to_global(door.chain) - eye.global_position
 		var distance := offset.length_squared()
-		if distance < best and offset.normalized().dot(-eye.global_basis.z) > .45:
+		if distance < best and offset.normalized().dot(-eye.global_basis.z) > .45 \
+				and preload("res://interaction_sight.gd").clear(eye, door.to_global(door.chain)):
 			best = distance
 			nearest = door
 	return nearest

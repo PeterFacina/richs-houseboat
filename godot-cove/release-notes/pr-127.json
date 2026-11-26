@@ -1,0 +1,9 @@
+{
+  "pr": 127,
+  "player_facing": true,
+  "bullets": [
+    "Deep River now has changing weather, from morning fog to thunderstorms and wet roads. Your crew shares the same weather.",
+    "The crosshair shows nearby actions and their keybinds. Characters have new idle animations.",
+    "Camera transitions are smoother. Adjust smoothing, head bob, and weather quality in Settings."
+  ]
+}

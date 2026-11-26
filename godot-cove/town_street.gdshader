@@ -1,4 +1,5 @@
 shader_type spatial;
+#include "res://weather_pavement.gdshaderinc"
 
 #include "res://river_surfaces.gdshaderinc"
 #include "res://road_asphalt.gdshaderinc"
@@ -224,4 +225,11 @@ void fragment() {
 	NORMAL = normalize(mix(asphalt_normal, gravel_detail, unpaved));
 	ROUGHNESS = mix(mix(.93, .99, road_noise(world_xz * .48)), .995, unpaved);
 	SPECULAR = .17;
+	if (river_weather_wet > .01) {
+		float wet = river_weather_wet * (1.0 - unpaved * .80);
+		float pool = wet > .35 ? rain_pool(world_xz, wet) : 0.0;
+		ALBEDO *= 1.0 - wet * .22 - pool * .12;
+		ROUGHNESS = mix(ROUGHNESS, mix(.51, .15, pool * river_weather_reflection), wet);
+		SPECULAR += wet * .25 * river_weather_reflection;
+	}
 }
