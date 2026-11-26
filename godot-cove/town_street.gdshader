@@ -11,6 +11,8 @@ const int CEDAR_SURFACE = 2;
 const int YARD_DRIVE_SURFACE = 3;
 const float STANDARD_SURFACE = 4.0;
 const vec4 SILVIE_APPROACH = vec4(18475.5, 13812.15, -.8252, .5649);
+const vec2 SILVIE_BEND = vec2(18347.8487, 13899.6555);
+const vec2 SILVIE_END = vec2(18297.6214, 13955.7945);
 const vec4 GLENDALE_STOP_BAR = vec4(17974.76, 13436.25, -.0206, .9998);
 
 uniform vec2 champlain_access = vec2(0.0);
@@ -60,6 +62,22 @@ float reference_repairs(vec2 world) {
 	return 0.0;
 }
 
+float silvie_coverage(vec2 world) {
+	vec2 start = vec2(18481.1213, 13808.4196);
+	vec2 first = SILVIE_BEND - start;
+	vec2 second = SILVIE_END - SILVIE_BEND;
+	float first_station = clamp(dot(world - start, first) / dot(first, first), 0.0, 1.0);
+	float second_station = clamp(dot(world - SILVIE_BEND, second) / dot(second, second), 0.0, 1.0);
+	float distance_to_street = min(length(world - start - first * first_station),
+		length(world - SILVIE_BEND - second * second_station));
+	return 1.0 - smoothstep(3.0, 4.0, distance_to_street);
+}
+
+float silvie_aging(vec2 world) {
+	float variation = road_noise(world * .32) * .075 + road_noise(world * 1.27) * .025;
+	return variation;
+}
+
 float cedar_wear(vec2 road_uv, vec2 world) {
 	float approach = road_section(road_uv.y, 178.0, 316.0, 17.0);
 	float mottling = road_noise(world * .44);
@@ -102,6 +120,8 @@ void fragment() {
 			float local_age = mix(.93, 1.075, verge_and_wear.z);
 			asphalt *= mix(local_age, 1.0, max(max(civic, step(2.5, style)), junction));
 			asphalt *= 1.0 - reference_repairs(world_xz);
+			float silvie = silvie_coverage(world_xz) * (1.0 - junction);
+			asphalt = mix(asphalt, asphalt * (1.12 + silvie_aging(world_xz)), silvie);
 		}
 	}
 	asphalt = mix(asphalt, vec3(.265, .241, .213), civic * .20);

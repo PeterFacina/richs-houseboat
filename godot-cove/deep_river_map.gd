@@ -7,6 +7,7 @@ const MarinaDocks = preload("res://marina_docks.gd")
 const MarinaLaunch = preload("res://marina_launch.gd")
 const LamureBeach = preload("res://lamure_beach.gd")
 const LamurePines = preload("res://lamure_pines.gd")
+const SilvieStreetscape = preload("res://silvie_streetscape.gd")
 const RiverbankPark = preload("res://riverbank_park.gd")
 const BrockhouseWay = preload("res://brockhouse_way.gd")
 const Swisha = preload("res://swisha_dam.gd")
@@ -288,6 +289,8 @@ func build(checkpoint := Callable()) -> void:
 			var point := Vector2(foot.x, foot.z)
 			if point.distance_squared_to(PLAZA_PORTICO_TREE) < .25:
 				return true
+			if SilvieStreetscape.replace_entrance_tree(foot, height, pines):
+				return true
 			return PublicWorks.cleared_for_construction(foot) or park.owns_tree(foot) \
 				or residential_driveways.clears_tree(point) \
 				or town_walkways.clears_tree(point) \
@@ -297,6 +300,8 @@ func build(checkpoint := Callable()) -> void:
 				or highway_has_tree_conflict(point, highway_clearance) \
 				or point.distance_squared_to(RiverbankPark.GAZEBO_SITE) < 36.0 \
 				or (lamure_patch != null and pines.place_from_survey(foot, height)))
+	SilvieStreetscape.new().build(self, waterfront, pines, town_canopy,
+		residential_driveways, town_walkways)
 	if meta.has("riverbank"):
 		park.build(self, town_canopy, waterfront, pines, ground_height, wet_clearance, riverbed)
 	if meta.has("brockhouse"):

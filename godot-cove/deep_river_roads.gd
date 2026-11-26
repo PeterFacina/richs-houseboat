@@ -22,6 +22,8 @@ const CHAMPLAIN := 6
 const DEEP_RIVER_ROAD := 11
 const CIVIC_ACCESS := Vector2(99.3, 4.5)
 const STREET_HALF_WIDTH := 3.4
+const SILVIE := 63
+const SILVIE_HALF_WIDTH := 3.1
 const PARKING_HALF_WIDTH := 8.7
 const CHAMPLAIN_SIDEWALK_WIDTH := 2.25
 const CHAMPLAIN_WALK_START := 6.0
@@ -146,7 +148,7 @@ func build(map: Node3D, data: Dictionary, elevation: Callable, parking_mask: Tex
 		add_street(index, line, STREET_HALF_WIDTH, road_surfaces.get(index, RoadSurface.STANDARD))
 	for index in streets.size():
 		if not through.has(index) and index not in HIGHWAY:
-			add_street(index, streets[index], 3.4)
+			add_street(index, streets[index], SILVIE_HALF_WIDTH if index == SILVIE else STREET_HALF_WIDTH)
 	add_street(streets.size(), PublicWorks.CEDAR_ROAD, 3.4, RoadSurface.CEDAR)
 	add_street(streets.size() + 1, PublicWorks.YARD_DRIVE, 2.85, RoadSurface.YARD_DRIVE)
 	# The middle regional segment follows the surveyed atlas road. Join only its two extensions.
@@ -299,7 +301,7 @@ func add_street(street: int, line: Array, width: float, road_surface := RoadSurf
 		span.bounds = Rect2(span.start, Vector2.ZERO).expand(span.end).grow(span.width * 1.4 + 4.5)
 		span.fine = downtown.intersects(span.bounds) or close_areas.any(
 			func(area: Rect2) -> bool: return area.intersects(span.bounds))
-		span.shoulder = .92 if street in [RIDGE, BROCKHOUSE, MARINA_APPROACH] else .63
+		span.shoulder = .42 if street == SILVIE else (.92 if street in [RIDGE, BROCKHOUSE, MARINA_APPROACH] else .63)
 		span.marking = Marking.SOLID if street == RIDGE else Marking.NONE
 		if street == BROCKHOUSE or street == CHAMPLAIN:
 			span.marking = Marking.BROKEN
