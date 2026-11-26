@@ -2,7 +2,9 @@ extends RefCounted
 
 const Property = preload("res://warehouse_property.gd")
 const Kit = preload("res://scenery.gd")
-const MARIO_HOME := Vector2(18455.0, 13792.0)
+const MARIO_HOME := Vector2(18518.041, 13824.852)
+const MARIO_YAW := -.84
+const MARIO_HOUSE_FOOTPRINT := "ms-1022"
 
 # Directions face the access road. The first three shells follow the surveyed parcels.
 const LISTINGS := [
@@ -18,6 +20,8 @@ const LISTINGS := [
 
 
 static func replaces(footprint: String) -> bool:
+	if footprint == MARIO_HOUSE_FOOTPRINT:
+		return true
 	for entry: Dictionary in LISTINGS:
 		if not entry.footprint.is_empty() and footprint == entry.footprint:
 			return true
@@ -34,8 +38,13 @@ static func near_property(area: Rect2) -> bool:
 
 
 static func clears_tree(at: Vector2) -> bool:
-	var home_local := (at - MARIO_HOME).rotated(-1.16)
-	if Rect2(Vector2(-23.0, -18.0), Vector2(36.0, 39.0)).has_point(home_local):
+	# Vector2 stores world X/Z, while Node3D yaw maps local X/Z by -yaw.
+	# Rotate by +yaw to get the inverse transform back into the property frame.
+	var home_local := (at - MARIO_HOME).rotated(MARIO_YAW)
+	if Rect2(Vector2(-8.0, -7.0), Vector2(16.0, 25.0)).has_point(home_local):
+		return true
+	# Keep generated trees outside Mario's own narrow rear lot, not across both duplex units.
+	if Rect2(Vector2(0.0, -56.0), Vector2(24.0, 56.0)).has_point(home_local):
 		return true
 	for entry: Dictionary in LISTINGS:
 		if at.distance_squared_to(entry.at) > 65.0 * 65.0:

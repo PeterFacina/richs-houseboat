@@ -6,7 +6,7 @@ const Property = preload("res://mario_property.gd")
 const Dialogue = preload("res://mario_companion_dialogue.gd")
 const ACTION := "mario_project"
 const PARTS := ["Battery", "Motor", "Controller"]
-const PART_OFFSETS := {"Battery": Vector3(6.0, .16, 5.2), "Motor": Vector3(8.0, .16, 5.2), "Controller": Vector3(10.0, .16, 5.2)}
+const PART_OFFSETS := {"Battery": Vector3(16.5, .16, -42.4), "Motor": Vector3(19.0, .16, -42.4), "Controller": Vector3(21.5, .16, -42.4)}
 const INTERACT_DISTANCE := 2.5
 const NPC_DISTANCE := 3.2
 
@@ -45,7 +45,7 @@ func state() -> Dictionary:
 func build_mario() -> void:
 	mario = StaticBody3D.new()
 	mario.name = "MarioCompanion"
-	var local_at := Vector3(2.7, 0.0, 1.1)
+	var local_at := Vector3(21.8, 0.0, -43.0)
 	property.add_child(mario)
 	mario.position = local_at
 	mario.rotation.y = -1.0
@@ -103,7 +103,7 @@ func build_inspection_tool() -> void:
 	inspection_tool = Node3D.new()
 	inspection_tool.name = "WorkshopMeasuringSquare"
 	property.add_child(inspection_tool)
-	inspection_tool.position = Vector3(5.4, 0.0, 4.0)
+	inspection_tool.position = Vector3(16.5, 0.0, -41.0)
 	var metal := Kit.paint(Color("#9ba4a1"), .38, .72)
 	Kit.box_at(inspection_tool, Vector3(0, .18, 0), Vector3(.46, .05, .07), metal)
 	Kit.box_at(inspection_tool, Vector3(-.19, .25, 0), Vector3(.05, .18, .07), metal)
@@ -121,7 +121,7 @@ func build_assembly() -> void:
 	var stand := Node3D.new()
 	stand.name = "ElectricOutboardAssembly"
 	property.add_child(stand)
-	stand.position = Vector3(5.9, .99, 3.6)
+	stand.position = Vector3(19.0, .99, -42.4)
 	var steel := Kit.paint(Color("#515b60"), .52, .44)
 	var blue := Kit.paint(Color("#426a79"), .45, .32)
 	var battery := Kit.box_at(stand, Vector3(-.46, .18, 0), Vector3(.36, .34, .31), steel)
@@ -139,7 +139,7 @@ func build_workshop_props() -> void:
 	var garage := Node3D.new()
 	garage.name = "MarioWorkshopEquipment"
 	property.add_child(garage)
-	garage.position = Vector3(8.2, 0, 6.0)
+	garage.position = Vector3(19.0, 0, -43.5)
 	Kit.box_at(garage, Vector3(-2.3, .91, -2.4), Vector3(4.6, .18, 1.05), bench)
 	Kit.box_at(garage, Vector3(-2.3, .46, -2.4), Vector3(.13, .88, .82), metal)
 	Kit.box_at(garage, Vector3(.75, .78, -2.9), Vector3(1.25, 1.52, .94), metal)

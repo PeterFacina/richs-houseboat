@@ -2,7 +2,7 @@
 
 This slice introduces Mario at the modeled 16 Silvie Street property and establishes his workshop as the first stop in an invention and exploration story. Mario's authored story lines remain the source of truth. The companion dialogue boundary exposes persona, location, mission stage, nearby objects and up to eight bounded shared-memory events; a future provider may return display text only. No inference service, GPU endpoint, voice synthesis or provider action is connected in this slice.
 
-The property is a hand-built approximation from the supplied street and yard photographs. The lot position is an estimate based on the Silvie Street and Hillcrest Avenue references. The images do not establish exact dimensions or a complete interior plan; house scale, parcel boundaries and unseen garage details should be treated as approximations. The garage, yard and workshop props are original geometry rather than image textures.
+The property now replaces the mapped `ms-1022` duplex footprint, whose center matches the [Google Maps pin for 16 Silvie Street](https://www.google.com/maps/place/16+Silvie+St,+Deep+River,+ON+K0J+1P0/@46.0966177,-77.4830823,18z) (46.0966177, -77.4830823). We compared the 10–16 Silvie Street properties to place this address. The owner-provided photos are the primary visual reference. Street View identifies May 2025 imagery; the aerial imagery checked in Maps is labeled ©2026, so this work does not claim to have verified a 2025 aerial capture. The supplied images do not establish surveyed parcel dimensions or a complete interior plan. House scale, lot boundaries, and unseen outbuilding details remain approximations. The house faces Silvie Street, Mario occupies the right-hand unit, and the shed, woodworking garage, fire pit, and rear access are kept on that side of the duplex. The rear approach avoids the neighboring mapped `ms-3` house footprint.
 
 ## Playable missions
 
@@ -17,7 +17,7 @@ The host validates each request against the sender's on-foot location and the cu
 ## Future milestones
 
 1. Improve the Mario mesh and animation from front, profile and three-quarter in-engine references. Add natural hands, more individualized facial geometry, woodworking and companion idles, and clipping checks.
-2. Refine the property dimensions and orientation against an owner-confirmed site plan. Add collision-tested garage access, the backyard shed, covered side structure, fire pit and machine clearances.
+2. Refine dimensions and orientation against an owner-confirmed parcel/site plan and any dated aerial reference. Add verified boundaries, outbuilding interiors, and final garage/workshop clearances. The current layout is a location- and orientation-corrected approximation.
 3. Build a real electric outboard component on the vehicle system, then add repeatable handling and endurance tests and an optional Rich-versus-Mario race.
 4. Evaluate a separate, private NPC inference service on the nominated GPU with measured latency, concurrency, cost, timeouts and offline fallback. Keep generated text untrusted and display-only; preserve authored quest controls and host authority.
 5. Continue the story with repeatable sensor tests, confirmation of a fictional submerged research instrument, then camera/sonar/ROV recovery gameplay and a modular exploration-vessel capstone.
@@ -27,4 +27,4 @@ The first PR stops after the first three missions. It does not attempt the longe
 
 ## Visual and gameplay verification
 
-The PNGs in `docs/screenshots/` are Godot Compatibility-renderer previews of the generated property and companion geometry. They are not screenshots of live gameplay. A live solo session loaded the Mission 1 HUD and showed the measuring-square objective. Desktop input did not produce a reliable route through the property and mission chain, so collection, the 180 m boat trial, retry behavior and guest synchronization still need a human in-game pass.
+The `mario-property-street.png`, `mario-property-backyard.png`, `mario-property-rear-street.png` and `mario-property-aerial.png` captures were rendered from the full Godot town scene with the Compatibility renderer. They show the corrected approach and property from the requested angles. Shape-cast checks verify the rear street-to-shed-to-yard route and the yard-to-woodworking-garage route. This property-only pass changes no dialogue, quest-step, companion or progression logic. The first three missions, saved-state behavior, multiplayer guest synchronization and Mario's appearance remain outside this playtest and need human gameplay review.
