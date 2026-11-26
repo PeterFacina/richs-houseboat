@@ -23,7 +23,8 @@ func run() -> void:
 		return
 	var game = load("res://game_world.tscn").instantiate()
 	root.add_child(game)
-	game.process_mode = Node.PROCESS_MODE_DISABLED
+	game.set_physics_process(false)
+	game.set_process(false)
 	await physics_frame
 	var campaign = game.campaign
 	var story = campaign.story
