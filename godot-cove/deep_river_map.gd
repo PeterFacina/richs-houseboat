@@ -115,7 +115,7 @@ var waterfront := Marina.new()
 var lamure := LamureBeach.new()
 
 
-func build() -> void:
+func build(checkpoint := Callable()) -> void:
 	meta = JSON.parse_string(FileAccess.get_file_as_string(BASE + "river.json"))
 	for index: int in RoadNetwork.HIGHWAY:
 		var line: Array = meta.streets[index]
@@ -246,15 +246,22 @@ func build() -> void:
 	var bark := Kit.paint(Color("#674d3a"))
 	for row in range(0, rows - 1, TILE):
 		for col in range(0, columns - 1, TILE):
+			if checkpoint.is_valid():
+				await checkpoint.call("Building terrain and collisions")
 			tile(col, row, ground)
 			trees_for_tile(col, row, rng, tree, trunk, needles, bark)
 	for detail in detail_patches:
 		for row in range(0, detail.grid.y - 1, TILE):
 			for col in range(0, detail.grid.x - 1, TILE):
+				if checkpoint.is_valid():
+					await checkpoint.call("Building terrain and collisions")
 				tile(col, row, ground, detail)
 	build_water()
-	var residential_driveways := build_town(paving_texture, ground)
-	property_sites = PropertySites.build(self, ground_height, concrete_scan, scanned_surface("brick"), wood_scan)
+	var brick := scanned_surface("brick")
+	var residential_driveways := await build_town(paving_texture, ground, brick, checkpoint)
+	if checkpoint.is_valid():
+		await checkpoint.call("Building properties and waterfront")
+	property_sites = PropertySites.build(self, ground_height, concrete_scan, brick, wood_scan)
 	build_landmarks()
 	if meta.has("riverbank"):
 		var surface := Image.load_from_file(BASE + "riverbank_surface.png")
@@ -269,6 +276,8 @@ func build() -> void:
 		waterfront.wharf.launch.bind_water(material, concrete_scan)
 	if lamure_patch != null:
 		build_lamure(ground)
+	if checkpoint.is_valid():
+		await checkpoint.call("Building vegetation")
 	var pines := LamurePines.new()
 	var champlain: Array = meta.streets[RoadNetwork.CHAMPLAIN]
 	var street_start := Vector2(champlain[0][0], champlain[0][1])
@@ -732,7 +741,8 @@ func set_surface_slick(data: Vector4) -> void:
 	near_water.set_shader_parameter("surface_slick", data)
 
 
-func build_town(paving_texture: Texture2D, terrain: Material) -> BuildingsDriveways:
+func build_town(paving_texture: Texture2D, terrain: Material, brick: Texture2D,
+		checkpoint: Callable) -> BuildingsDriveways:
 	var tile_image := Image.load_from_file(BASE + "deep_river_roofs.png")
 	tile_image.generate_mipmaps()
 	var textures := ImageTexture.create_from_image(tile_image)
@@ -750,12 +760,11 @@ func build_town(paving_texture: Texture2D, terrain: Material) -> BuildingsDrivew
 	if lamure_patch != null:
 		detail_areas.append(lamure_patch.area)
 	var roads := RoadNetwork.new()
-	roads.build(self, meta, ground_height, marina_paving, detail_areas,
-		ROAD_SCAN, ROAD_NORMAL, concrete_scan, asphalt_scan, GRAVEL_SCAN, GRAVEL_NORMAL, paving_texture)
-	var brick := scanned_surface("brick")
-	buildings.build(self, footprints, textures, ground_height, meta.distance_scale,
+	await roads.build(self, meta, ground_height, marina_paving, detail_areas,
+		ROAD_SCAN, ROAD_NORMAL, concrete_scan, asphalt_scan, GRAVEL_SCAN, GRAVEL_NORMAL, paving_texture, checkpoint)
+	await buildings.build(self, footprints, textures, ground_height, meta.distance_scale,
 		brick, asphalt_scan, wood_scan, roads.paved, meta.streets,
-		regional_streets, meta.buildings, concrete_scan)
+		regional_streets, meta.buildings, concrete_scan, checkpoint)
 	town_walkways = roads.build_walkways(buildings.driveways, concrete_scan, asphalt_scan, terrain)
 	windows = buildings.windows
 	bind_day_sky(windows)

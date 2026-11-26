@@ -8,6 +8,10 @@ On Windows, open the project's Godot file from your task worktree or run the gam
 & $engine --path godot-cove
 ```
 
+## Verify the playable load
+
+Time startup from confirming a solo slot or selecting Multiplayer to the first playable frame or visible lobby. Record the renderer and whether the slot was empty or saved. The title reports threaded resource progress, followed by Deep River construction phases and a completed-span count for road generation. Terrain and collision are built before the player is created. Check that the loading screen keeps updating, that a new and saved solo trip both spawn on a valid surface, and that Multiplayer reaches the lobby before enabling play.
+
 ## Get alerts in Discord
 
 Use [#build-checks](https://discord.com/channels/1574136192935661588/1574143899122016347) for failures and recoveries. The failure gives you the PR number and a link to the check. Ask Codex to read that check, fix the problem, and push. A pass after a failed run for the same PR gets a recovery message. Routine passes stay quiet. Merged changes still go to **#main-updates**.
