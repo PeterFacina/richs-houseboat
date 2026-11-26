@@ -98,6 +98,15 @@ func build(streets: Array, elevation: Callable) -> void:
 		var arm_post := posts[0] if i == 0 else posts[3]
 		add_road_name(arm_post - Vector3.UP * .12 - toward_road * 2.1, atan2(axis.x, axis.y), true)
 	add_road_name(posts[1] - Vector3(along.x * 2.3, .19, along.y * 2.3), atan2(axes[2].x, axes[2].y), false)
+
+	# The far-side pole carries a head for drivers leaving the plaza driveway.
+	var plaza_tip := JUNCTION + along * 1.3 + across * 8.7
+	var plaza_arm_end := Vector3(plaza_tip.x, head_y + .66, plaza_tip.y)
+	var plaza_arm_start := posts[2]
+	tube(plaza_arm_start, plaza_arm_end, .105, .052, steel)
+	tube(plaza_arm_start - Vector3.UP * .28, plaza_arm_start.lerp(plaza_arm_end, .39), .038, .023, steel)
+	var plaza_axis := -axes[2]
+	add_head(plaza_arm_end - Vector3.UP * .64, atan2(plaza_axis.x, plaza_axis.y), false, housing, backplate)
 	update_heads()
 
 

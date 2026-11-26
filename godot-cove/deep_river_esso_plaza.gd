@@ -12,7 +12,13 @@ const ALONG := Vector2(-0.79388, -0.60807)
 const FRONT := Vector2(0.60807, -0.79388)
 const LOT := Rect2(-51, -51, 48, 43)
 const RESTAURANT_LOT := Rect2(5.5, -74, 33.5, 65)
-const CONNECTOR := Rect2(LOT.end.x, -32.5, RESTAURANT_LOT.position.x - LOT.end.x, 7.5)
+const CONNECTOR := Rect2(LOT.end.x, RESTAURANT_LOT.position.y,
+	RESTAURANT_LOT.position.x - LOT.end.x, LOT.end.y - RESTAURANT_LOT.position.y)
+const ENTRY_TOP := .75
+const ENTRY_LOWER := .70
+const ENTRY_APRON := 1.25
+const SHOP_ENTRY := Rect2(-30, -35, 24, ENTRY_TOP + ENTRY_LOWER + ENTRY_APRON)
+const PIZZA_ENTRY := Rect2(-47, -39, 14, ENTRY_TOP + ENTRY_LOWER + ENTRY_APRON)
 const RESTAURANT_WALL := Rect2(9.35, -64.24, 12.39, 28.86)
 const RESTAURANT_DINING_START := -47.1
 const ROAD_EDGE := -Roads.HIGHWAY_HALF_WIDTH
@@ -58,7 +64,11 @@ func build(elevation: Callable, asphalt: Texture2D, paving: Texture2D, brick: Te
 	pavement.shader = preload("res://deep_river_esso_asphalt.gdshader")
 	pavement.set_shader_parameter("asphalt_scan", asphalt)
 	build_forecourt(pavement)
-	surface(CONNECTOR, ASPHALT_LIFT, ASPHALT_LIFT, pavement, PAVEMENT_LAYERS)
+	# Split the rear run at Esso's back edge to share the same pavement seam.
+	surface(Rect2(CONNECTOR.position, Vector2(CONNECTOR.size.x, LOT.position.y - CONNECTOR.position.y)),
+		ASPHALT_LIFT, ASPHALT_LIFT, pavement, PAVEMENT_LAYERS)
+	surface(Rect2(CONNECTOR.position.x, LOT.position.y, CONNECTOR.size.x, LOT.size.y),
+		ASPHALT_LIFT, ASPHALT_LIFT, pavement, PAVEMENT_LAYERS)
 	build_restaurant_lot(pavement, brick)
 	var siding := siding_material()
 	build_shops(siding)
@@ -82,9 +92,19 @@ func block(at: Vector3, size: Vector3, material: Material, collides := false) ->
 
 
 func build_forecourt(asphalt: Material) -> void:
-	surface(LOT, ASPHALT_LIFT, ASPHALT_LIFT, asphalt, PAVEMENT_LAYERS)
-	# The two entries and the former grass strip share one graded asphalt apron.
-	surface(Rect2(-45, LOT.end.y, 33, ROAD_EDGE - LOT.end.y),
+	# The concrete steps and approach own their entire footprint.
+	for strip: Vector2 in [Vector2(LOT.position.x, PIZZA_ENTRY.position.x),
+			Vector2(PIZZA_ENTRY.end.x, SHOP_ENTRY.position.x), Vector2(SHOP_ENTRY.end.x, LOT.end.x)]:
+		surface(Rect2(strip.x, LOT.position.y, strip.y - strip.x, LOT.size.y),
+			ASPHALT_LIFT, ASPHALT_LIFT, asphalt, PAVEMENT_LAYERS)
+	for entry: Rect2 in [PIZZA_ENTRY, SHOP_ENTRY]:
+		surface(Rect2(entry.position.x, LOT.position.y, entry.size.x, entry.position.y - LOT.position.y),
+			ASPHALT_LIFT, ASPHALT_LIFT, asphalt, PAVEMENT_LAYERS)
+		surface(Rect2(entry.position.x, entry.end.y, entry.size.x, LOT.end.y - entry.end.y),
+			ASPHALT_LIFT, ASPHALT_LIFT, asphalt, PAVEMENT_LAYERS)
+
+	# One apron ties the Esso opening, the new driveway mouth and the Burger King opening to Highway 17.
+	surface(Rect2(-45, LOT.end.y, 69, ROAD_EDGE - LOT.end.y),
 		ASPHALT_LIFT, .045, asphalt, PAVEMENT_LAYERS)
 	for curb in [Vector2(-51, -45), Vector2(-12, -3)]:
 		surface(Rect2(curb.x, -8.85, curb.y - curb.x, .85), .20, .20, concrete)
@@ -102,7 +122,10 @@ func surface(area: Rect2, back: float, front: float, material: Material, collisi
 			mesh.set_uv(p * .24)
 			var terrain_y := grade(p.x, p.y)
 			var back_y := back if level_back else terrain_y + back
-			mesh.add_vertex(Vector3(p.x, lerpf(back_y, terrain_y + front, float(row) / rows), p.y))
+			var height := lerpf(back_y, terrain_y + front, float(row) / rows)
+			if level_back:
+				height = maxf(height, terrain_y + .035)
+			mesh.add_vertex(Vector3(p.x, height, p.y))
 	var stride := cols + 1
 	for row in rows:
 		for col in cols:
@@ -118,17 +141,15 @@ func surface(area: Rect2, back: float, front: float, material: Material, collisi
 		body.collision_layer = collision_layer
 
 
-func entry_steps(x: float, z: float, width: float, threshold: float) -> void:
-	# The apron follows the lot at its toe and meets the first riser at a fixed height.
-	# Both closed risers are within the existing player's 0.24 m step-up limit.
-	const RISER := .145
-	const TOP_TREAD := .75
-	const LOWER_TREAD := .42
-	var apron_z := z + TOP_TREAD + LOWER_TREAD
-	for tread in [Vector2(TOP_TREAD, threshold), Vector2(apron_z - z, threshold - RISER)]:
-		block(Vector3(x, tread.y - .29, z + tread.x * .5), Vector3(width, .58, tread.x), concrete, true)
-	surface(Rect2(x - width * .5, apron_z, width, 1.45),
-		threshold - RISER * 2.0, ASPHALT_LIFT + .008, concrete, 1, true)
+func entry_steps(area: Rect2, threshold: float) -> void:
+	# Both closed risers fit the player's step-up limit.
+	const RISER := .135
+	var apron_z := area.position.y + ENTRY_TOP + ENTRY_LOWER
+	for tread: Vector2 in [Vector2(ENTRY_TOP, threshold), Vector2(ENTRY_TOP + ENTRY_LOWER, threshold - RISER)]:
+		var center := Vector3(area.get_center().x, tread.y - .29, area.position.y + tread.x * .5)
+		block(center, Vector3(area.size.x, .58, tread.x), concrete, true)
+	surface(Rect2(area.position.x, apron_z, area.size.x, ENTRY_APRON),
+		threshold - RISER * 2.0, ASPHALT_LIFT, concrete, 1, true)
 
 
 func siding_material() -> StandardMaterial3D:
@@ -150,7 +171,7 @@ func build_shops(siding: Material) -> void:
 	var base := minf(grade(-30, -46), grade(-6, -46)) - .25
 	block(Vector3(-18, (base + floor_y + 3.65) * .5, -41), Vector3(24, floor_y + 3.65 - base, 12), siding, true)
 	block(Vector3(-18, floor_y + 3.65, -41), Vector3(24.35, .21, 12.35), white)
-	entry_steps(-18, z, 24, floor_y)
+	entry_steps(SHOP_ENTRY, floor_y)
 	storefront("B&R CONVENIENCE", -26.0, floor_y, z, 6.5, red)
 	storefront("DEEP RIVER CANNABIS", -18.0, floor_y, z, 6.8, Kit.paint(Color("#214f3f")))
 	var green := Kit.paint(Color("#14723c"))
@@ -188,7 +209,7 @@ func build_pizzeria(siding: Material) -> void:
 	sign_panel("FAMOUS PIZZA", Vector3(x - 2.1, base + 1.95, z + .06), 4.9, .78, red, Color.WHITE)
 	glazed_opening(Vector3(x + 2.1, base + 1.38, z), 1.50, 1.72)
 	glazed_opening(Vector3(x + 4.6, base + 1.08, z), 1.50, 2.12, 0.0, true)
-	entry_steps(x, z, 14, base)
+	entry_steps(PIZZA_ENTRY, base)
 
 
 func build_canopy() -> void:
@@ -248,8 +269,9 @@ func build_price_sign() -> void:
 
 func build_restaurant_lot(asphalt: Material, brick_scan: Texture2D) -> void:
 	surface(RESTAURANT_LOT, ASPHALT_LIFT, ASPHALT_LIFT, asphalt, PAVEMENT_LAYERS)
-	surface(Rect2(14, RESTAURANT_LOT.end.y, 10, ROAD_EDGE - RESTAURANT_LOT.end.y),
-		ASPHALT_LIFT, .045, asphalt, PAVEMENT_LAYERS)
+	surface(Rect2(RESTAURANT_LOT.position.x, RESTAURANT_LOT.end.y,
+		24 - RESTAURANT_LOT.position.x, LOT.end.y - RESTAURANT_LOT.end.y),
+		ASPHALT_LIFT, ASPHALT_LIFT, asphalt, PAVEMENT_LAYERS)
 	var parking_paint := Kit.paint(Color("#c6c1ad"))
 	for space in 9:
 		var z := -62.5 + float(space) * 2.65
@@ -337,15 +359,72 @@ func parking_island(at: Vector2, size: Vector2) -> void:
 
 
 func build_drive_through(marking: Material, blue: Material) -> void:
-	var menu := Vector3(6.0, grade(6.0, -59.7), -59.7)
-	block(menu + Vector3.UP * .72, Vector3(.11, 1.45, .16), dark, true)
-	sign_panel("ORDER HERE", menu + Vector3.UP * 1.48, 1.12, .56, blue, Color.WHITE, PI * .5)
-	var guide := Vector3(24.6, grade(24.6, -61.7), -61.7)
+	var guide := Vector3(24.0, grade(24.0, -65.3) + ASPHALT_LIFT, -65.3)
 	block(guide + Vector3.UP * .55, Vector3(.10, 1.1, .12), blue, true)
-	sign_panel("DRIVE THRU", guide + Vector3.UP * 1.05, 1.13, .38, blue, Color.WHITE)
+	sign_panel("DRIVE THRU  ›", guide + Vector3.UP * 1.12, 1.35, .41, blue, Color.WHITE, PI * .5)
+
+	var curb_path := PackedVector2Array([
+		Vector2(6.1, -68.4), Vector2(8.0, -68.5), Vector2(10.0, -68.55),
+		Vector2(12.0, -68.55), Vector2(14.0, -68.55), Vector2(16.0, -68.55),
+		Vector2(18.0, -68.5), Vector2(20.0, -68.27), Vector2(22.0, -67.84),
+		Vector2(23.65, -67.3), Vector2(25.15, -66.55),
+	])
+	build_drive_through_curb(curb_path)
+	build_drive_through_menu(Vector2(11.5, -65.65))
+
 	for z: float in [-58.0, -54.0, -48.0, -42.0]:
 		surface(Rect2(8.78, z, .075, 1.5), .087, .087, marking, 0)
 
+
+func build_drive_through_curb(path: PackedVector2Array) -> void:
+	var mesh := SurfaceTool.new()
+	mesh.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var profile := [Vector2(-.20, -.07), Vector2(-.14, .15), Vector2(.14, .15), Vector2(.20, -.07)]
+	for i in path.size():
+		var direction := path[mini(i + 1, path.size() - 1)] - path[maxi(i - 1, 0)]
+		var across := direction.normalized().orthogonal()
+		for edge: Vector2 in profile:
+			var at := path[i] + across * edge.x
+			mesh.add_vertex(Vector3(at.x, grade(at.x, at.y) + ASPHALT_LIFT + edge.y, at.y))
+	for i in range(path.size() - 1):
+		var start := i * profile.size()
+		var next := start + profile.size()
+		for side in range(profile.size() - 1):
+			var a := start + side
+			var b := next + side
+			for corner: int in [a, a + 1, b, a + 1, b + 1, b]:
+				mesh.add_index(corner)
+	var last := (path.size() - 1) * profile.size()
+	for corner: int in [0, 2, 1, 0, 3, 2, last, last + 1, last + 2, last, last + 2, last + 3]:
+		mesh.add_index(corner)
+	mesh.generate_normals()
+	var curb := Kit.mesh_at(self, mesh.commit(), Vector3.ZERO, concrete)
+	curb.name = "BurgerKingDriveThroughCurb"
+	curb.create_trimesh_collision()
+
+
+func build_drive_through_menu(at: Vector2) -> void:
+	var y := grade(at.x, at.y) + ASPHALT_LIFT
+	var cabinet := Kit.paint(Color("#292725"), .56)
+	var paper := Kit.paint(Color("#eee1c7"), .69)
+	var header := Kit.paint(Color("#9d2e22"))
+	var ink := Color("#352019")
+	var board := StaticBody3D.new()
+	board.name = "BurgerKingDriveThroughMenu"
+	add_child(board)
+	board.position = Vector3(at.x, y, at.y)
+	board.rotation.y = PI
+	for x: float in [-.85, .85]:
+		Kit.box_at(board, Vector3(x, .63, 0), Vector3(.15, 1.30, .19), cabinet)
+		Kit.collider(board, Vector3(x, .63, 0), Vector3(.15, 1.30, .19))
+	var case_center := Vector3(0, 1.51, 0)
+	Kit.box_at(board, case_center, Vector3(2.52, 1.04, .19), cabinet)
+	Kit.collider(board, case_center, Vector3(2.52, 1.04, .19))
+	sign_panel("BURGER KING  •  MENU", Vector3(0, 1.87, .095), 2.35, .23, header, Color("#fff1d8"), 0.0, board)
+	var panels := ["FLAME GRILLED\nWhopper\nDouble Whopper",
+		"CHICKEN\nOriginal Chicken\nChicken Fries", "SIDES & DRINKS\nFrench Fries\nSoft Drinks"]
+	for i in panels.size():
+		sign_panel(panels[i], Vector3((i - 1) * .79, 1.42, .095), .75, .62, paper, ink, 0.0, board)
 
 
 func build_restaurant_eaves(center: Vector3, material: Material, depth: float) -> void:
