@@ -14,11 +14,11 @@ The host or solo campaign owns all nine weather presets, wetness, transition tim
 
 [river_weather.gd](../../godot-cove/river_weather.gd) defines transition weights, preset duration ranges, and transition length in game minutes. Fog is more likely around dawn. The `gameplay_strength` field scales the effects on bite timing, waves, grip, mowing speed, and incidental patrol timing. A strength of zero gives clear-weather gameplay values.
 
-Weather layers on top of existing solar, sky, and water lighting. Rain gradually wets roads, and wind accelerates drying. Puddles are fixed shader patches. Reflections use existing sky, shore, and material shading. The river shader and wave sampler share the same wind multiplier. Generated audio mixes rain on pavement, water and cover, wind, waves, and spatial thunder. GPU rain stays near the camera and stops under cover.
+Weather layers on top of existing solar, sky, and water lighting. Rain gradually wets roads, and wind accelerates drying. Puddles are fixed shader patches. Reflections use existing sky, shore, and material shading. The river shader and wave sampler share wind-dependent amplitudes for the directional swell. Generated audio mixes rain on pavement, water and cover, wind, spatial thunder, and shoreline, hull and prop wash sounds. GPU rain stays near the camera and stops under cover. See [Boat and water](BOAT-WATER.md) for wake synchronization and local water settings.
 
 ## Settings and developer controls
 
-Pause **Settings** saves camera smoothing, head bob, weather effects, rain particles, reflection quality, and fog quality per machine. Each control ranges from zero to one.
+Pause **Settings** saves camera smoothing, head bob, weather effects, rain particles, reflection quality, fog quality, and water detail per machine. Each control ranges from zero to one.
 
 In a Godot debug build, the solo player or crew host can open **F2 → Environment and camera** to force a preset, set intensity and wind, advance the clock, trigger lightning, preview a Big Rich idle, toggle camera motion, or display the active reticle category.
 

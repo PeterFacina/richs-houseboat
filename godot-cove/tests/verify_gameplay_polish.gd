@@ -6,6 +6,9 @@ const Crew = preload("res://multiplayer_session.gd")
 const Sight = preload("res://interaction_sight.gd")
 const Idle = preload("res://character_idle.gd")
 const Paint = preload("res://scenery.gd")
+const Wakes = preload("res://river_wakes.gd")
+const Boat = preload("res://houseboat.gd")
+const World = preload("res://game_world.gd")
 var game
 var failures := 0
 var initial: Dictionary = {}
@@ -111,6 +114,120 @@ func wait_for(predicate: Callable) -> bool:
 	return predicate.call()
 
 
+func water_motion() -> void:
+	var wakes := Wakes.new()
+	var current := Vector2(.3, 0.0)
+	wakes.emit(10, Vector2.ZERO, Vector2.UP, current, 7.0, .8, .36, 5.5, 1.0)
+	wakes.emit(20, Vector2(30, 0), Vector2.UP, current, 7.0, .6, .53, 6.0, 1.0)
+	wakes.emit(10, Vector2.ZERO, Vector2.UP, current, 7.0, .8, .36, 5.5, 1.1)
+	check(wakes.packets.size() == 2, "Wake emission must be capped per vessel")
+	var crest := Vector2(5.0, -5.35)
+	var other_crest := Vector2(35.9, -5.35)
+	var wake := wakes.height(crest, 2.0, 0)
+	check(absf(wake) > .02 and absf(wakes.height(other_crest, 2.0, 0)) > .02, "Both vessel wakes must persist after emission")
+	check(is_zero_approx(wakes.height(crest, 2.0, 10)), "The generating hull should not ride its own wake")
+	wakes.advance(5.51)
+	check(wakes.packets.is_empty() and is_zero_approx(wakes.height(crest, 5.51, 0)), "Wakes must expire")
+	for i in 30:
+		wakes.emit(i + 100, Vector2.ZERO, Vector2.UP, current, 7.0, .8, .36, 5.5, 6.0)
+	check(wakes.packets.size() == Wakes.CAPACITY, "Wake storage must stay bounded")
+
+	var river = game.river
+	var boat: Boat = game.vessel
+	var launch: Vector3 = river.waterfront.wharf.launch_mark
+	var open := Vector3.INF
+	var bank := Vector3.INF
+	for x in range(-9, 10):
+		for z in range(-9, 10):
+			var at := launch + Vector3(x * 19, 0, z * 19)
+			var clearance: float = river.wet_clearance(at)
+			if not open.is_finite() and clearance > 57.0 and boat.can_place(at, 0.0):
+				open = at
+			if not bank.is_finite() and clearance > 4.0 and clearance < 13.0 and river.depth_at(at) > .45:
+				bank = at
+	check(open.is_finite() and bank.is_finite(), "Expected usable open and near-shore water samples")
+	if not open.is_finite() or not bank.is_finite():
+		return
+	var calm := 0.0
+	var storm := 0.0
+	var sheltered := 0.0
+	river.set_water_weather(.12, 0.0)
+	for i in 120:
+		calm += pow(river.wave_height(open, i * .2), 2)
+	river.set_water_weather(.94, .29)
+	for i in 120:
+		storm += pow(river.wave_height(open, i * .2), 2)
+		sheltered += pow(river.wave_height(bank, i * .2), 2)
+	check(storm > calm * 1.4 and sheltered < storm * .3, "Storm or shelter lost its effect on physical water")
+	check(river.near_water.get_shader_parameter("river_amplitudes") == river.wave_amplitudes
+		and river.far_water.get_shader_parameter("river_amplitudes") == river.wave_amplitudes,
+		"Water material received different amplitudes from the physics sampler")
+
+	var bobber: Node3D = game.effects.bobber
+	game.cast_site = bank
+	game.change_state(World.Fishing.CASTING)
+	game.flight_time = .7
+	game.state_age = World.WINDUP + .71
+	game.tick_cast()
+	check(game.fishing == World.Fishing.WAITING and game.effects.rings.size() == 1
+		and is_equal_approx(game.float_site.y, river.wave_height(bank, game.clock)), "Cast failed to land on moving water")
+	game.floating(bobber, bank)
+	check(is_equal_approx(bobber.position.y, river.wave_height(bank, game.clock)), "Bobber lost surface contact")
+	var feet: Vector3 = game.player.global_position
+	game.player.global_position = bank + Vector3.DOWN
+	var before: int = game.effects.rings.size()
+	game.set_swimming(true)
+	check(game.effects.rings.size() == before + 1 and not game.effects.droplets.is_empty(), "Water entry missed its splash")
+	game.set_swimming(false)
+	game.player.global_position = feet
+	game.effects.rings.clear()
+	game.effects.droplets.clear()
+
+	var old_center: Vector3 = boat.center
+	var old_pose: Transform3D = boat.global_transform
+	var old_heading: float = boat.heading
+	var old_departed: bool = boat.departed
+	var old_lines: Array = boat.mooring.packet()
+	boat.mooring.clear()
+	boat.berth_at(open, 0.0)
+	boat.departed = true
+	boat.set_ignition(Boat.Ignition.RUN)
+	boat.throttle = .8
+	boat.wheel_angle = .32
+	for i in 90:
+		boat.sail(1.0 / 60.0, i / 60.0, true, 0.0)
+	check(boat.speed > 1.0 and boat.center.distance_to(open) > .5 and absf(boat.heading) > .025,
+		"Powered boat did not accelerate and steer during a storm")
+	boat.set_ignition(Boat.Ignition.OFF)
+	boat.berth_at(open, 0.0)
+	boat.departed = true
+	boat.mooring.anchor = open + boat.mooring.anchor_lead()
+	boat.mooring.anchor_down = true
+	boat.speed = 5.0
+	var heave := 0.0
+	for i in 120:
+		boat.sail_river(1.0 / 60.0, i / 60.0)
+		heave = maxf(heave, absf(boat.wave_pose.x))
+	check(boat.center.distance_to(open) <= .19 and heave > .025 and boat.speed < 5.0,
+		"Anchored hull must ride the swell and stay within slack while the motor coasts down")
+	boat.mooring.clear()
+	boat.berth_at(open, 0.0)
+	boat.departed = true
+	var lead: Vector3 = boat.mooring.leads[0]
+	boat.mooring.tie(0, 1, open + lead, boat.transform, lead)
+	boat.speed = 4.0
+	for i in 60:
+		boat.sail_river(1.0 / 60.0, i / 60.0)
+	check(boat.center.distance_to(open) <= .20 and absf(boat.wave_pose.z) <= .145,
+		"Tied hull exceeded line slack or roll limit")
+	boat.berth_at(old_center, old_heading)
+	boat.global_transform = old_pose
+	boat.departed = old_departed
+	boat.mooring.receive(old_lines)
+	river.set_water_weather(.12, 0)
+	print("Checked storm and shoreline exposure, fishing cast and bobber, swim entry, multiple wakes, steering, anchor and dock lines.")
+
+
 func endpoint(label: String) -> Crew:
 	var branch := Node.new()
 	branch.name = label
@@ -137,10 +254,15 @@ func network_weather() -> void:
 	var state: Dictionary = campaign.ledger.state
 	state.work_minutes = 761.0
 	game.weather.force(state.weather, Weather.HEAVY, state.work_minutes - 11.0)
+	var trail := Wakes.new()
+	var now: float = game.clock
+	game.river.wakes.emit(7, Vector2.ZERO, Vector2.UP, Vector2(.3, 0), 7.0, .7, .36, 5.5, now - 1.0)
 	host.host("Weather host")
 	host.start_session()
 	check(host.on_server() and host.started, "Could not start ENet host")
 	var guest := endpoint("WeatherGuest")
+	guest.ship_received.connect(func(packet: Dictionary):
+		trail.receive(packet.get("wakes", PackedVector4Array()), float(packet.clock)))
 	guest.weather_received.connect(func(data: Dictionary, stamp: float):
 		if initial.is_empty():
 			initial = data
@@ -150,6 +272,13 @@ func network_weather() -> void:
 	check(await wait_for(func(): return not initial.is_empty()), "Join did not deliver weather state")
 	check(initial.get("kind") == Weather.HEAVY and host_clock == 761.0, "Late join lost current weather or world time")
 	check(is_equal_approx(float(initial.get("start", 0.0)), 750.0), "Late join restarted transition")
+	check(trail.packets.size() == 1 and is_equal_approx(trail.height(Vector2(5, -5.35), now, 0),
+		game.river.wakes.height(Vector2(5, -5.35), now, 0)), "Late join did not reproduce host wake height")
+	game.river.wakes.emit(8, Vector2(2, 0), Vector2.UP, Vector2.ZERO, 7.0, .7, .36, 5.5, now)
+	campaign.send_ship()
+	check(await wait_for(func(): return trail.packets.size() == 2), "Live wake did not replicate")
+	check(is_equal_approx(trail.height(Vector2(6.6, -5.35), now + .9, 0),
+		game.river.wakes.height(Vector2(6.6, -5.35), now + .9, 0)), "Guests diverged from the authoritative wake")
 	game.weather.strike(state.weather, state.work_minutes, Vector3.ZERO)
 	campaign.send_weather()
 	check(await wait_for(func(): return int(received.get("lightning", 0)) == int(state.weather.lightning)), "Live strike did not replicate")
@@ -172,7 +301,8 @@ func network_weather() -> void:
 	guest.get_parent().queue_free()
 	host.get_parent().queue_free()
 	campaign.crew = original
-	print("Real ENet host, late join, transition progress, lightning update, idle packet and guest authority checked.")
+	game.river.wakes.advance(now + Wakes.LIFETIME)
+	print("Real ENet late join and live sync checked for weather, wakes, lightning, idle pose and guest authority.")
 
 
 func visual_weather() -> void:
@@ -227,6 +357,7 @@ func exercise() -> void:
 	game.set_physics_process(false)
 	await physics_frame
 	await mounted_view_and_sight()
+	water_motion()
 	await network_weather()
 	if DisplayServer.get_name() != "headless":
 		await visual_weather()

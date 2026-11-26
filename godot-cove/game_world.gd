@@ -255,8 +255,8 @@ func _ready() -> void:
 	vessel.top_speed = 6.5
 	vessel.water_check = river.can_sail
 	vessel.marina_check = river.marina_hull_clear
-	vessel.water_flow = river.downstream
-	vessel.wave_sampler = river.wave_height
+	vessel.water_flow = river.boat_flow
+	vessel.wave_sampler = river.wave_height.bind(vessel.get_instance_id())
 	vessel.river_engine = true
 	vessel.hull_name = "RICH'S"
 	vessel.heading = 0.0
@@ -277,6 +277,7 @@ func _ready() -> void:
 	rig.hide()
 	effects = WaterFX.new()
 	effects.wave_sampler = river.wave_height
+	effects.flow_sampler = river.downstream
 	add_child(effects)
 	fish = Fish.new()
 	add_child(fish)
@@ -854,12 +855,18 @@ func _physics_process(delta: float) -> void:
 	marina_cars.step(delta, axis(KEY_W, KEY_S), axis(KEY_D, KEY_A), Input.is_physical_key_pressed(KEY_SPACE),
 		has_input and not cabin.busy())
 	var viewpoint: Vector3 = vessel.center if aboard() else player.global_position
+	if vessel.visible and vessel.departed:
+		var behind := vessel.global_basis.z.slide(Vector3.UP).normalized()
+		if vessel.speed < -.13 or (absf(vessel.speed) <= .13 and vessel.throttle < 0.0):
+			behind = -behind
+		if not campaign.crew.is_guest():
+			river.record_wake(vessel.get_instance_id(), vessel.motor.prop.global_position, behind,
+				absf(vessel.speed), vessel.motor.thrust, vessel.wake_spread, vessel.wake_peak_speed, clock)
+		river.set_prop_wash(vessel.motor.prop.global_position, vessel.motor.wash_direction(), vessel.motor.thrust)
+	else:
+		river.set_prop_wash(Vector3.ZERO, Vector3.BACK, 0.0)
 	river.update_water(viewpoint, clock)
-	var wake: Vector3 = vessel.global_basis.z.slide(Vector3.UP).normalized()
-	if vessel.speed < -.13:
-		wake = -wake
-	river.set_wake(vessel.motor.prop.global_position, wake, absf(vessel.speed), vessel.motor.thrust,
-		vessel.motor.wash_direction(), vessel.wake_spread, vessel.wake_peak_speed)
+	effects.update_bow_spray(vessel, eye.global_position, clock, absf(vessel.speed), river.wave_wind)
 	if trophy.update(delta, clock) and viewpoint.distance_squared_to(trophy.slick) < 48.0 * 48.0:
 		var roll := trophy.circling(clock)
 		effects.break_surface(effects.on_water(roll, clock), .94, "splash")
@@ -1046,6 +1053,10 @@ func move_on_foot(delta: float, walk: Vector3, jump: bool) -> void:
 	velocity.y = clampf((height - at.y) * 7.0, -2.8, 3.5)
 	player.velocity = player.velocity.lerp(velocity, 1.0 - exp(-delta * 9.0))
 	player.move_and_slide()
+	if walk.length_squared() > .08 and clock >= next_swim_ripple:
+		next_swim_ripple = clock + .42
+		var stroke := player.global_position - walk.normalized() * .38
+		effects.break_surface(effects.on_water(stroke, clock), .22)
 
 
 func walk_on_ground(delta: float, walk: Vector3, jump_pressed: bool) -> void:
@@ -1162,6 +1173,9 @@ func reset_foot_stance() -> void:
 			eye.position.y = STANDING_EYE
 
 
+var next_swim_ripple := 0.0
+
+
 func set_swimming(active: bool) -> void:
 	if swimming == active:
 		return
@@ -1169,7 +1183,9 @@ func set_swimming(active: bool) -> void:
 	player.motion_mode = CharacterBody3D.MOTION_MODE_FLOATING if active else CharacterBody3D.MOTION_MODE_GROUNDED
 	if active:
 		release_line()
-		effects.break_surface(effects.on_water(player.global_position, clock), .45, "splash")
+		next_swim_ripple = clock + .30
+		var impact := clampf(.38 + maxf(0.0, -player.velocity.y) * .085, .38, .95)
+		effects.break_surface(effects.on_water(player.global_position, clock), impact, "splash")
 
 
 func can_board_from_water() -> bool:

@@ -4,6 +4,10 @@ var rain: GPUParticles3D
 var rain_style: ParticleProcessMaterial
 var volumes: Array[AudioStreamPlayer] = []
 var thunder: AudioStreamPlayer3D
+var bank_waves: AudioStreamPlayer3D
+var hull_waves: AudioStreamPlayer3D
+var prop_wash: AudioStreamPlayer3D
+var bank_gain := 0.0
 var sample := Vector4.ZERO
 var wet := 0.0
 var flash := 0.0
@@ -51,7 +55,7 @@ func _ready() -> void:
 	rain.draw_pass_1 = drop
 	rain.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(rain)
-	for i in 5:
+	for i in 4:
 		var layer := AudioStreamPlayer.new()
 		layer.volume_db = -80.0
 		layer.stream = noise_stream(i)
@@ -64,6 +68,22 @@ func _ready() -> void:
 	thunder.max_distance = 280.0
 	thunder.attenuation_filter_cutoff_hz = 2100
 	add_child(thunder)
+	var wave_loop := noise_stream(4)
+	bank_waves = water_loop(wave_loop, 13.0, 42.0, .84)
+	hull_waves = water_loop(wave_loop, 3.5, 23.0, 1.15)
+	prop_wash = water_loop(volumes[1].stream, 4.0, 28.0, .88)
+
+
+func water_loop(stream: AudioStream, unit_size: float, distance: float, pitch: float) -> AudioStreamPlayer3D:
+	var layer := AudioStreamPlayer3D.new()
+	layer.stream = stream
+	layer.unit_size = unit_size
+	layer.max_distance = distance
+	layer.pitch_scale = pitch
+	layer.volume_db = -80.0
+	add_child(layer)
+	layer.play(.37 * pitch)
+	return layer
 
 
 static func noise_stream(kind: int) -> AudioStreamWAV:
@@ -140,10 +160,8 @@ func update(game: Node3D, record: Dictionary, minute: float, delta: float) -> vo
 	update_in -= delta
 	if update_in <= 0.0:
 		update_in = .10
-		game.river.weather_wave_scale = 1.0 + smoothstep(.25, 1.0, sample.w) * .27 * game.weather.gameplay_strength
-		for material: ShaderMaterial in [game.river.near_water, game.river.far_water, game.river.headpond_water]:
-			material.set_shader_parameter("weather_wave_scale", game.river.weather_wave_scale)
-			material.set_shader_parameter("use_weather", 1.0)
+		game.river.set_water_weather(lerpf(.12, sample.w, game.weather.gameplay_strength),
+			sample.z * fog_quality * weather_quality)
 		RenderingServer.global_shader_parameter_set("river_weather_wet", wet * weather_quality)
 		RenderingServer.global_shader_parameter_set("river_weather_wind", sample.w * weather_quality)
 		RenderingServer.global_shader_parameter_set("river_weather_rain", sample.y * weather_quality)
@@ -162,6 +180,7 @@ func update(game: Node3D, record: Dictionary, minute: float, delta: float) -> vo
 		covered = is_sheltered(game, feet + Vector3.UP * 1.1)
 		var depth: float = game.river.depth_at(origin)
 		water_exposure = smoothstep(0.0, 1.6, depth)
+	update_water_audio(game, origin, delta, check_in == .12)
 	shelter = lerpf(shelter, float(covered), 1.0 - exp(-delta * 5.0))
 	rain.global_position = origin + Vector3.UP * 5.7
 	rain_style.direction = Vector3(sample.w * .38, -1, sample.w * .13).normalized()
@@ -176,7 +195,7 @@ func update(game: Node3D, record: Dictionary, minute: float, delta: float) -> vo
 	var drizzle := sample.y * weather_quality
 	var levels := [drizzle * outside * (1.0 - water_exposure) * .32,
 		drizzle * outside * water_exposure * .45, drizzle * shelter * .30,
-		sample.w * weather_quality * lerpf(.05, .40, outside), sample.w * weather_quality * water_exposure * outside * .23]
+		sample.w * weather_quality * lerpf(.05, .40, outside)]
 	for i in volumes.size():
 		var target := linear_to_db(maxf(.0001, levels[i]))
 		volumes[i].volume_db = lerpf(volumes[i].volume_db, target, 1.0 - exp(-delta * 4.0))
@@ -187,3 +206,44 @@ func update(game: Node3D, record: Dictionary, minute: float, delta: float) -> vo
 			thunder.volume_db = lerpf(-4.0, -17.0, shelter) + linear_to_db(maxf(.0001, weather_quality))
 			thunder.pitch_scale = lerpf(1.0, .79, shelter)
 			thunder.play()
+
+
+func update_water_audio(game: Node3D, listener: Vector3, delta: float, locate_bank: bool) -> void:
+	var river = game.river
+	if locate_bank:
+		var clearance: float = river.wet_clearance(listener)
+		var bank := Vector3(listener.x, -.06, listener.z)
+		var direction := Vector3.ZERO
+		var edge := clearance
+		for axis: Vector3 in [Vector3.RIGHT, Vector3.LEFT, Vector3.FORWARD, Vector3.BACK]:
+			var sample_clearance: float = river.wet_clearance(listener + axis * 9.0)
+			if (clearance > .12 and sample_clearance < edge) or (clearance <= .12 and sample_clearance > edge):
+				direction = axis
+				edge = sample_clearance
+		bank_gain = 0.0
+		if direction != Vector3.ZERO:
+			bank += direction * (clampf(clearance, 1.0, 24.0) if clearance > .12 else 5.0)
+			bank_gain = (1.0 - smoothstep(9.0, 26.0, clearance)) * lerpf(.10, .30, sample.w)
+		bank_waves.global_position = bank
+	var vessel: Node3D = game.vessel
+	var afloat: bool = vessel.visible and (vessel.departed or river.wet_clearance(vessel.global_position) > .35)
+	var hull_gain := 0.0
+	var wash_gain := 0.0
+	if afloat and vessel.global_position.distance_squared_to(listener) < 32.0 * 32.0:
+		var side := 1.0 if vessel.to_local(listener).x >= 0.0 else -1.0
+		var alongside := vessel.to_global(Vector3(side * vessel.launch_half_beam(), 0.0, 0.0))
+		var height: float = river.wave_height(alongside, game.clock)
+		hull_waves.global_position = Vector3(alongside.x, height, alongside.z)
+		prop_wash.global_position = vessel.motor.prop.global_position
+		hull_gain = .035 + smoothstep(.01, .19, absf(height)) * .155 + smoothstep(.4, 6.0, absf(vessel.speed)) * .095
+		wash_gain = vessel.motor.thrust * .19
+		prop_wash.pitch_scale = lerpf(.78, 1.18, vessel.motor.thrust)
+	var response := 1.0 - exp(-delta * 4.0)
+	bank_waves.volume_db = water_volume(bank_waves.volume_db, bank_gain, response)
+	hull_waves.volume_db = water_volume(hull_waves.volume_db, hull_gain, response)
+	prop_wash.volume_db = water_volume(prop_wash.volume_db, wash_gain, response)
+
+
+func water_volume(current: float, intensity: float, response: float) -> float:
+	var gain := intensity * weather_quality * lerpf(1.0, .28, shelter)
+	return lerpf(current, linear_to_db(maxf(.0001, gain)), response)
