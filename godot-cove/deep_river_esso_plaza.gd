@@ -273,16 +273,14 @@ func build_restaurant_lot(asphalt: Material, brick_scan: Texture2D) -> void:
 		24 - RESTAURANT_LOT.position.x, LOT.end.y - RESTAURANT_LOT.end.y),
 		ASPHALT_LIFT, ASPHALT_LIFT, asphalt, PAVEMENT_LAYERS)
 	var parking_paint := Kit.paint(Color("#c6c1ad"))
-	for space in 9:
+	for space in 11:
 		var z := -62.5 + float(space) * 2.65
 		surface(Rect2(32.8, z, 5.1, .09), .087, .087, parking_paint, 0)
-	surface(Rect2(37.85, -62.5, .09, 21.2), .087, .087, parking_paint, 0)
+	surface(Rect2(37.85, -62.5, .09, 26.5), .087, .087, parking_paint, 0)
 	for space in 4:
 		var x := 29.0 + float(space) * 2.9
 		surface(Rect2(x, -73.3, .09, 5.1), .087, .087, parking_paint, 0)
 	surface(Rect2(29, -73.3, 8.7, .09), .087, .087, parking_paint, 0)
-	parking_island(Vector2(33.8, -39.0), Vector2(6.1, 1.6))
-	parking_island(Vector2(33.9, -64.8), Vector2(6.3, 1.35))
 	parking_island(Vector2(27.8, -13.2), Vector2(5.2, 1.85))
 
 	# Keep the surveyed footprint. The dining-room awning ends at the brick service wing.
@@ -359,18 +357,33 @@ func parking_island(at: Vector2, size: Vector2) -> void:
 
 
 func build_drive_through(marking: Material, blue: Material) -> void:
-	var guide := Vector3(24.0, grade(24.0, -65.3) + ASPHALT_LIFT, -65.3)
-	block(guide + Vector3.UP * .55, Vector3(.10, 1.1, .12), blue, true)
-	sign_panel("DRIVE THRU  ›", guide + Vector3.UP * 1.12, 1.35, .41, blue, Color.WHITE, PI * .5)
-
+	# Follow the rear wall and wrap around to the pickup side. The space inside the curb is the lane.
 	var curb_path := PackedVector2Array([
-		Vector2(6.1, -68.4), Vector2(8.0, -68.5), Vector2(10.0, -68.55),
-		Vector2(12.0, -68.55), Vector2(14.0, -68.55), Vector2(16.0, -68.55),
-		Vector2(18.0, -68.5), Vector2(20.0, -68.27), Vector2(22.0, -67.84),
-		Vector2(23.65, -67.3), Vector2(25.15, -66.55),
+		Vector2(25.2, -70.35), Vector2(23.6, -70.82), Vector2(21.6, -71.12),
+		Vector2(19.4, -71.2), Vector2(17.2, -71.2), Vector2(15.0, -71.2),
+		Vector2(12.8, -71.2), Vector2(10.6, -71.2), Vector2(8.4, -71.2),
+		Vector2(6.4, -70.98), Vector2(4.78, -70.13), Vector2(3.58, -68.78),
+		Vector2(2.88, -67.1), Vector2(2.65, -65.2), Vector2(2.7, -62.6),
+		Vector2(2.75, -59.9), Vector2(2.8, -57.2), Vector2(2.85, -54.5),
+		Vector2(2.9, -51.8), Vector2(2.95, -49.1), Vector2(3.0, -46.4),
+		Vector2(3.05, -43.7), Vector2(3.1, -41.0), Vector2(3.15, -38.3),
+		Vector2(3.2, -35.38),
 	])
 	build_drive_through_curb(curb_path)
-	build_drive_through_menu(Vector2(11.5, -65.65))
+
+	var sign_at := curb_path[0].lerp(curb_path[1], .48)
+	var guide := StaticBody3D.new()
+	guide.name = "BurgerKingDriveThroughDirection"
+	add_child(guide)
+	guide.position = Vector3(sign_at.x, grade(sign_at.x, sign_at.y) + ASPHALT_LIFT + .15, sign_at.y)
+	guide.rotation.y = -PI * .5
+	Kit.box_at(guide, Vector3.UP * .55, Vector3(.10, 1.1, .12), blue)
+	Kit.collider(guide, Vector3.UP * .55, Vector3(.10, 1.1, .12))
+	sign_panel("DRIVE THRU  ›", Vector3.UP * 1.12, 1.35, .41, blue, Color.WHITE, 0.0, guide)
+
+	var menu := Vector2(11.5, -65.65)
+	build_drive_through_menu(menu)
+	build_drive_through_intercom(menu + Vector2(1.93, -.06))
 
 	for z: float in [-58.0, -54.0, -48.0, -42.0]:
 		surface(Rect2(8.78, z, .075, 1.5), .087, .087, marking, 0)
@@ -401,6 +414,8 @@ func build_drive_through_curb(path: PackedVector2Array) -> void:
 	var curb := Kit.mesh_at(self, mesh.commit(), Vector3.ZERO, concrete)
 	curb.name = "BurgerKingDriveThroughCurb"
 	curb.create_trimesh_collision()
+	var body := curb.get_child(0) as StaticBody3D
+	body.collision_layer = PAVEMENT_LAYERS
 
 
 func build_drive_through_menu(at: Vector2) -> void:
@@ -425,6 +440,39 @@ func build_drive_through_menu(at: Vector2) -> void:
 		"CHICKEN\nOriginal Chicken\nChicken Fries", "SIDES & DRINKS\nFrench Fries\nSoft Drinks"]
 	for i in panels.size():
 		sign_panel(panels[i], Vector3((i - 1) * .79, 1.42, .095), .75, .62, paper, ink, 0.0, board)
+
+
+func build_drive_through_intercom(at: Vector2) -> void:
+	var station := StaticBody3D.new()
+	station.name = "BurgerKingDriveThroughIntercom"
+	add_child(station)
+	station.position = Vector3(at.x, grade(at.x, at.y) + ASPHALT_LIFT, at.y)
+	station.rotation.y = PI
+
+	var cabinet := Kit.paint(Color("#2d3032"), .59)
+	var faceplate := Kit.paint(Color("#666b6b"), .43, .30)
+	var panel := Kit.paint(Color("#171a1b"), .76)
+	var base := Vector3(0, .08, 0)
+	var post := Vector3(0, .62, 0)
+	var head := Vector3(0, 1.43, 0)
+	for piece in [
+		[base, Vector3(.42, .16, .42)],
+		[post, Vector3(.18, 1.15, .20)],
+		[head, Vector3(.53, .71, .30)],
+	]:
+		Kit.box_at(station, piece[0], piece[1], cabinet)
+		Kit.collider(station, piece[0], piece[1])
+	Kit.box_at(station, Vector3(0, 1.81, .055), Vector3(.59, .075, .43), cabinet)
+	Kit.box_at(station, Vector3(0, 1.52, .151), Vector3(.44, .38, .018), faceplate)
+	for row in 5:
+		Kit.box_at(station, Vector3(0, 1.41 + row * .045, .164), Vector3(.32, .014, .018), panel)
+	Kit.box_at(station, Vector3(-.10, 1.235, .167), Vector3(.095, .082, .030), faceplate)
+	var indicator := Kit.paint(Color("#73bc81"), .45)
+	indicator.emission_enabled = true
+	indicator.emission = indicator.albedo_color
+	indicator.emission_energy_multiplier = .55
+	Kit.box_at(station, Vector3(.114, 1.235, .165), Vector3(.041, .027, .026), indicator)
+	sign_panel("ORDER HERE", Vector3(0, 1.067, .152), .46, .13, cabinet, Color("#fff1d8"), 0.0, station)
 
 
 func build_restaurant_eaves(center: Vector3, material: Material, depth: float) -> void:
