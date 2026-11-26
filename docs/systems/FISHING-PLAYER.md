@@ -10,6 +10,12 @@
 
 The Dab pen starts on the houseboat galley tray. Look at it and press E to pick it up. Equip it from the Backpack or assign it to a hotbar slot. Left click uses it on foot, and Q sets it down on a solid surface while equipped. The galley and dropped prop use the same model as the held pen. Carrying it between uses leaves it available in the Backpack, and the smoking sequence applies the existing high effect. T toggles the on-foot flashlight.
 
+## Vehicle HUD and controls
+
+While driving, the HUD shows vehicle status and any applicable warnings, notices or navigation information. Cars and trucks show their name and speed, including reverse status. The boat helm shows the hull name and speed. The lawn mower shows speed, blade state and a separate throttle indicator. The helicopter keeps its cockpit instruments, and the survey submersible shows depth, tether and recorder status.
+
+Open **Vehicle Controls** from the pause menu for driving, helm, mowing, submersible and helicopter bindings. The contextual prompts for entering vehicles and regaining mouse control still appear when needed.
+
 ## Solo HUD verification
 
 Use this checklist when changing or reviewing the shared HUD. Keep the run in a disposable solo trip and record the game revision, viewport size, selected destination, and before/after values.

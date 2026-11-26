@@ -19,6 +19,7 @@ var graphics_option: OptionButton
 var sliders: Dictionary = {}
 var fullscreen_button: CheckButton
 var aircraft_invert_pitch: CheckButton
+var vehicle_controls_scroll: ScrollContainer
 var windowed_mode := DisplayServer.WINDOW_MODE_WINDOWED
 var title: Label
 var main_page: VBoxContainer
@@ -115,7 +116,7 @@ func build_pause_pages(column: VBoxContainer) -> void:
 	grid.add_theme_constant_override("v_separation", MenuTheme.GAP)
 	main_page.add_child(grid)
 	settings_button = button(grid, "Settings", func(): show_page(settings_page, "Settings", sliders["volume"]), &"Button", "settings")
-	vehicle_button = button(grid, "Vehicle Controls", func(): show_page(vehicle_page, "Vehicle Controls", aircraft_invert_pitch), &"Button", "tools")
+	vehicle_button = button(grid, "Vehicle Controls", func(): show_page(vehicle_page, "Vehicle Controls", vehicle_controls_scroll), &"Button", "tools")
 	button(grid, "Save", save_world, &"Button", "save")
 	button(grid, "Backpack", func(): navigate("pack"), &"Button", "pack").tooltip_text = "Backpack · I"
 	button(grid, "River Chart", func(): navigate("chart"), &"Button", "chart").tooltip_text = "River Chart · Tab / M"
@@ -176,6 +177,8 @@ func show_page(page: VBoxContainer, caption: String, first: Control) -> void:
 	crew_page.visible = page == crew_page
 	back.visible = page != main_page
 	title.text = caption
+	if page == vehicle_page:
+		vehicle_controls_scroll.scroll_vertical = 0
 	if visible:
 		first.grab_focus()
 
@@ -189,19 +192,37 @@ func build_vehicle_controls(column: VBoxContainer) -> void:
 	vehicle_page = VBoxContainer.new()
 	vehicle_page.add_theme_constant_override("separation", 12)
 	column.add_child(vehicle_page)
-	text(vehicle_page, "Helicopter", 22, MenuTheme.NAVY)
+	vehicle_controls_scroll = ScrollContainer.new()
+	vehicle_controls_scroll.custom_minimum_size.y = 300
+	vehicle_controls_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	vehicle_controls_scroll.focus_mode = Control.FOCUS_ALL
+	vehicle_controls_scroll.follow_focus = true
+	vehicle_page.add_child(vehicle_controls_scroll)
+	var controls := VBoxContainer.new()
+	controls.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	controls.add_theme_constant_override("separation", 10)
+	vehicle_controls_scroll.add_child(controls)
+	text(controls, "Cars and trucks", 22, MenuTheme.NAVY)
+	text(controls, "W accelerate, S brake or reverse, A / D steer, Space handbrake. C switches camera, H switches headlights, E exits when stopped.", 16, MIST)
+	text(controls, "Boat helm", 22, MenuTheme.NAVY)
+	text(controls, "W / S adjust throttle, R / F fine-tune, Space shifts to neutral, A / D steer, G toggles anchor. E takes or leaves the helm. Aim at the ignition key and hold E to start or tap E to stop.", 16, MIST)
+	text(controls, "Lawn mower", 22, MenuTheme.NAVY)
+	text(controls, "W / S drive, A / D turn, Q / R adjust throttle, X toggles blades, C switches camera, E dismounts.", 16, MIST)
+	text(controls, "Survey submersible", 22, MenuTheme.NAVY)
+	text(controls, "WASD steer, Space / Ctrl change depth, E collects the recorder within range, V or Esc returns to the boat.", 16, MIST)
+	text(controls, "Helicopter", 22, MenuTheme.NAVY)
 	var bindings := GridContainer.new()
 	bindings.columns = 2
 	bindings.add_theme_constant_override("h_separation", 18)
 	bindings.add_theme_constant_override("v_separation", 6)
-	vehicle_page.add_child(bindings)
+	controls.add_child(bindings)
 	for binding: Array in [["Mouse", "Pitch and yaw"], ["A / D", "Bank left or right. Release to hold."],
 			["Space / Ctrl", "Climb or descend"], ["H", "Level the craft and hover"]]:
 		text(bindings, binding[0], 16, TEAL)
 		text(bindings, binding[1], 16, MIST)
-	vehicle_page.add_child(HSeparator.new())
-	text(vehicle_page, "Aim at a door handle and press E to board or exit when the helicopter is landed and stopped.", 16, MIST)
-	text(vehicle_page, "Aim at the dash key and hold E to start. Lift is ready at 100% RPM. After landing, aim at the key and tap E to shut down.", 16, MIST)
+	controls.add_child(HSeparator.new())
+	text(controls, "Aim at a door handle and press E to board or exit when the helicopter is landed and stopped.", 16, MIST)
+	text(controls, "Aim at the dash key and hold E to start. Lift is ready at 100% RPM. After landing, aim at the key and tap E to shut down.", 16, MIST)
 	aircraft_invert_pitch = CheckButton.new()
 	aircraft_invert_pitch.text = "Invert Pitch"
 	aircraft_invert_pitch.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
@@ -210,7 +231,8 @@ func build_vehicle_controls(column: VBoxContainer) -> void:
 		preferences.aircraft_invert_pitch = enabled
 		apply_settings()
 		persist())
-	vehicle_page.add_child(aircraft_invert_pitch)
+	controls.add_child(aircraft_invert_pitch)
+	text(controls, "F4 cycles draw distance in the world.", 16, MIST)
 
 
 func build_settings(settings: VBoxContainer) -> void:

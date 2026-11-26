@@ -197,14 +197,58 @@ class IgnitionRing extends Control:
 		draw_arc(Vector2.ZERO, 13.0, start, end, points, Color.WHITE, 2.0, true)
 
 
+var show_loading_screen := false
+var loading_layer: CanvasLayer
+var loading_status: Label
+var loading_phase := ""
+var loading_yield_at := 0
+
+
+func build_loading_screen() -> void:
+	loading_layer = CanvasLayer.new()
+	loading_layer.layer = 30
+	add_child(loading_layer)
+	var background := ColorRect.new()
+	background.color = MenuTheme.NAVY
+	loading_layer.add_child(background)
+	background.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	var center := CenterContainer.new()
+	background.add_child(center)
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	loading_status = MenuTheme.text("", 26, MenuTheme.CREAM, true)
+	center.add_child(loading_status)
+
+
+func advance_loading(phase: String, completed := -1, total := -1) -> void:
+	var now := Time.get_ticks_msec()
+	if phase == loading_phase and now < loading_yield_at:
+		return
+	loading_phase = phase
+	loading_status.text = phase + ("  ·  %d / %d" % [completed, total] if total > 0 else "…")
+	# Let the loading screen draw and handle window events between construction batches.
+	await get_tree().process_frame
+	loading_yield_at = Time.get_ticks_msec() + 50
+
+
 func _ready() -> void:
+	var checkpoint := Callable()
+	if show_loading_screen:
+		set_process(false)
+		set_physics_process(false)
+		set_process_input(false)
+		set_process_unhandled_input(false)
+		build_loading_screen()
+		checkpoint = advance_loading
+		await advance_loading("Preparing Deep River")
 	random.randomize()
 	campaign = Campaign.new()
 	var new_trip := campaign.load_trip(self)
 	var saved_story: Dictionary = campaign.ledger.state.rich_story
 	river = DeepRiverMap.new()
 	add_child(river)
-	river.build()
+	await river.build(checkpoint)
+	if checkpoint.is_valid():
+		await advance_loading("Preparing the trip")
 	vessel = launch_boat_scene.instantiate() as Boat
 	vessel.restoration_design = multiplayer_trip or new_trip or saved_story.get("managed", saved_story.get("shore_start", false))
 	vessel.center = river.point(1)
@@ -325,6 +369,13 @@ func _ready() -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	if multiplayer_trip:
 		open_multiplayer_lobby()
+	if is_instance_valid(loading_layer):
+		loading_layer.hide()
+		loading_layer.queue_free()
+		set_process(true)
+		set_physics_process(true)
+		set_process_input(true)
+		set_process_unhandled_input(true)
 
 
 func open_multiplayer_lobby() -> void:
@@ -2114,7 +2165,7 @@ func update_hud() -> void:
 	ignition_prompt.visible = play_input() and at_ignition_key()
 	var engine_running: bool = ignition_prompt.visible and vessel.ignition == Boat.Ignition.RUN
 	if ignition_prompt.visible:
-		ignition_prompt.text = "Press E to stop" if engine_running else "Hold E to start"
+		ignition_prompt.text = "Engine running" if engine_running else "Engine stopped"
 	ignition_ring.visible = ignition_prompt.visible and not engine_running and ignition_hold > 0.0
 	ignition_ring.progress = clampf(ignition_hold / Boat.START_TIME, 0.0, 1.0) if ignition_ring.visible else 0.0
 	backpack.update_throttle(mower.throttle_index if mower.rider != null and play_input() else -1, mower.throttle_label())
@@ -2134,11 +2185,13 @@ func update_hud() -> void:
 		live_label.text = "Tension %d%%     Drag %d%%  ·  Mouse wheel" % [
 			roundi(line_tension * 100), roundi(drag_setting * 100)]
 	marker.visible = false
-	fps.text = "%d FPS\n%s   [F4]" % [Engine.get_frames_per_second(), graphics.description()]
+	var in_vehicle := marina_cars.active >= 0 or driving or mower.rider != null or in_aircraft() or campaign.dive.active
+	fps.text = "%d FPS\n%s%s" % [Engine.get_frames_per_second(), graphics.description(), "" if in_vehicle else "   [F4]"]
 	if tennis.active:
 		objective.text = tennis.score_text()
 		objective.show()
 		instruction.text = tennis.instruction_text(eye)
+		instruction.visible = not instruction.text.is_empty()
 		backpack.waypoint.hide()
 		campaign.info.hide()
 		return
@@ -2148,28 +2201,28 @@ func update_hud() -> void:
 		objective.text = "%s   ·   %d km/h%s" % [car.details.label, roundi(absf(car.speed) * 3.6), reverse]
 		if marina_cars.active == marina_cars.ENVOY and campaign.story.road_destination().is_finite():
 			objective.text += "\nGPS  ·  " + ("Pier Road boat yard" if campaign.story.flag("pontoon_pickup") else "Cal’s Marine Repair")
-		instruction.text = "W  Accelerate    S  Brake / reverse    A/D  Steer    Space  Handbrake"
-		if Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
-			instruction.text = "Click to resume driving"
+		instruction.text = "Click to resume driving" if Input.mouse_mode != Input.MOUSE_MODE_CAPTURED else ""
 		if clock < note_until:
-			instruction.text += "\n" + catch_note
-		else:
-			instruction.text += "\nE  Exit when stopped    C  Camera    H  Headlights    F4  Draw distance"
+			instruction.text = catch_note if instruction.text.is_empty() else instruction.text + "\n" + catch_note
+		instruction.visible = not instruction.text.is_empty()
 		campaign.info.hide()
 		objective.visible = not objective.text.is_empty()
 		return
 	if chart.visible:
 		chart.update_boat(vessel.center)
+	if driving:
+		objective.text = "%s   ·   %d km/h" % [vessel.hull_name, roundi(absf(vessel.speed) * 3.6)]
+	elif mower.rider != null:
+		objective.text = "Lawn mower   ·   %d km/h   ·   Blades %s" % [
+			roundi(absf(mower.speed) * 3.6), "on" if mower.blades else "off"]
 	if Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
-		instruction.text = "Click to play  ·  Hold F1 for controls"
+		instruction.text = "Click to resume" if in_vehicle else "Click to play  ·  Hold F1 for controls"
 	elif dab_pen.focused:
 		instruction.text = "E  Pick up the dab pen"
 	elif cabin.hands_in_use() or cabin.focus >= 0:
 		instruction.text = ""
-	elif driving:
-		instruction.text = "W/S  Adjust throttle   Space  Neutral   A/D  Steer   G  Anchor"
-		if not ignition_prompt.visible:
-			instruction.text += "   E  Leave helm"
+	elif driving or mower.rider != null:
+		instruction.text = catch_note if clock < note_until else ""
 	elif fishing == Fishing.CASTING:
 		instruction.text = "Casting…"
 	elif fishing == Fishing.WAITING:
@@ -2232,9 +2285,7 @@ func update_hud() -> void:
 	if play_input():
 		if flying:
 			instruction.text = "WASD  Fly   ·   Space  Up   ·   Ctrl/Shift  Down   ·   F2  Cheats"
-		elif mower.rider != null and clock >= note_until:
-			instruction.text = "W/S  Drive   ·   A/D  Turn   ·   Q/R  Throttle   ·   X  Blades %s   ·   C  View   ·   E  Dismount" % ("on" if mower.blades else "off")
-		elif can_talk_to_shannon():
+		elif mower.rider == null and can_talk_to_shannon():
 			var office_leaf := public_works.office_handle(eye)
 			var bay := public_works.nearby_door(eye)
 			if office_leaf >= 0:
@@ -2271,6 +2322,7 @@ func update_hud() -> void:
 		if not reaper_hint.is_empty():
 			instruction.text = reaper_hint
 	objective.visible = not objective.text.is_empty()
+	instruction.visible = not instruction.text.is_empty()
 
 
 func update_flight_mode(enabled: bool) -> void:
