@@ -175,7 +175,7 @@ def compare(baseline, candidate, cases, run):
     return report
 
 
-def tick(config, home, retry):
+def tick(config, home, retry, authorize_training=False):
     status = home / 'training-status.json'
     version = None
 
@@ -194,6 +194,9 @@ def tick(config, home, retry):
     examples = [item for item in examples if item['issue'] not in held_out]
     if len(examples) < config['minExamples']:
         publish('waiting-for-approved-examples', examples=len(examples), required=config['minExamples'])
+        return
+    if not authorize_training:
+        publish('awaiting-training-authorization', examples=len(examples), required=config['minExamples'])
         return
     if config['baseModel'] != 'Qwen/Qwen3-14B' or not re.fullmatch(r'[0-9a-f]{40}', config['baseRevision']):
         raise ValueError('Pin the Qwen3-14B base revision in the host config.')
@@ -289,6 +292,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('action', choices=['tick', 'promote', 'rollback'])
     parser.add_argument('config', type=Path)
+    parser.add_argument('--authorize-training', action='store_true', help='Explicitly authorize this training invocation.')
     parser.add_argument('--run')
     parser.add_argument('--reviewer')
     parser.add_argument('--retry', action='store_true')
@@ -300,7 +304,7 @@ def main():
     if not 3 <= config['minExamples'] <= 10_000 or not 512 <= config['maxTokens'] <= 4096 or not 1 <= config['epochs'] <= 5:
         raise ValueError('Set bounded example, sequence length and epoch limits.')
     if args.action == 'tick':
-        tick(config, home, args.retry)
+        tick(config, home, args.retry, args.authorize_training)
     else:
         with gpu_lock(home):
             change_model(args.action, config, home, args.run, args.reviewer)

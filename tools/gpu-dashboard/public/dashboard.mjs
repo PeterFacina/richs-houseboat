@@ -3,7 +3,7 @@ const page = document.querySelector('#page');
 const loaded = document.querySelector('#loaded');
 const refresh = document.querySelector('#refresh');
 const nav = [...document.querySelectorAll('#nav a')];
-const reviewerViews = new Set(['issues', 'learning']);
+const reviewerViews = new Set(['issues', 'learning', 'review']);
 const integer = new Intl.NumberFormat('en-CA', { maximumFractionDigits: 0 });
 const decimal = new Intl.NumberFormat('en-CA', { maximumFractionDigits: 1 });
 const clock = new Intl.DateTimeFormat('en-CA', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
@@ -14,7 +14,7 @@ const labels = { original: 'Original', 'deterministic-v1': 'Deterministic v1', u
   partial: 'Partial', unverified: 'Unverified', source: 'Source', guide: 'Guide', github: 'GitHub', history: 'Studio history',
   reported: 'Reports', imported: 'Imported', attachment: 'Attachment', 'verified-lesson': 'Verified lesson', other: 'Other' };
 
-const trainingLabels = { 'waiting-for-approved-examples': 'Waiting for approved examples',
+const trainingLabels = { 'awaiting-training-authorization': 'Waiting for operator authorization', 'waiting-for-approved-examples': 'Waiting for approved examples',
   'waiting-for-holdout': 'Waiting for independent evaluation cases', 'waiting-for-worker': 'Waiting for the worker',
   'waiting-for-gpu': 'Waiting for idle GPU', training: 'Training', evaluating: 'Evaluating',
   'awaiting-promotion': 'Awaiting human approval', 'evaluation-did-not-improve': 'Evaluation did not improve', failed: 'Run failed' };
@@ -405,9 +405,161 @@ async function viewLearning(data) {
     ])] : [notice('Development usage is unavailable.')])];
 }
 
+function disclosure(title, ...content) {
+  return el('details', [el('summary', title), ...content], 'review-detail');
+}
+
+const reviewLink = (label, url) => typeof url === 'string' && url.startsWith(repository + '/') ?
+  anchor(label, url) : document.createTextNode(label);
+
+function reviewForm(issue, capture, history) {
+  const form = el('form', null, 'review-form');
+  const action = el('select');
+  for (const [value, title] of Object.entries({ feedback: 'Record feedback', outcome: 'Record outcome',
+    lesson: 'Approve retrieval lesson', approved: 'Approve corrected brief', rejected: 'Reject capture' })) {
+    const option = el('option', title);
+    option.value = value;
+    action.append(option);
+  }
+  const labelField = (label, input) => el('label', [document.createTextNode(label), input]);
+  const summary = el('textarea'); summary.required = true; summary.maxLength = 4000; summary.rows = 4;
+  const extra = el('div', null, 'review-fields');
+  const message = el('p'); message.setAttribute('role', 'status');
+  const submit = el('button', 'Save feedback');
+  submit.type = 'submit';
+  let readExtra;
+  const field = (title, parent, type = 'textarea') => {
+    const input = el(type);
+    input.required = true;
+    if (type === 'textarea') input.rows = 3;
+    parent.append(labelField(title, input));
+    return input;
+  };
+  function options(selector, values) {
+    for (const value of values) {
+      const option = el('option', value);
+      option.value = value;
+      selector.append(option);
+    }
+  }
+  function lines(input) { return input.value.split(/\r?\n/).map(line => line.trim()).filter(Boolean); }
+  function fieldsForAction() {
+    extra.replaceChildren();
+    readExtra = () => ({});
+    submit.disabled = false;
+    submit.textContent = action.selectedOptions[0].textContent;
+    if (action.value === 'feedback') {
+      const category = field('Feedback category', extra, 'select');
+      options(category, ['general', 'playtest', 'retrieval', 'investigation', 'correction', 'acceptance', 'verification']);
+      const correction = field('Correct earlier feedback', extra, 'select');
+      options(correction, ['New feedback']);
+      for (const row of history.filter(row => row.status === 'feedback' && row.actionId && row.captureId === capture.id &&
+          !history.some(other => other.supersedes === row.actionId))) {
+        const option = el('option', row.summary.slice(0, 100)); option.value = row.actionId; correction.append(option);
+      }
+      readExtra = () => ({ category: category.value, ...(correction.selectedIndex && { supersedes: correction.value }) });
+    }
+    if (action.value === 'outcome') {
+      const first = field('First attempt', extra, 'select'); options(first, ['unverified', 'failed', 'passed']);
+      const verification = field('Reviewed verification', extra, 'select'); options(verification, ['unverified', 'partial', 'failed', 'passed']);
+      readExtra = () => ({ firstAttempt: first.value, verification: verification.value });
+    }
+    if (action.value === 'approved') {
+      const reasons = capture.blockers;
+      if (reasons.length) { extra.append(notice(reasons.join(' '), true)); submit.disabled = true; return; }
+      const target = Object.fromEntries(['objective', 'observations', 'tasks', 'verification', 'acceptance', 'unknowns']
+        .map(name => [name, field(name + ' (one item per line)', extra)]));
+      for (const [name, input] of Object.entries(target)) {
+        input.required = false;
+        if (capture.target?.[name]) input.value = capture.target[name].join('\n');
+      }
+      readExtra = () => ({ target: Object.fromEntries(Object.entries(target).map(([name, input]) => [name, lines(input)])) });
+    }
+    if (action.value === 'lesson') {
+      const lesson = Object.fromEntries(['failure', 'success', 'feedback', 'verification', 'scope', 'anchors']
+        .map(name => [name, field({ scope: 'Scope keywords (one per line)', anchors: 'Source anchors (path:function, one per line)' }[name] ?? name, extra)]));
+      readExtra = () => ({ ...Object.fromEntries(['failure', 'success', 'feedback', 'verification'].map(name => [name, lesson[name].value])),
+        scope: lines(lesson.scope), anchors: lines(lesson.anchors).map(line => {
+          const split = line.lastIndexOf(':'); return { path: line.slice(0, split), name: line.slice(split + 1) };
+        }) });
+    }
+    if (['lesson', 'approved'].includes(action.value)) {
+      const box = el('input'); box.type = 'checkbox'; box.required = true;
+      extra.append(labelField('I reviewed this evidence and explicitly approve this action', box));
+      const previous = readExtra;
+      readExtra = () => ({ ...previous(), confirm: box.checked });
+    }
+  }
+  action.addEventListener('change', fieldsForAction);
+  fieldsForAction();
+  form.append(labelField('Action', action), labelField('Review summary', summary), extra, submit, message);
+  let previous;
+  form.addEventListener('submit', async event => {
+    event.preventDefault();
+    const draft = { captureId: capture.id, status: action.value, summary: summary.value, ...readExtra() };
+    const key = JSON.stringify(draft);
+    if (previous?.key !== key) previous = { key, actionId: crypto.randomUUID() };
+    submit.disabled = true;
+    try {
+      const response = await fetch('/api/review?issue=' + issue, { method: 'POST',
+        headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...draft, actionId: previous.actionId }) });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error);
+      await render(true);
+    } catch (error) { message.textContent = error.message; submit.disabled = false; }
+  });
+  return form;
+}
+
+async function viewReview(overview, params) {
+  if (!overview.remoteReview) return heading('Training review', 'Remote review is disabled.');
+  const issue = Number(params.get('issue'));
+  if (!issue) {
+    const pageNumber = Number(params.get('page') ?? 0);
+    const { issues, more, counts } = await api('review', { page: pageNumber });
+    return [...heading('Training review', 'Review published captures and their development history.'),
+      el('div', [metric('Captures', counts.captures), metric('Collected outcomes', counts.outcomes),
+        metric('Awaiting review', counts.awaiting), metric('Feedback', counts.feedback), metric('Reviewed outcomes', counts.reviewed),
+        metric('Approved', counts.approved), metric('Eligible', counts.eligible, counts.eligible + ' of ' + (overview.training?.required ?? 24))], 'metrics'),
+      el('ul', issues.map(number => el('li', anchor('Issue #' + number, '#review?issue=' + number, false)))),
+      el('p', [pageNumber > 0 && anchor('Previous page', '#review?page=' + (pageNumber - 1), false),
+        ' ', more && anchor('Next page', '#review?page=' + (pageNumber + 1), false)].filter(Boolean))];
+  }
+  const { captures, history, githubOutcome } = await api('review', { issue });
+  const outcome = githubOutcome;
+  const output = [...heading('Training review for issue #' + issue, 'GitHub content is shown as source evidence.'),
+    el('p', [anchor('Back to training review', '#review', false), ' - ', reviewLink('GitHub issue', repository + '/issues/' + issue),
+      outcome ? ' - ' : '', outcome ? reviewLink('Merged PR #' + outcome.pull, outcome.url) : '']),
+    ...(!captures.length ? [notice('No published capture for this issue.')] : [])];
+  if (outcome) {
+    output.push(disclosure('Automated verification and changed files',
+      el('ul', (outcome.checks ?? []).map(check => el('li', reviewLink(check.name + ' - ' + (check.conclusion ?? check.status), check.url)))),
+      el('ul', (outcome.files ?? []).map(file => el('li', file.path)))));
+    output.push(disclosure('Development feedback and edit history', ...(outcome.feedback ?? []).map(entry =>
+      disclosure(entry.kind + ' - ' + entry.versions.length + ' observed versions', ...entry.versions.map(version =>
+        el('section', [el('p', [reviewLink(version.author?.login ?? 'Unknown author', version.url),
+          ' - ' + (version.author?.type ?? 'Unknown account type') + ' - ' + fmtTime(version.updatedAt ?? version.createdAt ?? version.observedAt)]),
+          el('pre', version.body)]))))));
+  }
+  for (const capture of captures) {
+    const audit = history.filter(row => row.captureId === capture.id);
+    output.push(el('section', [el('h2', 'Capture from ' + fmtTime(capture.recorded)),
+      el('p', [reviewLink('Published GPU brief', capture.published), ' - Source revision ' + short(capture.revision)]),
+      el('p', 'Decision ' + capture.decision + ' - ' + (capture.eligible ? 'Eligible' : 'Not eligible')),
+      ...capture.reasons.map(reason => muted(reason)), disclosure('Original player request', el('pre', capture.report)),
+      disclosure('GPU-generated brief', el('pre', capture.brief)),
+      disclosure('Retrieved source evidence', ...capture.evidence.map(item =>
+        el('section', [el('h3', [item.id, item.path, item.line, item.title].filter(Boolean).join(' - ')), el('pre', item.excerpt)]))),
+      disclosure('Human verification and audit history', ...audit.map(row =>
+        el('p', [row.status, row.category, row.reviewer, fmtTime(row.at), row.verification, row.summary].filter(Boolean).join(' - ')))),
+      ...(overview.mayWrite ? [reviewForm(issue, capture, history)] : [muted('Your account has read-only access to training review.')])], 'review-detail'));
+  }
+  return output;
+}
+
 function route() {
   const [view, query] = location.hash.slice(1).split('?', 2);
-  return { view: ['knowledge', 'issues', 'retrieval', 'learning'].includes(view) ? view : 'overview', params: new URLSearchParams(query) };
+  return { view: ['knowledge', 'issues', 'retrieval', 'learning', 'review'].includes(view) ? view : 'overview', params: new URLSearchParams(query) };
 }
 
 async function render(force = false) {
@@ -421,7 +573,8 @@ async function render(force = false) {
     lastOverview = overview;
     document.querySelector('#role').textContent = overview.role === 'reviewer' ? 'Reviewer access' : 'Viewer access';
     for (const link of nav) {
-      link.hidden = reviewerViews.has(link.dataset.page) && overview.role !== 'reviewer';
+      link.hidden = (reviewerViews.has(link.dataset.page) && overview.role !== 'reviewer') ||
+        (link.dataset.page === 'review' && !overview.remoteReview);
       if (link.dataset.page === view) link.setAttribute('aria-current', 'page');
       else link.removeAttribute('aria-current');
     }
@@ -431,6 +584,7 @@ async function render(force = false) {
       : view === 'issues' ? await viewIssues()
       : view === 'retrieval' ? await viewRetrieval(overview, params)
       : view === 'learning' ? await viewLearning(overview)
+      : view === 'review' ? await viewReview(overview, params)
       : await viewOverview(overview);
     if (id !== serial) return;
     page.replaceChildren(...content);

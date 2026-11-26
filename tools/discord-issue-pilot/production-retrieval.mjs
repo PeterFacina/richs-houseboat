@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { buildCodeIndex } from './multistage/code-index.mjs';
 import { collectGameEvidence } from './multistage/game-route-evidence.mjs';
-import { lessonStatus, relevantLesson } from './learning/lessons.mjs';
+import { inboxLessons, lessonStatus, relevantLesson } from './learning/lessons.mjs';
 import { trainingPath } from './training-inbox.mjs';
 
 export const originalRetrieval = 'original';
@@ -54,7 +54,10 @@ export function deterministicRetriever(knowledge, { lessons = defaultLessons, re
       const local = JSON.parse(readFileSync(reviewed, 'utf8'));
       approved = lessonStatus({ lessons: (local.lessons ?? []).filter(item => item.review?.by && item.review?.at) }, index);
     } catch (error) { if (error.code !== 'ENOENT') throw error; }
-    const lesson = relevantLesson([...approved, ...cached.lessons], note, [], new Set(['issue/' + issue]));
+    const remote = inboxLessons(join(dirname(reviewed), 'examples.sqlite'));
+    const remoteIssues = new Set(remote.map(item => item.report.number));
+    const lesson = relevantLesson([...lessonStatus({ lessons: remote }, index),
+      ...[...approved, ...cached.lessons].filter(({ item }) => !remoteIssues.has(item.report.number))], note, [], new Set(['issue/' + issue]));
     const item = lesson && verifiedEvidence(lesson);
     if (item) {
       index.verify(lesson.anchors);
