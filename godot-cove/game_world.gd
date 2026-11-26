@@ -300,6 +300,7 @@ func _ready() -> void:
 	add_child(shannon_job)
 	shannon_job.setup(self, mower, public_works.to_global(Vector3(PublicWorks.SHANNON.x, public_works.office_floor, PublicWorks.SHANNON.y)),
 		PublicWorks.HEADING, public_works.monitor_focus)
+	campaign.story.setup_transport()
 	safety.setup(self)
 	hud.add_child(pause_menu)
 	pause_menu.setup(self)
@@ -346,7 +347,7 @@ func save_trip() -> String:
 	if campaign.crew.is_guest():
 		return ""
 	campaign.story.remember_local()
-	campaign.story.save_boat_pose()
+	campaign.story.save_vehicle_poses()
 	campaign.ledger.save_file()
 	return campaign.ledger.error
 
@@ -752,6 +753,7 @@ func _physics_process(delta: float) -> void:
 	render_fishing(delta, lift)
 	campaign.tick(delta, has_input)
 	marina_cars.hide_drivers()
+	campaign.story.tick_transport(delta, has_input and not cabin.busy())
 	shannon_job.tick(delta, play_input() and can_talk_to_shannon())
 	update_tennis(delta, has_input and get_window().has_focus())
 	update_hud()
@@ -2083,6 +2085,8 @@ func update_hud() -> void:
 		var car: MarinaCars.RoadCar = marina_cars.cars[marina_cars.active]
 		var reverse := "   ·   REVERSE" if car.speed < -.08 else ""
 		objective.text = "%s   ·   %d km/h%s" % [car.details.label, roundi(absf(car.speed) * 3.6), reverse]
+		if marina_cars.active == marina_cars.ENVOY and campaign.story.road_destination().is_finite():
+			objective.text += "\nGPS  ·  " + ("Pier Road boat yard" if campaign.story.flag("pontoon_pickup") else "Cal’s Marine Repair")
 		instruction.text = "W  Accelerate    S  Brake / reverse    A/D  Steer    Space  Handbrake"
 		if Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
 			instruction.text = "Click to resume driving"
@@ -2154,9 +2158,12 @@ func update_hud() -> void:
 			and not campaign.controls_blocked() and campaign.preview_id.is_empty():
 		var which := marina_cars.focused
 		var car_label: String = marina_cars.cars[which].details.label
-		if which == 0 and campaign.story.state().loans.has("transport"):
+		if which == marina_cars.ENVOY:
 			car_label += " · Property of Big Rich"
-		instruction.text = "E  Drive " + car_label if marina_cars.drivers[which] == 0 else car_label + "  ·  In use"
+		if not marina_cars.can_drive(which):
+			instruction.text = car_label + "  ·  Ask Big Rich about New Legs"
+		else:
+			instruction.text = "E  Drive " + car_label if marina_cars.drivers[which] == 0 else car_label + "  ·  In use"
 	if play_input():
 		if flying:
 			instruction.text = "WASD  Fly   ·   Space  Up   ·   Ctrl/Shift  Down   ·   F2  Cheats"

@@ -12,6 +12,8 @@ const FINISHES := {
 
 var driver_eye: Vector3
 var steering_wheel: Node3D
+var rear_bench: Node3D
+var envoy := false
 var speed_needle: Node3D
 var seat: Material
 var insert: Material
@@ -31,6 +33,7 @@ func build(spec: Dictionary) -> void:
 	var belt := float(spec.belt)
 	var roof: Array = spec.roof
 	var style: String = spec.style
+	envoy = spec.get("envoy", false)
 	var colors: Array = FINISHES[style]
 	seat = Kit.paint(Color(colors[0]), .88)
 	insert = Kit.paint(Color(colors[1]), .84)
@@ -65,11 +68,16 @@ func build(spec: Dictionary) -> void:
 		for side in [-1.0, 1.0]:
 			build_seat(float(side) * x, lerpf(seat_z, rear, .47), belt - .25, size.y - .247, .356, style)
 	var bench_z := rear - (.27 if style == "wagon" else .37)
-	oval(self, Vector3(0, belt - .268, bench_z - .09), Vector3(size.x * .74, .15, .49), seat)
-	var bench_back := oval(self, Vector3(0, belt - .06, bench_z + .105), Vector3(size.x * .74, .452, .21), insert)
+	var bench_parent: Node3D = self
+	if envoy:
+		rear_bench = Node3D.new()
+		add_child(rear_bench)
+		bench_parent = rear_bench
+	oval(bench_parent, Vector3(0, belt - .268, bench_z - .09), Vector3(size.x * .74, .15, .49), seat)
+	var bench_back := oval(bench_parent, Vector3(0, belt - .06, bench_z + .105), Vector3(size.x * .74, .452, .21), insert)
 	bench_back.rotation.x = -.17
 	for side in [-1.0, 1.0]:
-		oval(self, Vector3(float(side) * x, belt + .124, bench_z + .135),
+		oval(bench_parent, Vector3(float(side) * x, belt + .124, bench_z + .135),
 			Vector3(.195, .176, .137), seat)
 	build_dash(size, x, belt, dash_z, style)
 	var header_z := float(roof[1]) * size.z * .5 - .035
@@ -174,7 +182,10 @@ func build_steering(at: Vector3, style: String) -> void:
 	for point: Vector3 in [Vector3(-.155, .021, 0), Vector3(.155, .021, 0), Vector3(0, -.164, 0)]:
 		Kit.beam(steering_wheel, Vector3.ZERO, point, .040, fascia if style in ["suv", "coupe"] else dash)
 	oval(steering_wheel, Vector3(0, .009, .011), Vector3(.155, .109, .071), dash)
-	Badges.stamp(steering_wheel, style, Vector3(0, .017, .048), .046)
+	if envoy:
+		Badges.lettering(steering_wheel, "GMC", Vector3(0, .017, .051), .025, Color("#ce4c42"))
+	else:
+		Badges.stamp(steering_wheel, style, Vector3(0, .017, .048), .046)
 
 
 func pose(steer: float, speed: float) -> void:

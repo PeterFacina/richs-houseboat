@@ -8,6 +8,7 @@ const Map = preload("res://deep_river_map.gd")
 const LOT := Vector3(18022.6, 0, 12636.8)
 const LOT_ANGLE := .16
 const BAY_WIDTH := 2.78
+const ENVOY := 5
 const BAY_COUNT := 6
 
 var game: Node3D
@@ -35,11 +36,12 @@ func setup(game_world: Node3D, map: Map, river_crew: Node) -> void:
 	crew = river_crew
 	var sound := RoadCar.engine_sample()
 	build_bays()
-	for i in Model.MODELS.size():
+	for spec: Dictionary in Model.MODELS + [Model.ENVOY]:
+		var i := cars.size()
 		var car := RoadCar.new()
 		car.name = "Car%d" % i
 		add_child(car)
-		car.setup(Model.MODELS[i], bay(i * BAY_WIDTH, 0), LOT_ANGLE, river.driving_height, sound)
+		car.setup(spec, bay(i * BAY_WIDTH, 0), LOT_ANGLE, river.driving_height, sound)
 		cars.append(car)
 		drivers.append(0)
 	crew.changed.connect(crew_changed)
@@ -104,7 +106,9 @@ func interact() -> bool:
 	find_focus()
 	if focused < 0:
 		return false
-	if drivers[focused] > 0:
+	if not can_drive(focused):
+		game.notify_angling("Ask Big Rich about borrowing the Envoy during New Legs.", 2.3)
+	elif drivers[focused] > 0:
 		game.notify_angling("Someone is driving this car.", 2.3)
 	elif crew.is_guest():
 		seat_order.rpc_id(1, focused, "enter")
@@ -122,8 +126,12 @@ func toggle_lights() -> void:
 		cars[active].lamps_on = not cars[active].lamps_on
 
 
+func can_drive(which: int) -> bool:
+	return which != ENVOY or game.campaign.story.transport_loaned()
+
+
 func assign_driver(peer: int, which: int) -> void:
-	if drivers[which] != 0 or drivers.has(peer):
+	if not can_drive(which) or drivers[which] != 0 or drivers.has(peer):
 		return
 	drivers[which] = peer
 	if peer == crew.my_id():
@@ -413,24 +421,30 @@ func request_rescue() -> void:
 		rescue_driver(crew.my_id(), active)
 
 
-func recover_restoration_wagon() -> bool:
-	if crew.is_guest() or drivers[0] != 0:
+func recover_envoy() -> bool:
+	return park_envoy(bay(ENVOY * BAY_WIDTH, 0), LOT_ANGLE)
+
+
+func park_envoy(parking: Vector3, heading: float) -> bool:
+	if crew.is_guest() or drivers[ENVOY] != 0:
 		return false
-	var car := cars[0]
-	var parking := bay(0.0, 0.0)
-	var wheels := car.footprint(parking, LOT_ANGLE)
+	var car := cars[ENVOY]
+	var wheels := car.footprint(parking, heading)
+	for height: float in wheels:
+		if height < -.05:
+			return false
 	parking.y = car.mean_height(wheels)
 	var clearance := PhysicsShapeQueryParameters3D.new()
 	var volume := BoxShape3D.new()
 	volume.size = car.body_size + Vector3(.18, .04, .14)
 	clearance.shape = volume
-	clearance.transform = Transform3D(car.ground_basis(LOT_ANGLE, wheels), parking + Vector3.UP * (volume.size.y * .5 + .16))
+	clearance.transform = Transform3D(car.ground_basis(heading, wheels), parking + Vector3.UP * (volume.size.y * .5 + .16))
 	clearance.exclude = [car.get_rid()]
 	clearance.collision_mask = 1
 	if not get_world_3d().direct_space_state.intersect_shape(clearance, 1).is_empty():
 		return false
-	car.heading = LOT_ANGLE
-	car.global_transform = Transform3D(car.ground_basis(LOT_ANGLE, wheels), parking)
+	car.heading = heading
+	car.global_transform = Transform3D(car.ground_basis(heading, wheels), parking)
 	car.speed = 0.0
 	car.steer = 0.0
 	car.reset_physics_interpolation()

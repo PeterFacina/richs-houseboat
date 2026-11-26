@@ -11,6 +11,8 @@ const OFF_ROUTE_DISTANCE := 7.0
 var roads := AStar2D.new()
 var buckets: Dictionary = {}
 var river: Node3D
+var extra_roads: Array = []
+var surface_height: Callable
 var paint := ShaderMaterial.new()
 var points := PackedVector2Array()
 var distances := PackedFloat32Array()
@@ -23,6 +25,7 @@ var chevron_profile := PackedVector2Array()
 
 func setup(map: Node3D) -> void:
 	river = map
+	surface_height = river.ground_height
 	chevron_profile = rounded_chevron()
 	cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	paint.shader = PAINT
@@ -32,6 +35,8 @@ func setup(map: Node3D) -> void:
 
 func build_road_graph(works: Node3D) -> void:
 	for line: Array in river.meta.streets:
+		add_road(line)
+	for line: Array in extra_roads:
 		add_road(line)
 	add_road(Works.CEDAR_ROAD)
 	add_road(Works.YARD_DRIVE)
@@ -184,4 +189,4 @@ func add_chevron(surface: SurfaceTool, tip: Vector2, axis: Vector2, at: float) -
 	for vertex in chevron_profile:
 		var point := tip + side * vertex.x + axis * vertex.y
 		surface.set_uv(Vector2(at, 0.0))
-		surface.add_vertex(Vector3(point.x, river.ground_height(point.x, point.y) + .19, point.y))
+		surface.add_vertex(Vector3(point.x, surface_height.call(point.x, point.y) + .19, point.y))

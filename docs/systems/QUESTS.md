@@ -9,7 +9,7 @@
 | Quest | Objective | Persistent ID |
 | --- | --- | --- |
 | Gone Fishing | Borrow Rich's Princecraft and rod, land three fish and return the tied boat | `story_fish` |
-| New Legs | Borrow the Mazda5, collect and install the pontoons, then return the car | `story_parts` |
+| New Legs | Borrow the GMC Envoy, follow the road arrows to Cal’s workshop toward Mackey, then deliver and install the pontoons and return the loan | `story_parts` |
 | Safety Third | Borrow the welder, repair both railings and return the tool | `story_repair` |
 | Dead in the Water | Collect the starter kit and plugs, repair and test the outboard, then return the wrench | `story_engine` |
 | Let There Be Light | Repair the wiring, battery and lights, then return the wire strippers | `story_electrical` |
@@ -18,6 +18,10 @@
 | Rich's Retirement Plan | Sign over the houseboat | `story_retire` |
 
 [`game_campaign.gd`](../../godot-cove/game_campaign.gd) routes requests to the host and broadcasts state. Rich's turn-in logic updates restoration, ownership and rewards. [`game_ledger.gd`](../../godot-cove/game_ledger.gd) persists the campaign state, including Rich's quest progress. Player-specific awards use the shared [progression framework](PROGRESSION-ECONOMY.md).
+
+During New Legs, borrow the Envoy at Big Rich’s workbench, then find it in the sixth marina parking bay. The Envoy uses the road guide already used by mowing jobs. The arrows lead west to [Cal’s workshop](../../godot-cove/pontoon_workshop.gd) and guide the loaded SUV back to the Pier Road yard. Park and step out to talk to Cal or unload at the drop-off. If the Envoy is missing, the workbench can recover it to the marina while it is unoccupied.
+
+The existing `story_parts` objectives and loan flags drive the workshop rack, hatch and strapped cargo on each peer. A saved game with pontoons already collected resumes at delivery. Parked Envoy position is saved during the loan, and the host still validates pickup, delivery and turn-in.
 
 ## Additional characters
 
