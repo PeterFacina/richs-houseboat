@@ -89,7 +89,12 @@ var sun_direction: Vector3
 var landscape_light: DirectionalLight3D
 var landscape_environment: Environment
 var sky_paint: ShaderMaterial
-var last_evening := -1.0
+const DayCycle = preload("res://river_day_cycle.gd")
+var last_evening := 0.0
+var last_solar_minute := -1.0
+var sky_fog_density := .00010
+var solar_energy := .82
+var moon_light: DirectionalLight3D
 var fog_scale := 1.0
 var marina_patch: TerrainPatch
 var lamure_patch: TerrainPatch
@@ -153,6 +158,7 @@ func build() -> void:
 	var world: WorldEnvironment = get_child(0)
 	sky_paint = ShaderMaterial.new()
 	sky_paint.shader = preload("res://river_sky.gdshader")
+	sky_paint.set_shader_parameter("use_day_cycle", true)
 	day_sky = scanned_surface("day_sky")
 	bind_day_sky(sky_paint)
 	world.environment.sky.sky_material = sky_paint
@@ -170,7 +176,18 @@ func build() -> void:
 	sun.light_energy = .82
 	sun.rotation_degrees = Vector3(-48.0, -42.0, 0)
 	sun.directional_shadow_max_distance = 230
+	sun.sky_mode = DirectionalLight3D.SKY_MODE_LIGHT_ONLY
 	sun_direction = sun.global_basis.z
+	moon_light = DirectionalLight3D.new()
+	moon_light.name = "Moonlight"
+	moon_light.sky_mode = DirectionalLight3D.SKY_MODE_LIGHT_ONLY
+	moon_light.light_color = Color("#b4c9ff")
+	moon_light.light_energy = 0.0
+	moon_light.shadow_enabled = true
+	moon_light.directional_shadow_max_distance = 80.0
+	add_child(moon_light)
+	world.environment.sky.process_mode = Sky.PROCESS_MODE_REALTIME
+	world.environment.sky.radiance_size = Sky.RADIANCE_SIZE_32
 	var ground := ShaderMaterial.new()
 	ground.shader = preload("res://ground.gdshader")
 	var gravel := Image.load_from_file(BASE + "riverbed_cobbles.png")
@@ -632,25 +649,42 @@ func set_wake(stern: Vector3, behind: Vector3, speed: float, thrust: float, prop
 	near_water.set_shader_parameter("prop_heading", Vector2(prop_heading.x, prop_heading.z))
 
 
-func set_evening(amount: float) -> void:
-	if is_equal_approx(amount, last_evening):
+func update_day_cycle(work_minutes: float) -> void:
+	var minute := snappedf(work_minutes, DayCycle.UPDATE_MINUTES)
+	if minute == last_solar_minute:
 		return
-	last_evening = amount
-	landscape_light.rotation_degrees = Vector3(lerpf(-48.0, -7.5, amount), lerpf(-42.0, -34.0, amount), 0)
-	landscape_light.light_color = Color("#fff6ed").lerp(Color("#ffbe87"), amount)
-	landscape_light.light_energy = lerpf(.82, .52, amount)
-	landscape_environment.ambient_light_color = Color("#d1dce0").lerp(Color("#a6b3d0"), amount)
-	landscape_environment.ambient_light_energy = lerpf(.29, .36, amount)
-	landscape_environment.fog_light_color = Color("#b7bdb4").lerp(Color("#8190a4"), amount)
-	landscape_environment.fog_density = lerpf(.00010, .00038, amount) * fog_scale
-	sun_direction = landscape_light.global_basis.z
-	sky_paint.set_shader_parameter("evening", amount)
-	windows.set_shader_parameter("evening", amount)
-	town_hall.set_evening(amount)
-	esso_plaza.glazing.set_shader_parameter("evening", amount)
-	for material: ShaderMaterial in [near_water, far_water, headpond_water]:
-		material.set_shader_parameter("evening", amount)
+	last_solar_minute = minute
+	var light := DayCycle.sample(minute)
+	sun_direction = light.sun
+	solar_energy = light.sun_energy
+	last_evening = light.lights
+	landscape_light.basis = Basis.looking_at(-sun_direction)
+	landscape_light.light_color = light.direct
+	landscape_light.light_energy = solar_energy
+	landscape_light.visible = solar_energy > 0.0
+	moon_light.basis = Basis.looking_at(sun_direction)
+	moon_light.light_energy = light.moon_energy
+	moon_light.visible = light.moon_energy > 0.0
+	landscape_environment.ambient_light_color = light.ambient
+	landscape_environment.ambient_light_energy = light.ambient_energy
+	landscape_environment.fog_light_color = light.fog
+	sky_fog_density = light.fog_density
+	landscape_environment.fog_density = sky_fog_density * fog_scale
+	landscape_environment.tonemap_exposure = light.exposure
+	windows.set_shader_parameter("evening", last_evening)
+	town_hall.set_evening(last_evening)
+	esso_plaza.glazing.set_shader_parameter("evening", last_evening)
+	for material: ShaderMaterial in [sky_paint, near_water, far_water, headpond_water, windows,
+			town_hall.glass, town_hall.glass_alt, esso_plaza.glazing]:
 		material.set_shader_parameter("sun_direction", sun_direction)
+		material.set_shader_parameter("sky_zenith", light.zenith)
+		material.set_shader_parameter("sky_horizon", light.horizon)
+		material.set_shader_parameter("sky_glow", light.glow)
+		material.set_shader_parameter("sun_color", light.direct)
+		material.set_shader_parameter("sun_strength", solar_energy)
+		material.set_shader_parameter("moon_strength", light.moon_energy)
+		material.set_shader_parameter("night_weight", light.night)
+		material.set_shader_parameter("photo_weight", light.photo)
 
 
 func set_bow_light(at: Vector3, direction: Vector3, strength: float) -> void:

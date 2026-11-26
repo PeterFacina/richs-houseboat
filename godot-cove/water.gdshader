@@ -28,7 +28,6 @@ uniform float outfall_width = 0.0;
 uniform vec4 hooked_fish = vec4(0.0);
 uniform vec4 surface_slick = vec4(0.0);
 uniform vec2 fish_heading = vec2(1.0, 0.0);
-uniform vec3 sun_direction = vec3(-0.588, 0.304, -0.761);
 uniform vec2 map_size = vec2(1.0);
 uniform vec2 center = vec2(0.0);
 uniform vec4 boat_wake = vec4(0.0);
@@ -36,7 +35,6 @@ uniform vec2 wake_heading = vec2(0.0, 1.0);
 uniform float wake_spread = .34;
 uniform float wake_peak_speed = 5.8;
 uniform vec2 prop_heading = vec2(0.0, 1.0);
-uniform float evening = 0.0;
 uniform vec4 bow_light = vec4(0.0);
 uniform vec3 bow_direction = vec3(0.0, -0.2, -1.0);
 varying vec3 world;
@@ -217,18 +215,20 @@ void fragment() {
 	float sky = pow(1.0 - max(dot(n, view), 0.0), 3.2);
 	vec3 blue = mix(vec3(0.025, 0.20, 0.245), vec3(0.12, 0.43, 0.39), shallow);
 	vec3 hue = mix(blue, vec3(0.44, 0.61, 0.66), sky * 0.81);
-	if (mapped && !headpond && !in_tailrace) {
+	if (mapped && !in_tailrace) {
 		float wind = .64 + .36 * sin(dot(flow, vec2(.24, .073)) - clock * .39);
 		vec2 breeze = vec2(sin(dot(flow, vec2(10.4, -5.7)) - clock * 5.4 + warp * 1.45),
 			cos(dot(flow, vec2(7.5, 8.9)) - clock * 6.8 - warp * 1.53));
 		breeze *= .023 * wind * (1.0 - smoothstep(.05, .24, footprint));
 		vec3 capillary = normalize(n + vec3(breeze.x, 0.0, breeze.y));
 		vec3 mirror = reflect(-view, capillary);
-		vec3 reflection = river_sky(mirror, 0.37, evening) * vec3(0.87, 0.96, 0.97);
-		reflection = local_reflection(flow, mirror, reflection);
+		vec3 reflection = timed_river_sky(mirror, .37) * vec3(0.87, 0.96, 0.97);
+		if (!headpond) {
+			reflection = local_reflection(flow, mirror, reflection);
+		}
 		float fresnel = 0.037 + pow(1.0 - max(dot(capillary, view), 0.0), 4.25) * 0.79;
 		vec3 basin = mix(vec3(0.047, 0.138, 0.148), vec3(0.157, 0.255, 0.201), shallow);
-		if (bed_depth < 7.0) {
+		if (bed_depth < 7.0 && !headpond) {
 			vec3 underwater = refract(-view, capillary, .75);
 			float path = bed_depth / max(.37, -underwater.y);
 			vec2 floor_uv = flow + underwater.xz * path;
@@ -253,7 +253,8 @@ void fragment() {
 		}
 		hue = mix(basin, reflection, fresnel);
 	}
-	float glitter = pow(max(dot(reflect(-sun_direction, n), view), 0.0), 72.0);
+	float sun_glint = pow(max(dot(reflect(-sun_direction, n), view), 0.0), 72.0);
+	float moon_glint = pow(max(dot(reflect(sun_direction, n), view), 0.0), 89.0);
 	float crest_breaks = ripple.x + 0.35 * sin(dot(flow, vec2(0.83, -1.58)) + clock * 1.7);
 	float flecks = smoothstep(0.14, 0.22, wave_height) * smoothstep(0.63, 1.33, crest_breaks);
 	float foam = (1.0 - smoothstep(0.011, 0.045, abs(shore - 0.92 + sin(clock + world.z * 0.27) * 0.008)))
@@ -261,7 +262,7 @@ void fragment() {
 	if (mapped) {
 		foam = mapped_bank * smoothstep(0.05, 0.85, ripple.x * 0.55 + ripple.y * 0.45);
 	}
-	ALBEDO = hue + vec3(0.30, 0.24, 0.12) * glitter
+	ALBEDO = hue
 		+ vec3(0.49, 0.60, 0.56) * max(flecks * 0.26, foam * 0.52);
 	ALBEDO = mix(ALBEDO, vec3(.74, .849, .806), min(.74, stern_foam));
 	if (surface_slick.w > 0.0 && !distant && !headpond) {
@@ -317,8 +318,9 @@ void fragment() {
 			ALBEDO = mix(ALBEDO, vec3(0.90, 0.96, 0.935), min(0.94, whitewash));
 		}
 	}
-	ALBEDO *= mix(vec3(1.0), vec3(.64, .76, .89), evening);
-	ALBEDO += vec3(.19, .088, .033) * glitter * evening;
+	ALBEDO *= mix(vec3(.16, .20, .31), vec3(1.0), smoothstep(0.0, .62, sun_strength));
+	ALBEDO += sun_color.rgb * sun_glint * sun_strength * .35;
+	ALBEDO += vec3(.58, .71, 1.0) * moon_glint * moon_strength * .85;
 	if (bow_light.w > 0.0 && !distant && !headpond) {
 		vec3 span = world - bow_light.xyz;
 		float distance_to_lamp = length(span);

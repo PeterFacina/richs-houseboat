@@ -154,6 +154,13 @@ var target_index := -1
 var rod_pressed := false
 var interact_pressed := false
 var tennis: TennisMatch
+const DabPen = preload("res://dab_pen.gd")
+const Flashlight = preload("res://player_flashlight.gd")
+var flashlight := Flashlight.new()
+var flashlight_on := false
+var dab_pen := DabPen.new()
+var pen_drop_pressed := false
+var pen_use_pressed := false
 var tennis_previous_gear := Backpack.NONE
 var ignition_hold := -1.0
 var ignition_prompt: Label
@@ -242,6 +249,8 @@ func _ready() -> void:
 	cabin = Cabin.new()
 	add_child(cabin)
 	cabin.setup(vessel as Boat, player, eye, river, effects, rig, hud)
+	eye.add_child(flashlight)
+	flashlight.position = Vector3(.11, -.08, -.15)
 	cabin.occupied.connect(release_line)
 	cabin.went_under.connect(pass_out)
 	cabin.spill_overboard.connect(register_slick)
@@ -263,6 +272,8 @@ func _ready() -> void:
 	tennis.reset_player.connect(tennis_reset_player)
 	tennis.ended.connect(func() -> void: equip_gear(tennis_previous_gear))
 	campaign.setup(self, new_trip)
+	add_child(dab_pen)
+	dab_pen.setup(self)
 	add_child(properties)
 	properties.setup(self)
 	for site: Node3D in river.property_sites:
@@ -606,6 +617,14 @@ func _unhandled_input(event: InputEvent) -> void:
 				if driving and play_input():
 					vessel.neutral_throttle()
 					return
+			KEY_T:
+				if play_input() and hands_available():
+					flashlight_on = not flashlight_on
+				return
+			KEY_Q:
+				if backpack.equipped == Backpack.PEN and play_input():
+					pen_drop_pressed = true
+					return
 			KEY_E:
 				interact_pressed = Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and not chart.visible
 				return
@@ -613,6 +632,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if event is InputEventMouseButton and event.pressed and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 		if event.button_index == MOUSE_BUTTON_LEFT and campaign.marina_fuel.is_local_holder():
+			return
+		if event.button_index == MOUSE_BUTTON_LEFT and backpack.equipped == Backpack.PEN:
+			pen_use_pressed = play_input()
 			return
 		if event.button_index == MOUSE_BUTTON_LEFT and fists_available():
 			rig.punch()
@@ -653,13 +675,26 @@ func _physics_process(delta: float) -> void:
 	var repairing: bool = campaign.story.update_repair(delta, has_input,
 		Input.is_physical_key_pressed(KEY_E) and not fuel_press)
 	var reserved_press := fuel_press or repairing or (interact_pressed and has_input and campaign.launch_interaction() != "")
-	var did_use := cabin.update(delta, clock, use_cabin, interact_pressed and not reserved_press,
+	var pen_available := has_input and hands_available() and fishing == Fishing.READY
+	dab_pen.update_focus(pen_available and not reserved_press)
+	var grabbed_pen := interact_pressed and dab_pen.focused
+	if grabbed_pen:
+		dab_pen.request("pickup")
+	cabin.pen_in_hand = pen_available and backpack.equipped == Backpack.PEN
+	if pen_drop_pressed and cabin.pen_in_hand:
+		dab_pen.request("drop")
+		cabin.pen_in_hand = backpack.equipped == Backpack.PEN
+	elif pen_use_pressed and cabin.pen_in_hand:
+		cabin.use_pen()
+	pen_drop_pressed = false
+	pen_use_pressed = false
+	var did_use := cabin.update(delta, clock, use_cabin, interact_pressed and not reserved_press and not grabbed_pen,
 		Input.is_physical_key_pressed(KEY_E) and not reserved_press)
 	var can_use_yard := interact_pressed and has_input and can_talk_to_shannon()
 	var office_leaf := public_works.office_handle(eye) if can_use_yard else -1
 	var bay := public_works.nearby_door(eye) if can_use_yard else null
 	public_works.advance(delta, player, mower, spare_mower)
-	if interact_pressed and has_input and not fuel_press and not did_use and not cabin.busy() and not tennis.active:
+	if interact_pressed and has_input and not fuel_press and not grabbed_pen and not did_use and not cabin.busy() and not tennis.active:
 		if can_challenge_rich():
 			tennis_previous_gear = backpack.equipped
 			release_line()
@@ -730,6 +765,8 @@ func _physics_process(delta: float) -> void:
 		if driving:
 			eye.position.y = vessel.helm_eye_height()
 	campaign.amenities.pin_local()
+	flashlight.visible = flashlight_on and not (driving or flying or swimming or in_aircraft() \
+		or marina_cars.active >= 0 or mower.rider != null or campaign.amenities.seated() or campaign.dive.active)
 	marina_cars.step(delta, axis(KEY_W, KEY_S), axis(KEY_D, KEY_A), Input.is_physical_key_pressed(KEY_SPACE),
 		has_input and not cabin.busy())
 	var viewpoint: Vector3 = vessel.center if aboard() else player.global_position
@@ -840,7 +877,7 @@ func close_backpack() -> void:
 
 
 func equip_gear(gear: int) -> void:
-	if gear == backpack.equipped:
+	if gear == backpack.equipped or (cabin.busy() and (gear == Backpack.PEN or backpack.equipped == Backpack.PEN)):
 		return
 	if not backpack.gear_available(gear):
 		notify_angling("Ask Big Rich about borrowing equipment.", 2.8)
@@ -1620,6 +1657,7 @@ func render_fishing(delta: float, lift: bool) -> void:
 func capture_crew_pose() -> Dictionary:
 	var data := campaign.crewplay.style()
 	data.cabin_high = cabin.high_until > cabin.clock
+	data.flashlight = flashlight.visible
 	data.roach_on_foot = can_talk_to_shannon() and not in_aircraft()
 	data.move = ground_motion if grounded_motion else player.velocity
 	data.sprint = sprint_blend if grounded_motion else 0.0
@@ -2124,6 +2162,8 @@ func update_hud() -> void:
 		chart.update_boat(vessel.center)
 	if Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
 		instruction.text = "Click to play  ·  Hold F1 for controls"
+	elif dab_pen.focused:
+		instruction.text = "E  Pick up the dab pen"
 	elif cabin.hands_in_use() or cabin.focus >= 0:
 		instruction.text = ""
 	elif driving:
@@ -2157,12 +2197,14 @@ func update_hud() -> void:
 		instruction.text = catch_note
 	elif rod_in_hand() and aboard() and absf(vessel.speed) > 1.3:
 		instruction.text = "Wait for the boat to slow before casting"
+	elif backpack.equipped == Backpack.PEN and cabin.pen_in_hand:
+		instruction.text = "Left click  Use dab pen  ·  Q  Drop"
 	elif near_wheel():
 		instruction.text = "E  Take the helm"
 	elif aboard() and not vessel.skiff and vessel.to_local(player.global_position).z > -.30:
 		instruction.text = "Aim at the fridge or a galley item and press E."
 	var action := campaign.action_hint()
-	if not action.is_empty() and fishing == Fishing.READY and clock >= note_until and not cabin.hands_in_use() \
+	if not action.is_empty() and fishing == Fishing.READY and clock >= note_until and not cabin.hands_in_use() and not dab_pen.focused \
 			and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and not campaign.dive.active:
 		instruction.text = action
 	if swimming and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:

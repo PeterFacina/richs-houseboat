@@ -10,7 +10,7 @@ void fragment() {
 	float fresnel = pow(1.0 - clamp(dot(NORMAL, VIEW), 0.0, 1.0), 3.0);
 	vec2 frame = min(UV, 1.0 - UV);
 	float inset = mix(.66, 1.0, smoothstep(0.0, .10, min(frame.x, frame.y)));
-	vec3 reflected = river_sky(ray, .38, evening);
+	vec3 reflected = timed_river_sky(ray, .38);
 	vec3 below_horizon = mix(vec3(.25, .30, .20), vec3(.15, .19, .24), evening);
 	reflected = mix(below_horizon, reflected, smoothstep(-.28, .15, ray.y));
 	ALBEDO = COLOR.rgb * .36 * inset;

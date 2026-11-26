@@ -15,7 +15,7 @@ void fragment() {
 	float air = smoothstep(skyline - .008, skyline + .015, ray.y);
 	vec3 trees = mix(vec3(.035, .060, .058), vec3(.092, .133, .117),
 		sky_grain(vec2(azimuth * 240., ray.y * 80.)));
-	vec3 reflected = mix(trees * (1. - .42 * evening), river_sky(ray, .75, evening), air);
+	vec3 reflected = mix(trees * (1. - .42 * evening), timed_river_sky(ray, .75), air);
 	float reflectance = mix(.48, .81, pow(1. - max(0., dot(NORMAL, VIEW)), 3.));
 	ALBEDO = (vec3(.038, .070, .103) + reflected * (reflectance * reflection_strength)) * tone;
 }

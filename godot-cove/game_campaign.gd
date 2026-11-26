@@ -24,6 +24,7 @@ const Amenities = preload("res://boat_amenities.gd")
 var game: Node3D
 const XP = preload("res://progression.gd")
 const ReaperQuest = preload("res://roach_reaper_quest.gd")
+const DayCycle = preload("res://river_day_cycle.gd")
 
 var ledger := Ledger.new()
 var landings := Landings.new()
@@ -903,7 +904,7 @@ func consume_power(delta: float) -> void:
 		var companion_use := 1.0 - Story.FUEL_SAVING if story.companion_aboard() else 1.0
 		state.fuel = maxf(0.0, state.fuel - delta * load * .040 * companion_use * (1.0 - skill_effect(captain, "fuel_conservation") / 100.0))
 		state.charge = minf(capacity(), state.charge + delta * load * .0035)
-	if vessel == houseboat and Story.Parts.upgrade_installed(story.state(), "solar") and game.river.last_evening < .5:
+	if vessel == houseboat and Story.Parts.upgrade_installed(story.state(), "solar") and game.river.solar_energy > .2:
 		state.charge = minf(capacity(), state.charge + delta * .0028)
 	if load > .2:
 		var motion := absf(vessel.wave_pose.y) + absf(vessel.wave_pose.z)
@@ -1060,8 +1061,14 @@ func changed(persist := true) -> void:
 	refresh_board()
 
 
+func profile_key(peer: int) -> String:
+	if peer == crew.my_id():
+		return crew.progression_secret.sha256_text()
+	return str(crew.progression_keys.get(peer, ""))
+
+
 func progression_for(peer: int) -> Dictionary:
-	var id: String = "self" if crew.is_guest() else (crew.progression_secret.sha256_text() if peer == crew.my_id() else str(crew.progression_keys.get(peer, "")))
+	var id := "self" if crew.is_guest() else profile_key(peer)
 	if id.is_empty():
 		return {}
 	if crew.is_guest():
@@ -1101,6 +1108,7 @@ func travel_progress(peer: int, kind: String, distance: float, maximum: float) -
 func snapshot_for(peer: int) -> Dictionary:
 	var snapshot := ledger.state.duplicate(false)
 	snapshot.erase("player_position")
+	snapshot.dab_pen = game.dab_pen.snapshot_for(peer)
 	var personal := progression_for(peer).duplicate(false)
 	personal.erase("events")
 	snapshot.progression = {"self": personal}
@@ -1185,6 +1193,9 @@ func perform(peer: int, action: String, value: Variant) -> void:
 		return
 	if action == Story.ACTION:
 		story.perform(peer, value, person)
+		return
+	if action == game.dab_pen.ACTION:
+		game.dab_pen.perform(peer, value, person)
 		return
 	if action == ReaperQuest.ID:
 		reaper.perform(peer, value)
@@ -1860,11 +1871,21 @@ func receive_helm(throttle: float, rudder: float, center_wheel := false) -> void
 	remote_age = 0.0
 
 
+func advance_to_minute(minute: float) -> void:
+	var current := float(ledger.state.work_minutes)
+	ledger.state.work_minutes = current + fposmod(minute - current, DayCycle.DAY_MINUTES)
+	game.river.update_day_cycle(ledger.state.work_minutes)
+	changed()
+	if crew.on_server():
+		send_ship()
+
+
 func ship_packet() -> Dictionary:
 	var boat: Boat = game.vessel
 	return {"center": boat.center, "pose": boat.global_transform, "speed": boat.speed, "heading": boat.heading,
 		"throttle": boat.throttle, "throttle_cap": boat.throttle_cap, "foil": boat.foil_lift, "clock": game.clock,
 		"revision": revision, "lift": lift_amount, "bilge": ledger.state.bilge,
+		"work_minutes": ledger.state.work_minutes,
 		"charge": ledger.state.charge, "fuel": ledger.state.fuel, "deck": crewplay.moving_parts(),
 		"wallet": ledger.wallet_cents(), "pumps": marina_fuel.packet(),
 		"rich": rich.patrol_packet(), "ignition": boat.ignition, "wheel": boat.wheel_angle,
@@ -1892,6 +1913,10 @@ func sync_guest(data: Dictionary, new_dock: int, new_captain: int, change: int) 
 	var was_aboard: bool = game.aboard()
 	var was_local := not first and old_dock >= 0 and local_site() == old_dock
 	var previous: Boat = game.vessel
+	if not first:
+		data.work_minutes = maxf(float(data.work_minutes), float(ledger.state.work_minutes))
+	if not data.has("dab_pen"):
+		data.dab_pen = {}
 	ledger.state = data
 	story.normalize()
 	select_craft(data.craft, maxi(new_dock, 0))
@@ -1917,6 +1942,7 @@ func sync_guest(data: Dictionary, new_dock: int, new_captain: int, change: int) 
 			game.vessel.clear_helm()
 		game.driving = false
 	guest_captain = captain
+	game.dab_pen.refresh()
 	changed(false)
 
 
