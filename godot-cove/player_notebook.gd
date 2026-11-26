@@ -8,6 +8,7 @@ signal tracker_changed
 const Style = preload("res://notebook_theme.gd")
 const Story = preload("res://rich_story.gd")
 const XP = preload("res://progression.gd")
+const ReaperQuest = preload("res://roach_reaper_quest.gd")
 enum Page { QUESTS, FISH, CHART, LOCALS, CATCH_LOG }
 const PAGE_NAMES := ["Quests", "Fish Index", "River Chart", "The Locals", "Catch Log"]
 const LOCALS := ["Big Rich", "Shannon", "Marina Attendant"]
@@ -18,6 +19,9 @@ var pages: Array[Control] = []
 var tabs: Array[Button] = []
 var quest_rows: Array[Button] = []
 var quest_selected := 0
+var side_row: Button
+var side_selected := false
+var side_status := ""
 var local_selected := 0
 var quest_heading: Label
 var quest_status: Label
@@ -115,10 +119,19 @@ func build_quests() -> void:
 		row.toggle_mode = true
 		row.alignment = HORIZONTAL_ALIGNMENT_LEFT
 		row.pressed.connect(func():
+			side_selected = false
 			quest_selected = index
 			refresh_quest_details())
 		left.add_child(row)
 		quest_rows.append(row)
+	side_row = Style.button(ReaperQuest.TITLE, 34)
+	side_row.toggle_mode = true
+	side_row.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	side_row.pressed.connect(func():
+		side_selected = true
+		refresh_quest_details())
+	left.add_child(side_row)
+	side_row.hide()
 	var tracker := CheckButton.new()
 	tracker.text = "Track current quest"
 	tracker.button_pressed = track_quest
@@ -208,10 +221,18 @@ func refresh(story: Story) -> void:
 func refresh_quest_details() -> void:
 	if current_story == null:
 		return
+	side_row.set_pressed_no_signal(side_selected)
+	for index in quest_rows.size():
+		quest_rows[index].set_pressed_no_signal(not side_selected and index == quest_selected)
+	if side_selected:
+		quest_heading.text = ReaperQuest.TITLE
+		quest_status.text = side_status
+		quest_description.text = ReaperQuest.INTRO
+		quest_objective.text = ReaperQuest.OBJECTIVE
+		quest_rewards.text = "Rare · %d XP" % XP.REWARDS[ReaperQuest.ID]
+		return
 	var stage := int(current_story.state().step)
 	var quest: Dictionary = Story.QUESTS[quest_selected]
-	for index in quest_rows.size():
-		quest_rows[index].set_pressed_no_signal(index == quest_selected)
 	quest_heading.text = quest.title
 	quest_status.text = "Completed" if quest_selected < stage else (current_story.progress_text() if quest_selected == stage else "Locked")
 	quest_description.text = Story.RETIREMENT if current_story.owns_houseboat() and quest_selected == Story.QUESTS.size() - 1 else quest.text
@@ -221,6 +242,16 @@ func refresh_quest_details() -> void:
 		quest_rewards.text += "\nBig Rich’s Old Fishing Rod"
 	elif quest.id == "story_retire":
 		quest_rewards.text += "\nHouseboat ownership, companion and optional upgrades"
+
+
+func set_side_quest(quest: Dictionary, text: String) -> void:
+	side_row.visible = not quest.is_empty()
+	side_status = text
+	if side_selected and quest.is_empty():
+		side_selected = false
+		refresh_quest_details()
+	elif side_selected:
+		quest_status.text = side_status
 
 
 func refresh_locals() -> void:
