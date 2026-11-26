@@ -3,6 +3,7 @@ extends RefCounted
 const Roads = preload("res://deep_river_roads.gd")
 const Traffic = preload("res://deep_river_traffic_controls.gd")
 const CELL := 12.0
+const BLOCK_RECHECK := 8.0
 
 var graph := AStar3D.new()
 var points := PackedVector3Array()
@@ -12,6 +13,8 @@ var components := PackedInt32Array()
 var districts: Array[PackedInt32Array] = []
 var query := PhysicsShapeQueryParameters3D.new()
 var crossing_count := 0
+var blocked_edges: Dictionary[Vector2i, float] = {}
+var block_clock := 0.0
 
 
 func build(edges: PackedVector3Array, waterfront: PackedVector3Array) -> void:
@@ -178,11 +181,26 @@ func clear(space: PhysicsDirectSpaceState3D, from: Vector3, to: Vector3, height 
 	return travel[0] >= 1.0 and space.intersect_shape(query, 1).is_empty()
 
 
-func path(from: int, to: int, avoid: Vector2i) -> PackedInt64Array:
-	var blocked := avoid.x >= 0 and graph.are_points_connected(avoid.x, avoid.y)
-	if blocked:
-		graph.disconnect_points(avoid.x, avoid.y)
-	var result := graph.get_id_path(from, to)
-	if blocked:
-		graph.connect_points(avoid.x, avoid.y)
-	return result
+func block_link(a: int, b: int) -> void:
+	if graph.are_points_connected(a, b):
+		graph.disconnect_points(a, b)
+		blocked_edges[Vector2i(mini(a, b), maxi(a, b))] = block_clock + BLOCK_RECHECK
+
+
+func recheck_blocked_links(delta: float, space: PhysicsDirectSpaceState3D) -> void:
+	block_clock += delta
+	# Probe at most one due link per physics tick.
+	var due := Vector2i(-1, -1)
+	for edge in blocked_edges:
+		if block_clock >= blocked_edges[edge]:
+			due = edge
+			break
+	if due.x < 0:
+		return
+	var a := points[due.x]
+	var b := points[due.y]
+	if clear(space, a, b) and clear(space, b, a):
+		graph.connect_points(due.x, due.y)
+		blocked_edges.erase(due)
+	else:
+		blocked_edges[due] = block_clock + BLOCK_RECHECK

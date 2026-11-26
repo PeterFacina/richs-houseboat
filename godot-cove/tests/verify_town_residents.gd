@@ -131,6 +131,7 @@ func run() -> void:
 	for i in residents.residents.size():
 		same_homes = same_homes and repeat.residents[i].home.get("id") == residents.residents[i].home.get("id")
 	check(same_homes, "rebuilding the district assigns the same homes")
+	verify_full_day(repeat, camera)
 	repeat.queue_free()
 	camera.global_position = start_at
 	check(is_instance_valid(game.campaign.rich) and is_instance_valid(game.shannon_job), "existing characters initialize")
@@ -142,13 +143,16 @@ func run() -> void:
 func verify_recovery(residents: Residents, camera: Camera3D, game: Node3D) -> void:
 	var resident := residents.residents[0]
 	var graph := residents.routes
+	var space := game.get_world_3d().direct_space_state
 	var start := -1
 	var blocked := -1
 	var opposite := -1
 	for id in graph.districts[graph.components[resident.home_node]]:
 		var usable := PackedInt32Array()
 		for linked in graph.graph.get_point_connections(id):
-			if graph.points[id].distance_to(graph.points[linked]) >= .60:
+			var from := graph.points[id]
+			var to := graph.points[linked]
+			if from.distance_to(to) >= .60 and graph.clear(space, from, to) and graph.clear(space, to, from):
 				usable.append(linked)
 		if usable.size() >= 2 and graph.points[usable[0]].distance_to(graph.points[usable[1]]) >= 1.0:
 			start = id
@@ -169,7 +173,6 @@ func verify_recovery(residents: Residents, camera: Camera3D, game: Node3D) -> vo
 	game.add_child(blocker)
 	await physics_frame
 	await physics_frame
-	var space := game.get_world_3d().direct_space_state
 	var empty: Array[Dictionary] = []
 	var observed_hold := false
 	resident.node = start
@@ -177,15 +180,15 @@ func verify_recovery(residents: Residents, camera: Camera3D, game: Node3D) -> vo
 	resident.phase = Residents.Phase.ROAMING
 	resident.wait = 0.0
 	resident.path = PackedInt64Array([start, blocked])
-	resident.avoid = Vector2i(-1, -1)
+
 	resident.blocked_for = 0.0
 	resident.next = 1
 	for i in 45:
 		residents.simulate(resident, .1, 700.0, camera, empty, space)
-		if resident.avoid == Vector2i(start, blocked):
+		if not graph.graph.are_points_connected(start, blocked):
 			observed_hold = true
 			break
-	print("Obstacle probe distance=", resident.feet.distance_to(graph.points[blocked]), " phase=", resident.phase, " avoid=", resident.avoid)
+	print("Obstacle probe distance=", resident.feet.distance_to(graph.points[blocked]), " phase=", resident.phase)
 	check(observed_hold and resident.feet.distance_to(graph.points[blocked]) > .18,
 		"blocked route stops before collision and marks the failed edge")
 	for i in 20:
@@ -193,7 +196,7 @@ func verify_recovery(residents: Residents, camera: Camera3D, game: Node3D) -> vo
 			break
 		residents.simulate(resident, .1, 700.0, camera, empty, space)
 	check(resident.feet.distance_to(origin) < .01, "resident walks back to the previous sidewalk point")
-	var detour := graph.path(start, opposite, Vector2i(start, blocked))
+	var detour := graph.graph.get_id_path(start, opposite)
 	resident.path = detour
 	resident.next = 1
 	resident.wait = 0.0
@@ -202,8 +205,18 @@ func verify_recovery(residents: Residents, camera: Camera3D, game: Node3D) -> vo
 			break
 		residents.simulate(resident, .1, 700.0, camera, empty, space)
 	check(resident.node == opposite, "resident can take a different link while the original stays blocked")
+	check(not graph.graph.are_points_connected(start, blocked),
+		"another resident still sees the obstructed link removed")
+	graph.recheck_blocked_links(graph.BLOCK_RECHECK, space)
+	check(not graph.graph.are_points_connected(start, blocked), "blocked link stays unavailable after a probe")
 	blocker.queue_free()
 	await physics_frame
+	await physics_frame
+	graph.recheck_blocked_links(graph.BLOCK_RECHECK, space)
+	# Each tick probes at most one link, including links found during daytime.
+	for i in graph.blocked_edges.size():
+		graph.recheck_blocked_links(0.0, space)
+	check(graph.graph.are_points_connected(start, blocked), "link is restored only after clearance")
 
 
 func endpoint(label: String, vessel: Node3D) -> Crew:
@@ -254,3 +267,38 @@ func verify_network(game: Node3D, residents: Residents) -> void:
 	guest.get_parent().queue_free()
 	host.get_parent().queue_free()
 	await process_frame
+
+
+func verify_full_day(residents: Residents, camera: Camera3D) -> void:
+	var arrived := PackedInt32Array()
+	var previous_wait := PackedFloat32Array()
+	arrived.resize(residents.residents.size())
+	previous_wait.resize(residents.residents.size())
+	var empty: Array[Dictionary] = []
+	const STEP := .05
+	for step in 16000:
+		var elapsed := step * STEP
+		residents.tick(STEP, 640.0 + elapsed * .35, camera, elapsed, empty, true, PackedVector3Array())
+		for i in residents.residents.size():
+			var resident := residents.residents[i]
+			if resident.phase == Residents.Phase.ROAMING and resident.next >= resident.path.size() 					and previous_wait[i] <= 0.0 and resident.wait >= 4.0:
+				arrived[i] += 1
+			previous_wait[i] = resident.wait
+	var fewest := arrived[0]
+	for count in arrived:
+		fewest = mini(fewest, count)
+	print("DAY_ROUTE stops per resident=", arrived, " remaining blocked links=", residents.routes.blocked_edges.size())
+	check(fewest >= 2, "all 20 continue choosing destinations through the afternoon")
+
+	var home_after := 0.0
+	for step in 10000:
+		home_after = step * STEP
+		residents.tick(STEP, 1325.0, camera, 800.0 + home_after, empty, true, PackedVector3Array())
+		if residents.residents.all(func(r: Residents.Resident) -> bool: return r.phase == Residents.Phase.HOME):
+			break
+	var home_count := 0
+	for resident in residents.residents:
+		if resident.phase == Residents.Phase.HOME and not resident.feet.is_finite():
+			home_count += 1
+	print("NIGHT_ROUTE home=", home_count, " seconds=", home_after)
+	check(home_count == Residents.NAMES.size(), "all 20 turn home and finish their evening return")

@@ -32,7 +32,7 @@ class Resident:
 	var pace := 1.15
 	var wait := 0.0
 	var blocked_for := 0.0
-	var avoid := Vector2i(-1, -1)
+	var failed_plans := 0
 	var exterior_leg := false
 	var was_walking := false
 	var departure := 480.0
@@ -130,12 +130,14 @@ func tick(delta: float, work_minutes: float, camera: Camera3D, clock: float, pee
 		if not initialized:
 			prepare(space)
 		if initialized:
+			routes.recheck_blocked_links(delta, space)
 			frame = (frame + 1) % 4
 			for i in residents.size():
 				var resident := residents[i]
 				var near_player := is_near_player(resident.feet, camera.global_position, peers)
-				if near_player or frame == i % 4:
-					simulate(resident, delta if near_player else delta * 4.0, work_minutes, camera, peers, space)
+				var can_plan := frame == i % 4
+				if near_player or can_plan:
+					simulate(resident, delta if near_player else delta * 4.0, work_minutes, camera, peers, space, can_plan)
 				display(i, resident.feet, resident.movement, resident.yaw, camera.global_position, delta, clock)
 		return
 
@@ -192,7 +194,7 @@ func observed(at: Vector3, camera: Camera3D, peers: Array[Dictionary], space: Ph
 
 
 func simulate(resident: Resident, delta: float, work_minutes: float, camera: Camera3D,
-		peers: Array[Dictionary], space: PhysicsDirectSpaceState3D) -> void:
+		peers: Array[Dictionary], space: PhysicsDirectSpaceState3D, can_plan := true) -> void:
 	resident.movement = Vector3.ZERO
 	var today := floori(work_minutes / Calendar.MINUTES_PER_DAY)
 	var time := fposmod(work_minutes, Calendar.MINUTES_PER_DAY)
@@ -221,7 +223,7 @@ func simulate(resident: Resident, delta: float, work_minutes: float, camera: Cam
 				resident.phase = Phase.ROAMING
 				resident.wait = resident.random.randf_range(.6, 2.4)
 		Phase.ROAMING, Phase.RETURNING:
-			walk_paths(resident, delta, resident.home_node >= 0 and (time >= late or time < 240.0), space)
+			walk_paths(resident, delta, time >= late or time < 240.0, space, can_plan)
 
 
 func walk_home(resident: Resident, delta: float, camera: Camera3D, peers: Array[Dictionary],
@@ -247,52 +249,65 @@ func walk_home(resident: Resident, delta: float, camera: Camera3D, peers: Array[
 		resident.blocked_for = 0.0
 
 
-func walk_paths(resident: Resident, delta: float, return_home: bool, space: PhysicsDirectSpaceState3D) -> void:
+func walk_paths(resident: Resident, delta: float, return_home: bool,
+		space: PhysicsDirectSpaceState3D, can_plan: bool) -> void:
 	if resident.next >= resident.path.size():
-		resident.path.clear()
-		resident.next = 0
+		if not can_plan:
+			return
 		if return_home and resident.node == resident.home_node:
 			resident.phase = Phase.ENTERING
 			resident.exterior_leg = false
 			return
 		var goal := resident.home_node if return_home else choose_destination(resident)
-		if goal < 0:
-			resident.wait = 3.0
-			return
-		resident.path = routes.path(resident.node, goal, resident.avoid)
+		resident.path = routes.graph.get_id_path(resident.node, goal) if goal >= 0 else PackedInt64Array()
 		resident.next = 1
 		resident.phase = Phase.RETURNING if return_home else Phase.ROAMING
 		if resident.path.size() < 2:
-			resident.avoid = Vector2i(-1, -1)
-			resident.wait = 2.0
+			resident.failed_plans += 1
+			resident.wait = resident.random.randf_range(.65, 1.45)
 			return
+		resident.failed_plans = 0
 	var next_node := int(resident.path[resident.next])
-	if advance(resident, routes.points[next_node], delta, space):
+	if not routes.graph.are_points_connected(resident.node, next_node):
+		retreat(resident)
+	elif advance(resident, routes.points[next_node], delta, space):
 		resident.node = next_node
 		resident.next += 1
-		if resident.next == resident.path.size() and not return_home:
+		if return_home and resident.phase == Phase.ROAMING:
+			# Finish the current edge before turning home from the next sidewalk point.
+			resident.path.clear()
+			resident.next = 0
+		elif resident.next == resident.path.size() and not return_home:
 			resident.wait = resident.random.randf_range(4.0, 15.0)
-			resident.avoid = Vector2i(-1, -1)
 	elif resident.blocked_for > 2.2:
-		resident.avoid = Vector2i(resident.node, next_node)
-		resident.path.clear()
-		resident.next = 0
-		resident.phase = Phase.RETREATING
-		resident.blocked_for = 0.0
+		routes.block_link(resident.node, next_node)
+		retreat(resident)
+
+
+func retreat(resident: Resident) -> void:
+	resident.path.clear()
+	resident.next = 0
+	resident.phase = Phase.RETREATING
+	resident.blocked_for = 0.0
 
 
 func choose_destination(resident: Resident) -> int:
 	var local := routes.districts[routes.components[resident.node]]
 	var base := routes.points[resident.home_node if resident.home_node >= 0 else resident.node]
 	var area := 330.0 if waterfront_nodes.has(routes.components[resident.node]) else 185.0
+	var minimum := 7.0 if resident.failed_plans >= 2 else 21.0
 	for attempt in 24:
 		var node := local[resident.random.randi_range(0, local.size() - 1)]
 		var goal := routes.points[node]
-		if goal.distance_squared_to(base) > area * area or goal.distance_squared_to(resident.feet) < 21.0 * 21.0:
+		if goal.distance_squared_to(base) > area * area or goal.distance_squared_to(resident.feet) < minimum * minimum:
 			continue
 		var busy := false
 		for neighbour in residents:
-			if neighbour != resident and neighbour.feet.distance_squared_to(goal) < 3.0 * 3.0:
+			if neighbour == resident:
+				continue
+			if neighbour.feet.distance_squared_to(goal) < 9.0 or (
+					neighbour.next < neighbour.path.size()
+					and routes.points[neighbour.path[-1]].distance_squared_to(goal) < 9.0):
 				busy = true
 				break
 		if not busy:
