@@ -28,6 +28,7 @@ func setup(owner: Node3D, river_campaign: Node3D) -> void:
 func build_panel() -> void:
 	var root := Control.new()
 	root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	root.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(root)
 	panel = PanelContainer.new()
 	panel.set_anchors_preset(Control.PRESET_CENTER)
@@ -45,7 +46,7 @@ func build_panel() -> void:
 	heading.add_theme_color_override("font_color", Color("#f2d59b"))
 	body.add_child(heading)
 	var intro := Label.new()
-	intro.text = "F8 toggles this tool. Tests run in a temporary campaign copy; closing restores your saved progress."
+	intro.text = "F8 toggles this tool. Tests run in a temporary campaign copy until you leave the game; the copy is never saved."
 	intro.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	body.add_child(intro)
 	var selectors := HBoxContainer.new()
@@ -76,7 +77,7 @@ func build_panel() -> void:
 	details.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	body.add_child(details)
 	var footer := Label.new()
-	footer.text = "F8 or Esc: close and discard test changes. Host only in multiplayer."
+	footer.text = "F8 or Esc: close this menu. Test changes last until you leave the game. Host only in multiplayer."
 	footer.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	body.add_child(footer)
 	panel.hide()
@@ -134,14 +135,7 @@ func begin_session() -> bool:
 	return true
 
 
-func end_session() -> void:
-	if session_active:
-		campaign.ledger.state = original_ledger
-		campaign.debug_testing = false
-		session_active = false
-		story.normalize()
-		story.sync_world()
-		campaign.changed(false)
+func close_panel() -> void:
 	panel.hide()
 	if game.is_inside_tree() and DisplayServer.get_name() != "headless":
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
@@ -153,15 +147,17 @@ func handle_input(event: InputEvent) -> bool:
 	var key: Key = event.physical_keycode if event.physical_keycode != 0 else event.keycode
 	if key == KEY_F8:
 		if panel.visible:
-			end_session()
+			close_panel()
 		else:
 			if begin_session():
+				selected_quest = clampi(int(story.state().get("step", 0)), 0, Story.QUESTS.size() - 1)
+				selected_stage = clampi(int(story.state().get("progress", 0.0)), 0, Story.QUESTS[selected_quest].steps.size() - 1)
 				panel.show()
 				populate_quests()
 		get_viewport().set_input_as_handled()
 		return true
 	if panel.visible and key == KEY_ESCAPE:
-		end_session()
+		close_panel()
 		get_viewport().set_input_as_handled()
 		return true
 	return false
@@ -209,8 +205,19 @@ func prepare(stage_index: int) -> void:
 		saved.flags.borrow_boat = true
 		saved.loans.princecraft = true
 		saved.loans.rod = true
+		saved.rod_owned = true
+	if quest.id == "story_voyage" and stage_index > 0:
+		saved.launched = true
+	if quest.id == "story_retire":
+		saved.launched = true
 	saved.progress = float(stage_index)
 	story.normalize()
+	# Later objectives assume the loaned/restored craft is already at the public launch.
+	# Put the matching craft there as the normal quest actions would before syncing the world.
+	if quest.id == "story_fish" and stage_index > 0:
+		campaign.place_story_craft("princecraft")
+	elif quest.id == "story_voyage" and stage_index > 0:
+		campaign.place_story_craft("houseboat")
 	if location_toggle.button_pressed:
 		story.arrive(0)
 	story.sync_world()
