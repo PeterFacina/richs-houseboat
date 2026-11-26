@@ -20,6 +20,7 @@ var last_phase := Vector2i(-1, -1)
 var heads: Array[Dictionary] = []
 var dark: StandardMaterial3D
 var live: Array[StandardMaterial3D] = []
+var visor: ArrayMesh
 
 
 static func phase(at: float) -> Vector2i:
@@ -39,41 +40,88 @@ static func phase(at: float) -> Vector2i:
 
 func build(streets: Array, elevation: Callable) -> void:
 	name = "Highway17Signals"
-	var steel := Kit.paint(Color("#7e8788"), .57, .46)
-	var shell := Kit.paint(Color("#252a2b"))
-	var frame := Kit.paint(Color("#ddb353"))
+	var steel := Kit.paint(Color("#a0a5a5"), .46, .44)
+	var housing := Kit.paint(Color("#e2a421"), .61)
+	var backplate := Kit.paint(Color("#393329"))
 	var white := Kit.paint(Color("#e9e4d8"))
 	dark = Kit.paint(INACTIVE, .27)
-	for tint: Color in TINTS:
+	visor = make_visor()
+	for tint in TINTS:
 		var lens := Kit.paint(tint, .27)
 		lens.emission_enabled = true
 		lens.emission = tint
 		lens.emission_energy_multiplier = 1.65
 		live.append(lens)
+
+	var axes: Array[Vector2] = []
 	for approach in APPROACHES:
 		var point: Array = streets[approach.road][approach.node]
 		var outward := (Vector2(point[0], point[1]) - JUNCTION).normalized()
-		var right := Vector2(outward.y, -outward.x)
-		var pole_at := JUNCTION - outward * 8.6 + right * 8.4
-		var y: float = elevation.call(pole_at.x, pole_at.y)
-		var pole := Vector3(pole_at.x, y, pole_at.y)
-		var long_axis := Vector3(right.x, 0, right.y)
-		var heading := atan2(outward.x, outward.y)
-		Kit.box_at(self, pole + Vector3.UP * .13, Vector3(.82, .26, .82), steel)
-		Kit.beam(self, pole, pole + Vector3.UP * 6.45, .215, steel)
-		Kit.beam(self, pole + Vector3.UP * 6.3, pole + Vector3.UP * 6.3 - long_axis * 6.95, .134, steel)
-		Kit.beam(self, pole + Vector3.UP * 5.72, pole + Vector3.UP * 6.3 - long_axis * 1.80, .075, steel)
-		add_head(pole + Vector3.UP * 5.71 - long_axis * 6.06, heading, approach.highway, shell, frame)
-		add_head(pole + Vector3.UP * 3.55 - long_axis * .49, heading, approach.highway, shell, frame)
-		add_road_name(pole + Vector3.UP * 5.97 - long_axis * 2.6, heading, approach.highway)
-		var width: float = approach.width
-		for i in 8:
-			var at := JUNCTION + outward * 9.8 + right * (i + .5) * (width - .18) / 8.0
-			var bar := Kit.box_at(self, Vector3(at.x, elevation.call(at.x, at.y) + .143, at.y),
-				Vector3((width - .18) / 8.0 + .006, .012, .31), white)
-			bar.rotation.y = heading
+		axes.append(outward)
+		add_stop_bar(outward, approach.width, elevation, white)
+
+	# Both masts stand on the plaza side. The longer arm reaches the far highway lane.
+	var along := axes[0]
+	var away := Vector2(-along.y, along.x)
+	var junction_y: float = elevation.call(JUNCTION.x, JUNCTION.y)
+	var head_y := junction_y + 5.8
+	var left := add_mast(JUNCTION - along * 10.3 - away * 8.2, head_y, elevation, steel)
+	var right := add_mast(JUNCTION + along * 10.1 - away * 8.3, head_y, elevation, steel)
+	for mount in [
+		{"mast": left, "tip": Vector2(-10.3, -2.85), "approach": 0},
+		{"mast": left, "tip": Vector2(-4.3, -8.2), "approach": 2},
+		{"mast": right, "tip": Vector2(10.1, 2.85), "approach": 1},
+		{"mast": right, "tip": Vector2(3.3, -8.3), "approach": 2},
+	]:
+		var tip: Vector2 = mount.tip
+		var at := JUNCTION + along * tip.x + away * tip.y
+		var end := Vector3(at.x, head_y + .61, at.y)
+		var arm_start: Vector3 = mount.mast
+		tube(arm_start, end, .115, .058, steel)
+		var arm_support := arm_start.lerp(end, .34)
+		tube(arm_start - Vector3.UP * .33, arm_support, .035, .026, steel)
+		var approach_index: int = mount.approach
+		var axis := axes[approach_index]
+		add_head(end - Vector3.UP * .62, atan2(axis.x, axis.y), APPROACHES[approach_index].highway, backplate, housing)
+
+	for i in 2:
+		var top := left if i == 0 else right
+		var axis := axes[i]
+		var sign_height := top - Vector3.UP * .12
+		var hanger := Vector3(away.x, 0, away.y) * .35
+		var repeater := top - Vector3.UP * 2.6 + hanger
+		tube(top - Vector3.UP * 2.33, repeater + Vector3.UP * .12, .054, .04, steel)
+		add_head(repeater, atan2(axis.x, axis.y), true, backplate, housing)
+		add_road_name(sign_height + Vector3(away.x, 0, away.y) * 2.1, atan2(axis.x, axis.y), true)
+	add_road_name(right - Vector3(along.x, .19, along.y) * 2.25, atan2(axes[2].x, axes[2].y), false)
 	update_heads()
 
+
+func add_stop_bar(outward: Vector2, width: float, elevation: Callable, white: Material) -> void:
+	var right := Vector2(outward.y, -outward.x)
+	for i in 8:
+		var at := JUNCTION + outward * 9.8 + right * (i + .5) * (width - .18) / 8.0
+		var bar := Kit.box_at(self, Vector3(at.x, elevation.call(at.x, at.y) + .143, at.y),
+			Vector3((width - .18) / 8.0 + .006, .012, .31), white)
+		bar.rotation.y = atan2(outward.x, outward.y)
+
+
+func add_mast(at: Vector2, head_y: float, elevation: Callable, steel: Material) -> Vector3:
+	var foot := Vector3(at.x, elevation.call(at.x, at.y), at.y)
+	var top := Vector3(at.x, head_y + .92, at.y)
+	Kit.box_at(self, foot + Vector3.UP * .13, Vector3(.69, .28, .69), steel)
+	tube(foot + Vector3.UP * .12, top, .17, .093, steel)
+	return top - Vector3.UP * .64
+
+
+func tube(a: Vector3, b: Vector3, bottom: float, top: float, steel: Material) -> void:
+	var cylinder := CylinderMesh.new()
+	cylinder.bottom_radius = bottom
+	cylinder.top_radius = top
+	cylinder.height = a.distance_to(b)
+	cylinder.radial_segments = 10
+	var instance := Kit.mesh_at(self, cylinder, (a + b) * .5, steel)
+	instance.quaternion = Quaternion(Vector3.UP, (b - a).normalized())
 
 func add_road_name(at: Vector3, heading: float, highway_approach: bool) -> void:
 	var sign := Label3D.new()
@@ -94,22 +142,39 @@ func add_head(at: Vector3, heading: float, highway: bool, shell: Material, frame
 	add_child(head)
 	head.position = at
 	head.rotation.y = heading
-	Kit.box_at(head, Vector3.ZERO, Vector3(.51, 1.23, .22), frame)
-	Kit.box_at(head, Vector3(0, 0, .11), Vector3(.419, 1.105, .13), shell)
+	var bracket := Vector3(0, .61, -.10)
+	Kit.box_at(head, bracket, Vector3(.095, .29, .14), frame)
+	Kit.box_at(head, Vector3.ZERO, Vector3(.46, 1.14, .25), frame)
+	Kit.box_at(head, Vector3(0, 0, .135), Vector3(.416, 1.085, .08), shell)
 	var lenses: Array[MeshInstance3D] = []
 	for i in 3:
 		var y := .345 - i * .345
 		var glass := CylinderMesh.new()
-		glass.top_radius = .141
-		glass.bottom_radius = .141
+		glass.top_radius = .135
+		glass.bottom_radius = .135
 		glass.height = .028
 		glass.radial_segments = 18
-		var lens := Kit.mesh_at(head, glass, Vector3(0, y, .188), dark)
+		var lens := Kit.mesh_at(head, glass, Vector3(0, y, .181), dark)
 		lens.rotation.x = PI * .5
 		lenses.append(lens)
-		Kit.box_at(head, Vector3(0, y + .158, .246), Vector3(.301, .034, .184), shell)
+		Kit.mesh_at(head, visor, Vector3(0, y, 0), shell)
 	heads.append({"lenses": lenses, "highway": highway})
 
+
+func make_visor() -> ArrayMesh:
+	var mesh := SurfaceTool.new()
+	mesh.begin(Mesh.PRIMITIVE_TRIANGLES)
+	for i in 7:
+		var a := Vector2.from_angle(float(i) / 7 * PI) * .156
+		var b := Vector2.from_angle(float(i + 1) / 7 * PI) * .156
+		var rear_a := Vector3(a.x, a.y, .167)
+		var rear_b := Vector3(b.x, b.y, .167)
+		var tip_a := Vector3(a.x, a.y, .26 + a.y * .91)
+		var tip_b := Vector3(b.x, b.y, .26 + b.y * .91)
+		for p in [rear_a, rear_b, tip_a, rear_b, tip_b, tip_a]:
+			mesh.add_vertex(p)
+	mesh.generate_normals()
+	return mesh.commit()
 
 func _process(delta: float) -> void:
 	elapsed = fposmod(elapsed + delta, CYCLE)
