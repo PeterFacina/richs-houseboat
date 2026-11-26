@@ -758,6 +758,19 @@ func turn_in(peer: int, quest: Dictionary) -> void:
 	if quest.id == "story_parts" and not envoy_parked(yard.points.unload, 23.0):
 		campaign.tell(peer, "Park the Envoy by the pontoon drop-off and step out before returning it.")
 		return
+	finish_quest(peer, quest)
+
+
+func complete_for_debug(peer: int, quest_id: String) -> void:
+	var quest := current()
+	if quest.is_empty() or quest.id != quest_id or status() != Chain.Status.READY:
+		return
+	if quest.id == "story_fish" and state().loans.has("princecraft"):
+		campaign.return_story_princecraft()
+	finish_quest(peer, quest)
+
+
+func finish_quest(peer: int, quest: Dictionary) -> void:
 	if not Chain.complete(state(), QUESTS, quest.id):
 		return
 	if quest.id == "story_parts":

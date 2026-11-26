@@ -69,6 +69,7 @@ var lift_amount := 0.0
 var lifting_peer := 0
 var diver := 0
 var save_elapsed := 0.0
+var debug_testing := false
 var ghost: MeshInstance3D
 var ghost_paint: StandardMaterial3D
 var preview_id := ""
@@ -964,7 +965,7 @@ func tick(delta: float, has_input: bool) -> void:
 	tick_rich(delta)
 	if not crew.is_guest() and dock >= 0:
 		save_elapsed += delta
-		if save_elapsed >= 30.0:
+		if save_elapsed >= 30.0 and not debug_testing:
 			save_elapsed = 0.0
 			story.save_vehicle_poses()
 			ledger.save_file()
@@ -1040,7 +1041,7 @@ func receive_result(text: String, at_site: int, to_boat: bool) -> void:
 func changed(persist := true) -> void:
 	houseboat.set_modern_design(ledger.state.get("modern_houseboat", false))
 	story.sync_world()
-	if persist and not crew.is_guest():
+	if persist and not crew.is_guest() and not debug_testing:
 		story.save_vehicle_poses()
 		ledger.save_file()
 		if not ledger.error.is_empty():

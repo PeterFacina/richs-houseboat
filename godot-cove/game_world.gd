@@ -24,6 +24,7 @@ const RiverChart = preload("res://river_chart.gd")
 const Notebook = preload("res://player_notebook.gd")
 const StoryOffer = preload("res://npc_quest_offer.gd")
 const RichStory = preload("res://rich_story.gd")
+const QuestDebugger = preload("res://quest_debugger.gd")
 const MenuTheme = preload("res://game_menu_theme.gd")
 const Lobby = preload("res://river_lobby.gd")
 const AircraftSteering = preload("res://aircraft_steering.gd")
@@ -88,6 +89,7 @@ var trophy: Trophy
 var properties := preload("res://property_management.gd").new()
 var skill_screen := preload("res://progression_screen.tscn").instantiate()
 var campaign: Campaign
+var quest_debugger
 var marina_cars: MarinaCars
 var backpack: Backpack
 var cheats: Cheats
@@ -263,6 +265,10 @@ func _ready() -> void:
 	tennis.reset_player.connect(tennis_reset_player)
 	tennis.ended.connect(func() -> void: equip_gear(tennis_previous_gear))
 	campaign.setup(self, new_trip)
+	if OS.is_debug_build():
+		quest_debugger = QuestDebugger.new()
+		add_child(quest_debugger)
+		quest_debugger.setup(self, campaign)
 	add_child(properties)
 	properties.setup(self)
 	for site: Node3D in river.property_sites:
@@ -343,6 +349,8 @@ func session_changed() -> void:
 
 
 func save_trip() -> String:
+	if campaign.debug_testing:
+		return "Quest test session is isolated. Close the debugger to restore your normal progress before saving."
 	pause_menu.persist()
 	if campaign.crew.is_guest():
 		return ""
@@ -406,6 +414,9 @@ func build_tension_display() -> void:
 
 
 func _input(event: InputEvent) -> void:
+	if is_instance_valid(quest_debugger) and quest_debugger.handle_input(event):
+		get_viewport().set_input_as_handled()
+		return
 	if tennis.active:
 		if event.is_action_pressed(&"ui_cancel"):
 			tennis.leave()
@@ -803,7 +814,8 @@ func _process(delta: float) -> void:
 
 func menu_blocks_play() -> bool:
 	return notebook.visible or story_offer.visible or properties.panel.visible or skill_screen.panel.visible \
-		or pause_menu.visible or backpack.inventory.visible or cheats.visible or campaign.controls_blocked()
+		or pause_menu.visible or backpack.inventory.visible or cheats.visible or campaign.controls_blocked() \
+		or (is_instance_valid(quest_debugger) and quest_debugger.panel.visible)
 
 
 func close_cheats() -> void:
