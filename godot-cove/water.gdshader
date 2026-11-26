@@ -35,6 +35,7 @@ uniform vec4 surface_slick = vec4(0.0);
 uniform vec2 fish_heading = vec2(1.0, 0.0);
 uniform vec2 map_size = vec2(1.0);
 uniform vec2 center = vec2(0.0);
+uniform vec2 riverside_center = vec2(0.0);
 uniform vec4 boat_wake = vec4(0.0);
 uniform vec2 wake_heading = vec2(0.0, 1.0);
 uniform float wake_spread = .34;
@@ -149,6 +150,8 @@ vec3 local_reflection(vec2 start, vec3 ray, vec3 sky_color) {
 }
 
 void fragment() {
+	float riverside = riverside_profile && mapped && !headpond
+		? 1.0 - smoothstep(175.0, 280.0, distance(world.xz, riverside_center)) : 0.0;
 	float west = length((world.xz - vec2(-34.0, 5.0)) / vec2(28.0, 62.0));
 	float east = length((world.xz - vec2(35.0, -37.0)) / vec2(26.0, 48.0));
 	float shore = min(west, east);
@@ -235,6 +238,7 @@ void fragment() {
 		vec3 capillary = normalize(n + vec3(breeze.x, 0.0, breeze.y));
 		vec3 mirror = reflect(-view, capillary);
 		vec3 reflection = timed_river_sky(mirror, .37) * vec3(0.87, 0.96, 0.97);
+		reflection = mix(reflection, reflection * vec3(.94, .99, .97), riverside);
 		if (!headpond) {
 			if (river_weather_reflection > .3 || use_weather < .5) {
 				reflection = local_reflection(flow, mirror, reflection);
@@ -242,6 +246,8 @@ void fragment() {
 		}
 		float fresnel = 0.037 + pow(1.0 - max(dot(capillary, view), 0.0), 4.25) * 0.79;
 		vec3 basin = mix(vec3(0.047, 0.138, 0.148), vec3(0.157, 0.255, 0.201), shallow);
+		basin = mix(basin, mix(vec3(.040, .145, .164), vec3(.20, .38, .285),
+			smoothstep(.0, .9, shallow)), riverside * .84);
 		if (bed_depth < 7.0 && !headpond) {
 			vec3 underwater = refract(-view, capillary, .75);
 			float path = bed_depth / max(.37, -underwater.y);
@@ -265,7 +271,7 @@ void fragment() {
 			vec3 bottom = gravel * vec3(.71, .83, .76) * (1.0 + caustic * .22);
 			basin = mix(basin, bottom, attenuation * .95);
 		}
-		hue = mix(basin, reflection, fresnel);
+		hue = mix(basin, reflection, min(.94, fresnel + riverside * .075));
 	}
 	float crest_breaks = ripple.x + 0.35 * sin(dot(flow, vec2(0.83, -1.58)) + clock * 1.7);
 	float flecks = smoothstep(0.14, 0.22, wave_height) * smoothstep(0.63, 1.33, crest_breaks);
@@ -273,9 +279,16 @@ void fragment() {
 		* smoothstep(-0.17, 0.80, ripple.x);
 	if (mapped) {
 		foam = mapped_bank * smoothstep(0.05, 0.85, ripple.x * 0.55 + ripple.y * 0.45);
+		float broken_edge = water_noise(flow * .57 + vec2(clock * .08, -clock * .06));
+		foam += riverside * mapped_bank * smoothstep(.43, .72, broken_edge + ripple.x * .09) * .38;
 	}
 	ALBEDO = hue
 		+ vec3(0.49, 0.60, 0.56) * max(flecks * 0.26, foam * 0.52);
+	if (riverside > 0.0) {
+		float light_lines = sin(dot(flow, vec2(1.8, -.68)) + clock * 1.15 + warp * .62);
+		float sparkle = pow(max(0.0, light_lines), 14.0) * fine * (1.0 - shallow * .55);
+		ALBEDO += vec3(.22, .31, .27) * sparkle * riverside * .10;
+	}
 	ALBEDO = mix(ALBEDO, vec3(.74, .849, .806), min(.74, stern_foam));
 	if (surface_slick.w > 0.0 && !distant && !headpond) {
 		vec2 slick = (world.xz - surface_slick.xy) / max(.05, surface_slick.z);

@@ -7,6 +7,7 @@ const GasBar = preload("res://marina_gas_bar.gd")
 const Fleet = preload("res://marina_fleet.gd")
 const Pines = preload("res://lamure_pines.gd")
 const Graphics = preload("res://river_graphics.gd")
+const RiversideArt = preload("res://riverside_art.gd")
 const WATERFRONT_CANOPY := "res://deep_river/waterfront_canopy.bin"
 const YachtClub = preload("res://marina_yacht_club.gd")
 const TennisCourts = preload("res://marina_tennis_courts.gd")
@@ -40,6 +41,10 @@ const Routes = preload("res://mowing_routes.gd")
 var mowing_routes: Array[Dictionary]
 var grass_transforms: Array[Transform3D]
 var park_grass: MultiMeshInstance3D
+var riverside_enabled := false
+var riverside_center := Vector3.ZERO
+var riverside_art := RiversideArt.new()
+var riverside_tufts := {}
 
 
 func build(parent: Node3D, layout: Dictionary, ground_lookup: Callable, shore_lookup: Callable,
@@ -48,6 +53,8 @@ func build(parent: Node3D, layout: Dictionary, ground_lookup: Callable, shore_lo
 	ground = ground_lookup
 	wood_scan = wood
 	timber = weathered_wood(Color("#a99073"))
+	if riverside_enabled:
+		timber.set_shader_parameter("riverside_profile", true)
 	piling = Kit.paint(Color("#504c44"))
 	var marina := Node3D.new()
 	marina.name = "DeepRiverMarina"
@@ -73,6 +80,7 @@ func build(parent: Node3D, layout: Dictionary, ground_lookup: Callable, shore_lo
 	drape(marina, layout.boat_launch, launch, 0.012, true)
 	var park := point(layout.pavilion, 0)
 	park.y = ground.call(park.x, park.z)
+	riverside_center = park
 	build_pavilion(marina, park)
 	build_park(marina, park, sand)
 	build_park_grass(marina, park, shore_lookup)
@@ -85,6 +93,52 @@ func build(parent: Node3D, layout: Dictionary, ground_lookup: Callable, shore_lo
 		wharf.build(marina, layout.wharf, ground, concrete, docks)
 	docks.finish()
 	build_bank_cover(marina, layout, shore_lookup, clear_route)
+	if riverside_enabled:
+		riverside_art.build_ground_cover(marina, park, ground, shore_lookup, mowing_routes, docks, clear_route)
+		build_riverside_mowable_cover(marina, park)
+
+
+func build_riverside_mowable_cover(parent: Node3D, pavilion: Vector3) -> void:
+	var cells := {}
+	for index in grass_transforms.size():
+		var tuft: Transform3D = grass_transforms[index]
+		if not RiversideArt.near_marina(tuft.origin, pavilion):
+			continue
+		var cell := Vector2i(floori(tuft.origin.x / RiversideArt.CHUNK), floori(tuft.origin.z / RiversideArt.CHUNK))
+		if not cells.has(cell):
+			cells[cell] = {"transforms": [], "indices": []}
+		var scaled := tuft
+		scaled.basis = tuft.basis.scaled_local(Vector3(1.10, 1.55, 1.10))
+		cells[cell].transforms.append(scaled)
+		cells[cell].indices.append(index)
+	var material := ShaderMaterial.new()
+	material.shader = preload("res://riverside_grass.gdshader")
+	var mesh := RiversideArt.grass_blades()
+	for cell: Dictionary in cells.values():
+		var transforms: Array[Transform3D] = []
+		transforms.assign(cell.transforms)
+		var batch := Kit.new().scatter(parent, mesh, transforms, material)
+		batch.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		batch.set_meta("riverside_count", transforms.size())
+		Graphics.batch(batch, "riverside_grass")
+		for local_index in cell.indices.size():
+			riverside_tufts[cell.indices[local_index]] = [batch, local_index, transforms[local_index]]
+
+
+func trim_riverside_grass(index: int, cut_scale: float) -> void:
+	if not riverside_tufts.has(index):
+		return
+	var tuft: Array = riverside_tufts[index]
+	var transform: Transform3D = tuft[2]
+	transform.basis.y *= cut_scale
+	(tuft[0] as MultiMeshInstance3D).multimesh.set_instance_transform(tuft[1], transform)
+
+
+func regrow_riverside_grass(index: int) -> void:
+	if not riverside_tufts.has(index):
+		return
+	var tuft: Array = riverside_tufts[index]
+	(tuft[0] as MultiMeshInstance3D).multimesh.set_instance_transform(tuft[1], tuft[2])
 
 
 func build_gas_bar(berth: Dictionary, concrete: Texture2D) -> void:
@@ -416,11 +470,16 @@ func build_waterfront_canopy(parent: Node3D, clearance: Callable) -> void:
 	var random := RandomNumberGenerator.new()
 	random.seed = 18459
 	build_canopy(forest, survey, YachtClub.LANDSCAPE, clearance, func(foot: Vector3, height: float) -> bool:
+		if riverside_enabled and RiversideArt.near_marina(foot, riverside_center):
+			riverside_art.add_tree(foot, height)
+			return true
 		if height < 9.5 or random.randf() > .105:
 			return false
 		pines.plant(foot, height, random)
 		return true)
 	pines.build(forest)
+	if riverside_enabled:
+		riverside_art.build_trees(forest)
 
 
 func render_trees(parent: Node3D, crowns: Array[Transform3D], stems: Array[Transform3D]) -> void:

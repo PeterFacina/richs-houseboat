@@ -20,6 +20,7 @@ This is a short navigation map, not a complete specification. Source in the curr
 | XP, jobs, economy and saves | [Progression and economy](systems/PROGRESSION-ECONOMY.md) |
 | Town, roads and vehicles | `deep_river_*.gd`, `marina_car*.gd`, `vehicle_driver.gd` (search actual callers) |
 | Mowing | `lawn_mower.gd`, `shannon_job.gd`, `mowing_routes.gd` |
+| Opt-in marina visual experiment | [Riverside proof of concept](systems/RIVERSIDE-POC.md) |
 | Big Rich, Shannon Lapping, shared quest state | [Quests and character stories](systems/QUESTS.md) |
 | AI and Discord workflow | [AI workflow status](AI-WORKFLOW.md), [team workflow](TEAM-WORKFLOW.md) |
 | Tests and CI | [Build checks](BUILD-CHECKS.md), [universal XP verification](UNIVERSAL-XP.md) |

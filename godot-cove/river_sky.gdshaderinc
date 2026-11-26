@@ -11,6 +11,8 @@ uniform float night_weight = 0.0;
 uniform float photo_weight = .45;
 uniform float cloud_coverage = 0.0;
 uniform vec2 weather_cloud_drift = vec2(0.0);
+uniform bool riverside_profile = false;
+uniform float riverside_cloud_phase = 0.0;
 
 vec3 daylight_color(vec3 ray, float detail) {
 	vec2 uv = vec2(atan(ray.z, ray.x) / TAU + .5, acos(clamp(ray.y, -1.0, 1.0)) / PI);
@@ -83,6 +85,19 @@ vec3 timed_river_sky(vec3 ray, float detail) {
 		float texture_tone = dot(photo, vec3(.2126, .7152, .0722));
 		air *= mix(1.0, mix(.69, 1.35, smoothstep(.16, .74, texture_tone)),
 			photo_weight * smoothstep(.005, .23, height));
+	}
+	if (riverside_profile && night_weight < .92) {
+		vec2 cloud_uv = ray.xz / (height + .29) * vec2(4.2, 4.8)
+			+ vec2(6.7 + riverside_cloud_phase, 10.2 + riverside_cloud_phase * .56);
+		float broad = sky_grain(cloud_uv * .78);
+		float contour = sky_grain(cloud_uv * 1.73 + 4.8);
+		float wisp = detail > .8 ? sky_grain(cloud_uv * 3.4 - 7.1) : .5;
+		float cover = broad * .54 + contour * .38 + wisp * .08;
+		float mass = smoothstep(.66, .80, cover) * smoothstep(.026, .19, height)
+			* (1.0 - night_weight) * (1.0 - cloud_coverage);
+		float lit = clamp(.35 + broad * .55 + dot(ray.xz, sun_direction.xz) * .16, 0.0, 1.0);
+		vec3 cloud = mix(vec3(.78, .84, .86), vec3(.99, .97, .88), lit);
+		air = mix(air, cloud, mass * .55);
 	}
 	if (sun_strength > 0.0) {
 		float sun_disc = smoothstep(.99979, .99993, toward_sun);

@@ -112,6 +112,10 @@ var windows: ShaderMaterial
 var esso_plaza: EssoPlaza
 var canopy_area := Rect2()
 var waterfront := Marina.new()
+var riverside_enabled := OS.get_cmdline_user_args().has("--riverside-poc")
+var riverside_near := false
+var riverside_minutes := 660.0
+var riverside_cloud_step := -1
 var lamure := LamureBeach.new()
 
 
@@ -190,6 +194,9 @@ func build(checkpoint := Callable()) -> void:
 	world.environment.sky.radiance_size = Sky.RADIANCE_SIZE_32
 	var ground := ShaderMaterial.new()
 	ground.shader = preload("res://ground.gdshader")
+	if riverside_enabled:
+		ground.set_shader_parameter("riverside_profile", true)
+		ground.set_shader_parameter("riverside_center", Vector2(meta.marina.pavilion[0], meta.marina.pavilion[1]))
 	var gravel := Image.load_from_file(BASE + "riverbed_cobbles.png")
 	gravel.generate_mipmaps()
 	riverbed = ImageTexture.create_from_image(gravel)
@@ -270,6 +277,7 @@ func build(checkpoint := Callable()) -> void:
 		ground.set_shader_parameter("riverbank_path_mask", ImageTexture.create_from_image(surface))
 		ground.set_shader_parameter("riverbank_path_bounds", Vector4(
 			park.bounds.position.x, park.bounds.position.y, park.bounds.size.x, park.bounds.size.y))
+	waterfront.riverside_enabled = riverside_enabled
 	waterfront.build(self, meta.marina, ground_height, wet_clearance, wood_scan, concrete_scan, riverbed,
 		park.near_trail, meta.get("riverbank", {}).get("pier_approach", []))
 	for material: ShaderMaterial in [near_water, far_water]:
@@ -615,6 +623,8 @@ func make_water(texture: Texture2D, local_shore: Texture2D, distant: bool) -> Sh
 	shader.set_shader_parameter("swisha_shoals", station_water)
 	shader.set_shader_parameter("marina_bounds", patch_bounds(marina_patch))
 	shader.set_shader_parameter("swisha_bounds", patch_bounds(swisha_patch))
+	if riverside_enabled:
+		shader.set_shader_parameter("riverside_center", Vector2(meta.marina.pavilion[0], meta.marina.pavilion[1]))
 	shader.set_shader_parameter("shore_units", Vector3(shore_unit, marina_patch.shore_unit, swisha_patch.shore_unit))
 	var ends: Array = meta.swisha.powerhouse
 	var a := Vector2(ends[0][0], ends[0][1])
@@ -639,6 +649,19 @@ func set_water_grid(subdivisions: int) -> void:
 
 func update_water(center: Vector3, clock: float) -> void:
 	var p := Vector2(center.x, center.z)
+	if riverside_enabled:
+		var active := p.distance_squared_to(Vector2(meta.marina.pavilion[0], meta.marina.pavilion[1])) < 240.0 * 240.0
+		if active != riverside_near:
+			riverside_near = active
+			for material: ShaderMaterial in [sky_paint, near_water, far_water]:
+				material.set_shader_parameter("riverside_profile", active)
+			last_solar_minute = -1.0
+			update_day_cycle(riverside_minutes)
+		var phase := floori(clock / 5.0)
+		if phase != riverside_cloud_step:
+			riverside_cloud_step = phase
+			for material: ShaderMaterial in [sky_paint, near_water, far_water]:
+				material.set_shader_parameter("riverside_cloud_phase", float(phase) * .018)
 	near_surface.position = Vector3(center.x, 0, center.z)
 	for mat in [near_water, far_water, headpond_water]:
 		mat.set_shader_parameter("clock", clock)
@@ -666,6 +689,7 @@ var last_weather := Vector4.INF
 
 
 func update_day_cycle(work_minutes: float) -> void:
+	riverside_minutes = work_minutes
 	var minute := snappedf(work_minutes, DayCycle.UPDATE_MINUTES)
 	var weather_key := Vector4(snappedf(weather_sample.x, .012), snappedf(weather_sample.z, .006), snappedf(weather_flash, .04), weather_fog_quality)
 	if minute == last_solar_minute and weather_key.is_equal_approx(last_weather):
@@ -673,6 +697,17 @@ func update_day_cycle(work_minutes: float) -> void:
 	last_solar_minute = minute
 	last_weather = weather_key
 	var light := DayCycle.sample(minute)
+	if riverside_near and light.night < .8:
+		var amber := smoothstep(900.0, 1110.0, fposmod(minute, 1440.0))
+		var daylight: float = 1.0 - light.night
+		light.zenith = light.zenith.lerp(Color("#688da7").lerp(Color("#65758e"), amber), daylight * .48)
+		light.horizon = light.horizon.lerp(Color("#bed1ca").lerp(Color("#e5a685"), amber), daylight * .70)
+		light.glow = light.glow.lerp(Color("#f5ddac").lerp(Color("#e89468"), amber), daylight * .70)
+		light.direct = light.direct.lerp(Color("#f4e0b4").lerp(Color("#f7cc82"), amber), daylight * .54)
+		light.ambient = light.ambient.lerp(Color("#a5c1ba").lerp(Color("#849da6"), amber), daylight * .40)
+		light.fog = light.fog.lerp(Color("#9bb8b5").lerp(Color("#a99096"), amber), daylight * .58)
+		light.fog_density += .00009 * daylight
+		light.photo = 0.0
 	var cloud := clampf(weather_key.x, 0.0, 1.0)
 	var mist := clampf(weather_key.y, 0.0, 1.0)
 	var grey := Color("#606e7f").lerp(Color("#22293a"), light.night)

@@ -8,6 +8,8 @@ uniform sampler2D town_ground : source_color, filter_linear_mipmap_anisotropic, 
 uniform sampler2D riverbank : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
 uniform sampler2D grass_scan : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
 uniform sampler2D grass_normal : filter_linear_mipmap_anisotropic, repeat_enable;
+uniform bool riverside_profile = false;
+uniform vec2 riverside_center = vec2(0.0);
 uniform sampler2D lamure_litter : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
 uniform vec4 town_bounds = vec4(0.0);
 uniform sampler2D town_paving : filter_linear, repeat_disable;
@@ -144,6 +146,11 @@ void fragment() {
 		}
 	}
 	float detail = grass * (1.0 - smoothstep(42.0, 110.0, length(VERTEX)));
+	if (riverside_profile) {
+		float local = 1.0 - smoothstep(125.0, 170.0, distance(p, riverside_center));
+		vec3 meadow = mix(vec3(.32, .40, .21), vec3(.43, .48, .25), variation);
+		ALBEDO = mix(ALBEDO, meadow, grass * local * .54);
+	}
 	if (detail > .005) {
 		vec2 relief = texture(grass_normal, region / 1.85).rg * 2.0 - 1.0;
 		vec3 tangent = normalize(VIEW_MATRIX[0].xyz - NORMAL * dot(VIEW_MATRIX[0].xyz, NORMAL));
