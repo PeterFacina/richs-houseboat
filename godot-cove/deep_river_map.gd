@@ -19,6 +19,10 @@ const RoadNetwork = preload("res://deep_river_roads.gd")
 const PontoonWorkshop = preload("res://pontoon_workshop.gd")
 const PublicWorks = preload("res://public_works.gd")
 const Waves = preload("res://swell.gd")
+const Wakes = preload("res://river_wakes.gd")
+# Centre and radii of the sheltered water inside the surveyed marina breakwall.
+const MARINA_SHELTER := Vector4(18053.0, 12729.0, 41.0, 82.0)
+const WATER_TILE_SIZE := 230.0
 const Landings = preload("res://game_campaign_data.gd")
 const BASE := "res://deep_river/"
 const ROAD_SCAN = preload("res://deep_river/materials/road_asphalt033_color.jpg")
@@ -394,8 +398,22 @@ func downstream(point: Vector3, time: float) -> Vector3:
 	return Vector3(.84, 0, .543) * stream + Vector3(cos(point.z * .017 + time * .52), 0, sin(time * .41)) * .047
 
 
-func wave_height(point: Vector3, time: float) -> float:
-	return Waves.river_height(point.x, point.z, time) * weather_wave_scale * lerpf(.24, 1.0, smoothstep(0.0, 57.0, wet_clearance(point)))
+func wave_height(point: Vector3, time: float, excluded_wake := 0) -> float:
+	var p := Vector2(point.x, point.z)
+	var swell := Waves.river_height(p, time, wave_amplitudes)
+	return (swell + wakes.height(p, time, excluded_wake)) * wave_exposure(point)
+
+
+func wave_exposure(point: Vector3) -> float:
+	var cove := Vector2((point.x - MARINA_SHELTER.x) / MARINA_SHELTER.z,
+		(point.z - MARINA_SHELTER.y) / MARINA_SHELTER.w)
+	var shelter := lerpf(.53, 1.0, smoothstep(.70, 1.0, cove.length()))
+	return shelter * Waves.shore_exposure(wet_clearance(point))
+
+
+func boat_flow(point: Vector3, time: float) -> Vector3:
+	var wind := wave_wind * .18 * wave_exposure(point)
+	return downstream(point, time) + Vector3(.84, 0, .543) * wind
 
 
 func can_sail(world: Vector3, minimum_depth := .88) -> bool:
@@ -601,7 +619,7 @@ func build_water() -> void:
 	var distant := Kit.mesh_at(self, ocean, Vector3(extent.x / 2, -0.03, extent.y / 2), far_water)
 	distant.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	var surface := PlaneMesh.new()
-	surface.size = Vector2(230, 230)
+	surface.size = Vector2.ONE * WATER_TILE_SIZE
 	surface.subdivide_width = 180
 	surface.subdivide_depth = 180
 	near_surface = Kit.mesh_at(self, surface, Vector3.ZERO, near_water)
@@ -625,6 +643,9 @@ func make_water(texture: Texture2D, local_shore: Texture2D, distant: bool) -> Sh
 	bind_day_sky(shader)
 	shader.set_shader_parameter("mapped", true)
 	shader.set_shader_parameter("distant", distant)
+	shader.set_shader_parameter("river_waves", PackedVector4Array(Waves.RIVER_WAVES))
+	shader.set_shader_parameter("river_amplitudes", wave_amplitudes)
+	shader.set_shader_parameter("marina_shelter", MARINA_SHELTER)
 	shader.set_shader_parameter("sun_direction", sun_direction)
 	shader.set_shader_parameter("map_size", extent)
 	shader.set_shader_parameter("riverbed", riverbed)
@@ -656,6 +677,7 @@ func set_water_grid(subdivisions: int) -> void:
 	var surface := near_surface.mesh as PlaneMesh
 	surface.subdivide_width = subdivisions
 	surface.subdivide_depth = subdivisions
+	water_vertex_step = WATER_TILE_SIZE / (subdivisions + 1)
 
 
 func update_water(center: Vector3, clock: float) -> void:
@@ -673,30 +695,60 @@ func update_water(center: Vector3, clock: float) -> void:
 			riverside_cloud_step = phase
 			for material: ShaderMaterial in [sky_paint, near_water, far_water]:
 				material.set_shader_parameter("riverside_cloud_phase", float(phase) * .018)
-	near_surface.position = Vector3(center.x, 0, center.z)
+	# Keep vertices on a fixed world lattice while the fade radius follows the camera.
+	var grid := p.snapped(Vector2.ONE * water_vertex_step)
+	near_surface.position = Vector3(grid.x, 0, grid.y)
 	for mat in [near_water, far_water, headpond_water]:
 		mat.set_shader_parameter("clock", clock)
 		mat.set_shader_parameter("center", p)
+	wakes.advance(clock)
+	if not wakes.packets.is_empty() or wake_visible:
+		wakes.upload(near_water, p, clock)
+		wake_visible = not wakes.packets.is_empty()
 	waterfront.wharf.update_light(clock, last_evening)
 	waterfront.fleet.update(center, clock, wave_height)
 	lamure.update_float(center, clock, wave_height)
 
 
-func set_wake(stern: Vector3, behind: Vector3, speed: float, thrust: float, prop_heading: Vector3,
-		spread: float, peak_speed: float) -> void:
-	var wash := thrust * smoothstep(.25, 1.2, speed)
-	near_water.set_shader_parameter("boat_wake", Vector4(stern.x, stern.z, speed, wash))
-	near_water.set_shader_parameter("wake_spread", spread)
-	near_water.set_shader_parameter("wake_peak_speed", peak_speed)
-	near_water.set_shader_parameter("wake_heading", Vector2(behind.x, behind.z))
-	near_water.set_shader_parameter("prop_heading", Vector2(prop_heading.x, prop_heading.z))
+func record_wake(source: int, stern: Vector3, behind: Vector3, speed: float, thrust: float,
+		spread: float, peak_speed: float, clock: float) -> void:
+	if wet_clearance(stern) < .24:
+		return
+	var flow := downstream(stern, clock)
+	wakes.emit(source, Vector2(stern.x, stern.z), Vector2(behind.x, behind.z), Vector2(flow.x, flow.z),
+		speed, thrust, spread, peak_speed, clock)
+
+
+func set_prop_wash(at: Vector3, heading: Vector3, strength: float) -> void:
+	near_water.set_shader_parameter("active_prop", Vector3(at.x, at.z, strength))
+	near_water.set_shader_parameter("prop_heading", Vector2(heading.x, heading.z))
 
 
 var weather_sample := Vector4.ZERO
-var weather_wave_scale := 1.0
+var wave_wind := .12
+var wave_amplitudes := Waves.river_amplitudes(wave_wind)
+var water_vertex_step := WATER_TILE_SIZE / 181.0
+var wakes := Wakes.new()
+var wake_visible := false
 var weather_flash := 0.0
 var weather_fog_quality := 1.0
 var last_weather := Vector4.INF
+
+
+func set_water_weather(wind: float, fog: float) -> void:
+	if not is_equal_approx(wind, wave_wind):
+		wave_wind = wind
+		wave_amplitudes = Waves.river_amplitudes(wind)
+	for material: ShaderMaterial in [near_water, far_water, headpond_water]:
+		material.set_shader_parameter("river_amplitudes", wave_amplitudes)
+		material.set_shader_parameter("wave_wind", wind)
+		material.set_shader_parameter("water_fog", fog)
+		material.set_shader_parameter("use_weather", 1.0)
+
+
+func set_water_detail(detail: float) -> void:
+	for material: ShaderMaterial in [near_water, far_water, headpond_water]:
+		material.set_shader_parameter("water_detail", detail)
 
 
 func update_day_cycle(work_minutes: float) -> void:

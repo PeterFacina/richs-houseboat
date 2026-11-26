@@ -11,7 +11,7 @@ var graphics: Graphics
 var preferences := {"volume": .8, "sensitivity": 1.0, "fov": 78.0,
 	"fullscreen": false, "vsync": true, "fps": false, "hand_motion": .65,
 	"camera_smoothing": .55, "head_bob": .35, "weather_quality": 1.0, "particle_quality": .7,
-	"reflection_quality": .75, "fog_quality": 1.0, "toggle_crouch": false, "aircraft_invert_pitch": false}
+	"reflection_quality": .75, "fog_quality": 1.0, "water_detail": .5, "toggle_crouch": false, "aircraft_invert_pitch": false}
 var name_field: LineEdit
 var status: Label
 var quit_dialog: ConfirmationDialog
@@ -258,6 +258,7 @@ func build_settings(settings: VBoxContainer) -> void:
 	slider(settings, "Rain particles", "particle_quality", 0, 1, .25)
 	slider(settings, "Weather reflections", "reflection_quality", 0, 1, .25)
 	slider(settings, "Weather fog", "fog_quality", 0, 1, .25)
+	slider(settings, "Water detail", "water_detail", 0, 1, .25)
 	var movement := HBoxContainer.new()
 	settings.add_child(movement)
 	text(movement, "Crouch mode", 16, MIST).size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -363,6 +364,9 @@ func apply_settings() -> void:
 		game.weather_fx.particle_quality = clampf(preferences.particle_quality, 0, 1)
 		game.weather_fx.reflection_quality = clampf(preferences.reflection_quality, 0, 1)
 		game.weather_fx.fog_quality = clampf(preferences.fog_quality, 0, 1)
+		var water_detail := clampf(preferences.water_detail, 0, 1)
+		game.river.set_water_detail(water_detail)
+		game.effects.water_detail = water_detail
 		game.fps.visible = preferences.fps
 	if DisplayServer.get_name() != "headless":
 		DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_ENABLED if preferences.vsync else DisplayServer.VSYNC_DISABLED)

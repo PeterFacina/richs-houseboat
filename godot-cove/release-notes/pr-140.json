@@ -1,0 +1,9 @@
+{
+  "pr": 140,
+  "player_facing": true,
+  "bullets": [
+    "Boats leave longer-lasting wakes and throw bow spray as they pick up speed.",
+    "The Ottawa River stays calmer inside the marina and grows choppier in storms.",
+    "Swimming and fishing leave ripples. Use Water detail in Settings to adjust the effects."
+  ]
+}
