@@ -3,6 +3,7 @@ extends Node3D
 const Kit = preload("res://scenery.gd")
 const Interior = preload("res://marina_car_interior.gd")
 const Badges = preload("res://marina_car_badges.gd")
+const Tools = preload("res://crew_tools.gd")
 const WindowGlass = preload("res://marina_car_glass.gdshader")
 const CABIN_DETAIL_DISTANCE := 55.0
 # Each section is [distance from center as a fraction of half-length, width fraction, hood/deck height].
@@ -34,6 +35,18 @@ const MODELS := [
 		"roof": [-.48, -.12, .26, .73], "belt": .85},
 ]
 
+const ENVOY := {
+	"label": "GMC Envoy", "paint": "#56655b", "size": Vector3(1.90, 1.83, 4.87),
+	"wheelbase": 2.87, "radius": .361, "style": "suv", "envoy": true,
+	"pull": 4.20, "grip": 1.04, "limit": 25.0, "tone": .87,
+	"body": [[-1.0, .89, .89], [-.91, .98, .98], [-.63, 1.0, 1.04], [-.34, .99, 1.07],
+		[.55, 1.0, 1.08], [.89, 1.0, .96], [1.0, .91, .86]],
+	"roof": [-.45, -.13, .84, .96], "belt": 1.04,
+}
+
+var envoy := false
+var hatch: Node3D
+var pontoons: Node3D
 var body_size: Vector3
 var radius: float
 var wheelbase: float
@@ -64,7 +77,10 @@ func build(model: Dictionary) -> void:
 	wheelbase = model.wheelbase
 	paint = Kit.paint(Color(model.paint), .36, .21)
 	paint.clearcoat_enabled = true
-	paint.clearcoat = .62
+	envoy = model.get("envoy", false)
+	paint.clearcoat = .23 if envoy else .62
+	if envoy:
+		paint.roughness = .58
 	paint.clearcoat_roughness = .29
 	var style: String = model.style
 	glass.shader = WindowGlass
@@ -82,6 +98,8 @@ func build(model: Dictionary) -> void:
 	interior.build(model)
 	combine_meshes(interior)
 	combine_meshes(interior.steering_wheel)
+	if envoy:
+		combine_meshes(interior.rear_bench)
 	for mesh: MeshInstance3D in interior.find_children("*", "MeshInstance3D", true, false):
 		mesh.visibility_range_end = CABIN_DETAIL_DISTANCE
 		mesh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
@@ -92,6 +110,9 @@ func build(model: Dictionary) -> void:
 	add_door_details(style, model.belt, cabin_start, cabin_end)
 	build_fittings(style)
 	build_wheels(style)
+	if envoy:
+		build_pontoon_load()
+		combine_meshes(pontoons)
 	combine_meshes(self)
 	for instance: Node in find_children("*", "MeshInstance3D", true, false):
 		if is_zero_approx(instance.visibility_range_end):
@@ -174,7 +195,10 @@ func build_cabin(profile: Array, belt: float, style: String) -> void:
 		rear_roof.x *= .78
 		panel(side[3], side[2], rear_roof, rear_side, roof_material)
 		panel(rear_side * Vector3(-1, 1, 1), rear_roof * Vector3(-1, 1, 1), mate[2], mate[3], roof_material)
-	panel(rear_side, rear_roof, rear_roof * Vector3(-1, 1, 1), rear_side * Vector3(-1, 1, 1), rear_glass)
+	if envoy:
+		build_envoy_hatch(rear_roof)
+	else:
+		panel(rear_side, rear_roof, rear_roof * Vector3(-1, 1, 1), rear_side * Vector3(-1, 1, 1), rear_glass)
 	var roof_middle := Vector3(0, body_size.y, (side[1].z + side[2].z) * .5)
 	var roof_front := Vector3(0, body_size.y - .012, side[1].z)
 	var roof_rear := Vector3(0, body_size.y - .018, side[2].z)
@@ -192,6 +216,11 @@ func build_cabin(profile: Array, belt: float, style: String) -> void:
 			bottom = points[3].lerp(points[0], .23)
 			panel(bottom, top, points[2], points[3], roof_material)
 		panel(points[0], points[1], top, bottom, glass)
+		if envoy:
+			var rear_post := (top - points[1]).normalized() * .10
+			var rear_sill := (bottom - points[0]).normalized() * .17
+			var seam := Vector3(sign_x * .009, 0, 0)
+			panel(top + seam, bottom + seam, bottom - rear_sill + seam, top - rear_post + seam, paint)
 		for edge in 4:
 			Kit.beam(self, points[edge], points[(edge + 1) % 4], .038 if edge == 2 else .029, roof_material)
 		var pillars := [.46, .78] if style in ["wagon", "suv", "sedan"] else [.56]
@@ -215,6 +244,56 @@ func build_cabin(profile: Array, belt: float, style: String) -> void:
 			Kit.beam(self, points[1], rail_front, .043, dark)
 			Kit.beam(self, rail_rear, points[2], .043, dark)
 	add_wipers(side, mate)
+
+
+func build_envoy_hatch(rear_roof: Vector3) -> void:
+	hatch = Node3D.new()
+	hatch.name = "RearHatch"
+	add_child(hatch)
+	hatch.position = Vector3(0, rear_roof.y, rear_roof.z)
+	var leaf := Node3D.new()
+	hatch.add_child(leaf)
+	leaf.rotation.x = -.36
+	var width := body_size.x * .78
+	Kit.box_at(leaf, Vector3(0, -.431, 0), Vector3(width, .865, .057), paint)
+	Kit.box_at(leaf, Vector3(0, -.315, .033), Vector3(width - .16, .464, .027), distant_glass)
+	Kit.box_at(leaf, Vector3(0, -.535, .052), Vector3(.37, .022, .022), dark).rotation.z = -.18
+	Kit.box_at(leaf, Vector3(0, -.638, .055), Vector3(.25, .041, .033), trim)
+	Badges.lettering(leaf, "ENVOY", Vector3(-.42, -.713, .037), .063, Color("#e2e3db"))
+
+
+func build_pontoon_load() -> void:
+	pontoons = Node3D.new()
+	pontoons.name = "StrappedPontoons"
+	add_child(pontoons)
+	var alloy := Kit.paint(Color("#aeb3ab"), .59, .30)
+	var cuff := Kit.paint(Color("#7e8581"), .59, .28)
+	var webbing := Kit.paint(Color("#dc8b27"), .87)
+	var red := Kit.paint(Color("#ad4237"), .86)
+	for side: float in [-.30, .30]:
+		var start := Vector3(side, 1.10, .49)
+		var end := Vector3(side, 1.10, 4.39)
+		Tools.tube(pontoons, start, end, .23, .23, alloy)
+		Tools.tube(pontoons, start - Vector3.BACK * .34, start, .07, .23, alloy)
+		Tools.tube(pontoons, end, end + Vector3.BACK * .23, .23, .07, alloy)
+		for seam: float in [1.90, 3.35]:
+			var band := Vector3(side, 1.10, seam)
+			Tools.tube(pontoons, band, band + Vector3.BACK * .033, .234, .234, cuff)
+	for z: float in [2.24, 2.95]:
+		Kit.box_at(pontoons, Vector3(0, 1.336, z), Vector3(.94, .028, .072), webbing)
+		for side: float in [-1.0, 1.0]:
+			var end := Vector3(side * .48, 1.335, z)
+			var tie_down := Vector3(side * .67, .83, 2.23)
+			Kit.beam(pontoons, end, tie_down, .049, webbing)
+		Kit.box_at(pontoons, Vector3(.15, 1.363, z), Vector3(.13, .043, .096), trim)
+	Kit.box_at(pontoons, Vector3(.32, .982, 4.55), Vector3(.23, .23, .015), red).rotation.z = .25
+	pontoons.hide()
+
+
+func set_pontoons_loaded(loaded: bool) -> void:
+	hatch.rotation.x = -1.37 if loaded else 0.0
+	pontoons.visible = loaded
+	interior.rear_bench.visible = not loaded
 
 
 func add_wipers(right: PackedVector3Array, left: PackedVector3Array) -> void:
@@ -339,17 +418,20 @@ func build_identification(style: String, nose: float, back: float) -> void:
 	var crest_height := {"wagon": .578, "suv": .635, "sedan": .545, "convertible": .565, "coupe": .587}
 	var crest_y := float(crest_height[style])
 	var width := .185 if style == "convertible" else .119
-	Badges.stamp(self, style, Vector3(0, crest_y, nose - .044), width, true)
-	Badges.stamp(self, style, Vector3(0, .730 if style in ["wagon", "suv"] else .673, back + .014), width)
-	var names: Array = Badges.REAR_NAMES[style]
-	Badges.lettering(self, names[0], Vector3(-body_size.x * .267, .605, back + .013), .040, Color("#d6dbdc"))
-	if not names[1].is_empty():
-		Badges.lettering(self, names[1], Vector3(body_size.x * .255, .605, back + .013), .037, Color("#d6dbdc"))
+	if envoy:
+		Badges.lettering(self, "GMC", Vector3(0, .691, nose - .055), .104, Color("#cf493e"), true)
+	else:
+		Badges.stamp(self, style, Vector3(0, crest_y, nose - .044), width, true)
+		Badges.stamp(self, style, Vector3(0, .730 if style in ["wagon", "suv"] else .673, back + .014), width)
+		var names: Array = Badges.REAR_NAMES[style]
+		Badges.lettering(self, names[0], Vector3(-body_size.x * .267, .605, back + .013), .040, Color("#d6dbdc"))
+		if not names[1].is_empty():
+			Badges.lettering(self, names[1], Vector3(body_size.x * .255, .605, back + .013), .037, Color("#d6dbdc"))
 	var plate := Vector3(0, .511, back)
 	Kit.box_at(self, plate, Vector3(.316, .137, .025), dark)
 	Kit.box_at(self, plate + Vector3.BACK * .019, Vector3(.298, .120, .015), white)
 	Badges.lettering(self, "ONTARIO", plate + Vector3(0, .040, .030), .021, Color("#1e4166"))
-	Badges.lettering(self, Badges.PLATES[style], plate + Vector3(0, .001, .030), .050, Color("#1e4166"))
+	Badges.lettering(self, ("DR  0508" if envoy else Badges.PLATES[style]), plate + Vector3(0, .001, .030), .050, Color("#1e4166"))
 
 
 func build_headlamp(style: String, nose: float, side: float) -> void:
@@ -391,6 +473,11 @@ func build_headlamp(style: String, nose: float, side: float) -> void:
 
 
 func build_grille(style: String, nose: float) -> void:
+	if envoy:
+		intake(nose, .58, .83, .43, .46, 4)
+		Kit.box_at(self, Vector3(0, .69, nose - .036), Vector3(1.55, .058, .031), trim)
+		intake(nose, .339, .472, .51, .48, 2)
+		return
 	match style:
 		"wagon":
 			intake(nose, .36, .527, .42, .58, 2)

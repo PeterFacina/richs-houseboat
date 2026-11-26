@@ -11,7 +11,7 @@ const ARRIVAL_OFFSETS := [
 ]
 const PARTS := Vector2(18033.0, 12654.0)
 const FUEL := Vector2(18032.0, 12646.0)
-const PONTOON_PICKUP := Vector2(17986.0, 12706.0)
+const Workshop = preload("res://pontoon_workshop.gd")
 
 var river: Node3D
 var rich_stand := AnimatableBody3D.new()
@@ -23,7 +23,7 @@ var ladder_top: Vector3
 var points: Dictionary = {}
 var labels: Dictionary = {}
 var delivery: Node3D
-var pickup_rack: Node3D
+var workshop := Workshop.new()
 var arrivals: Array[Vector3] = []
 
 
@@ -155,9 +155,10 @@ func build_supplies() -> void:
 		piece(cans, Vector3(side, .25, 0), Vector3(.44, .5, .27), red)
 		Kit.box_at(cans, Vector3(side, .53, 0), Vector3(.16, .08, .08), steel)
 	add_point("fuel_pickup", "Marina fuel reserve", cans.position + Vector3.UP * .40)
-	pickup_rack = pontoon_rack(land(PONTOON_PICKUP), wood)
-	add_point("pontoon_pickup", "Second-hand pontoons", pickup_rack.position + Vector3.UP * .70)
-	labels.pontoon_pickup.visibility_range_end = 115.0
+	add_child(workshop)
+	workshop.setup(river)
+	add_point("pontoon_pickup", "Used pontoons", workshop.seller_point)
+	labels.pontoon_pickup.global_position = workshop.rack.global_position + Vector3.UP * 1.0
 	var delivery_position := yard_ground(Vector2(-2.9, -4.3))
 	delivery = pontoon_rack(delivery_position, wood)
 	add_point("unload", "Pontoon drop-off", delivery_position + Vector3.UP * .69)
@@ -187,7 +188,7 @@ func apply_state(saved: Dictionary, active: Array[String]) -> void:
 	yard_gear.visible = not launched
 	yard_gear.collision_layer = 0 if launched else 1
 	model.apply_state(saved)
-	pickup_rack.visible = not saved.get("flags", {}).get("pontoon_pickup", false)
+	workshop.rack.visible = int(saved.get("step", 0)) <= 1 and not saved.get("flags", {}).get("pontoon_pickup", false)
 	delivery.visible = saved.get("flags", {}).get("unload", false) and not PartsData.repaired(saved, "pontoons")
 	for id: String in labels:
 		labels[id].visible = id in active

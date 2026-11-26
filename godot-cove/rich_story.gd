@@ -6,6 +6,7 @@ const Parts = preload("res://houseboat_restoration.gd")
 const XP = preload("res://progression.gd")
 const Boat = preload("res://houseboat.gd")
 const ToolView = preload("res://repair_tool_view.gd")
+const RoadGuide = preload("res://mowing_road_guide.gd")
 const NPC_ID := "big_rich"
 const NPC_NAME := "Big Rich"
 const ACTION := "rich_story"
@@ -23,12 +24,12 @@ const QUESTS := [
 			["boat_return", "Tie the bow and stern lines to marina cleats with E, then step ashore."],
 			["checkin", "Talk to Rich to return the Princecraft."]]},
 	{"id": "story_parts", "title": "New Legs", "cash": 16, "target": 5.0,
-		"text": "There’s a set of used floats up Pier Road. Take the red Mazda5, bring them back and fit them under her. The seller threw in the scratches.",
-		"steps": [["borrow_car", "Borrow the wagon at Rich’s workbench."],
-			["pontoon_pickup", "Drive the red Mazda5 to the second-hand pontoon rack up Pier Road."],
-			["unload", "Park the wagon by the drop-off at Rich’s yard and unload."],
+		"text": "Cal’s got a pair of used floats at his shop out toward Mackey. Take my GMC Envoy from the marina lot. Follow the arrows on Highway 17 and tell him Rich sent you.",
+		"steps": [["borrow_car", "Borrow Rich’s GMC Envoy at the workbench."],
+			["pontoon_pickup", "Follow the road arrows in the Envoy and talk to Cal at his workshop."],
+			["unload", "Follow the arrows back to the marina. Park by the drop-off at Rich’s yard and unload."],
 			["pontoons", "Hold E at the hull to install the pontoons."],
-			["checkin", "Return the wagon loan to Rich."]]},
+			["checkin", "Return the Envoy loan to Rich."]]},
 	{"id": "story_repair", "title": "Safety Third", "cash": 17, "target": 4.0,
 		"text": "You can borrow my welder, bud. Just make sure I get it back. Last fella I lent it to moved to Pembroke.",
 		"steps": [["bench", "Pick up Rich’s welder and welding wire at the workbench."],
@@ -83,6 +84,8 @@ var local_elapsed := 0.0
 var local_finished := false
 var effects := ToolView.new()
 var test_sound: AudioStreamPlayer3D
+var road_guide: RoadGuide
+var next_route_check := 0.0
 
 
 func setup(owner: Node3D, new_game: bool) -> void:
@@ -259,6 +262,7 @@ func sync_world() -> void:
 		if not yard_action(id).is_empty():
 			active.append(id)
 	yard.apply_state(state(), active)
+	sync_transport()
 	if is_instance_valid(campaign.houseboat.restoration_model):
 		campaign.houseboat.restoration_model.apply_state(state() if managed() else working_components())
 		var rebuilt := Parts.upgrade_installed(state(), "outboard")
@@ -272,6 +276,50 @@ func sync_world() -> void:
 	if is_instance_valid(game.backpack):
 		game.backpack.set_story_gear(rod_allowed(), rod_label(), repair_tool())
 	game.refresh_story_ui()
+
+
+func setup_transport() -> void:
+	road_guide = RoadGuide.new()
+	game.add_child(road_guide)
+	road_guide.setup(game.river)
+	road_guide.extra_roads = [Yard.Workshop.DRIVE]
+	road_guide.surface_height = game.river.driving_height
+	if transport_loaned() and not campaign.crew.is_guest():
+		restore_envoy_pose()
+	sync_transport()
+
+
+func sync_transport() -> void:
+	if not is_instance_valid(game.marina_cars):
+		return
+	var fleet = game.marina_cars
+	var loaded := transport_loaned() and flag("pontoon_pickup") and not flag("unload")
+	fleet.cars[fleet.ENVOY].model.set_pontoons_loaded(loaded)
+
+
+func transport_loaned() -> bool:
+	return current().get("id", "") == "story_parts" and state().loans.get("transport", false)
+
+
+func road_destination() -> Vector3:
+	if not transport_loaned() or flag("unload"):
+		return Vector3.INF
+	return yard.points.unload if flag("pontoon_pickup") else yard.workshop.parking
+
+
+func tick_transport(delta: float, has_input: bool) -> void:
+	var fleet = game.marina_cars
+	var target := road_destination()
+	if not has_input or fleet.active != fleet.ENVOY or not target.is_finite():
+		road_guide.reset()
+		next_route_check = 0.0
+		return
+	var origin: Vector3 = fleet.cars[fleet.ENVOY].global_position
+	next_route_check -= delta
+	if next_route_check <= 0.0:
+		road_guide.navigate(origin, target, game.public_works)
+		next_route_check = .4
+	road_guide.update_paint(origin)
 
 
 func working_components() -> Dictionary:
@@ -334,10 +382,29 @@ func remember_local() -> void:
 		campaign.ledger.state.player_position = {"feet": [at.x, at.y, at.z], "yaw": game.yaw, "pitch": game.pitch}
 
 
-func save_boat_pose() -> void:
+func save_vehicle_poses() -> void:
 	var boat: Boat = game.vessel
 	if managed() and (state().launched or state().loans.has("princecraft")):
 		state().boat_pose = [boat.center.x, boat.center.z, boat.heading, boat.departed]
+	var fleet = game.marina_cars
+	if is_instance_valid(fleet) and transport_loaned() and fleet.drivers[fleet.ENVOY] == 0:
+		var car = fleet.cars[fleet.ENVOY]
+		var at: Vector3 = car.global_position
+		state().envoy_pose = [at.x, at.z, car.heading]
+
+
+func restore_envoy_pose() -> void:
+	var saved: Variant = state().get("envoy_pose", [])
+	if not saved is Array or saved.size() != 3:
+		return
+	for value: Variant in saved:
+		if not (value is float or value is int):
+			return
+	var at := Vector2(float(saved[0]), float(saved[1]))
+	var heading := float(saved[2])
+	if not at.is_finite() or not is_finite(heading) or not Rect2(Vector2.ZERO, game.river.extent).has_point(at):
+		return
+	game.marina_cars.park_envoy(Vector3(at.x, 0, at.y), heading)
 
 
 func restore_boat_pose() -> bool:
@@ -415,7 +482,7 @@ func yard_action(id: String) -> String:
 			if id == "bench" and recovery_needed(): return "recover_princecraft"
 		"story_parts":
 			if id == "bench" and not flag("borrow_car"): return "borrow_car"
-			if id == "bench" and can_recover_wagon(): return "recover_wagon"
+			if id == "bench" and can_recover_envoy(): return "recover_envoy"
 			if id == "pontoon_pickup" and flag("borrow_car") and not flag(id): return id
 			if id == "unload" and flag("pontoon_pickup") and not flag(id): return id
 			if id == "pontoons" and flag("unload") and not done(id): return id
@@ -485,10 +552,10 @@ func hint(include_ownership := true) -> String:
 		"climb": return "E  Climb the houseboat ladder"
 		"descend": return "E  Climb down"
 		"borrow_boat": return "E  Borrow Princecraft and rod · Property of Big Rich"
-		"borrow_car": return "E  Borrow red Mazda5 · Property of Big Rich"
-		"recover_wagon": return "E  Return the borrowed Mazda5 to its parking bay"
+		"borrow_car": return "E  Borrow GMC Envoy · Property of Big Rich"
+		"recover_envoy": return "E  Recover the Envoy to the marina parking lot"
 		"bench": return "E  Take %s · Property of Big Rich" % tool_name_for_quest()
-		"pontoon_pickup": return "E  Load used pontoons into the borrowed wagon"
+		"pontoon_pickup": return "E  Talk to Cal about the used pontoons"
 		"unload": return "E  Unload pontoons at Rich’s yard"
 		"supplies": return "E  Collect the replacement parts"
 		"fuel_pickup": return "E  Borrow fuel can · $14 fuel"
@@ -568,7 +635,7 @@ func update_repair(delta: float, input_allowed: bool, held: bool) -> bool:
 
 func yard_point_for(action: String) -> String:
 	match action:
-		"borrow_boat", "borrow_car", "final_check", "launch", "recover_princecraft", "recover_houseboat", "recover_wagon": return "bench"
+		"borrow_boat", "borrow_car", "final_check", "launch", "recover_princecraft", "recover_houseboat", "recover_envoy": return "bench"
 		"engine_test": return "engine"
 	return action
 
@@ -688,11 +755,14 @@ func turn_in(peer: int, quest: Dictionary) -> void:
 		return
 	if quest.id == "story_fish" and state().loans.has("princecraft"):
 		campaign.return_story_princecraft()
-	if quest.id == "story_parts" and not wagon_parked(yard.points.unload, 23.0):
-		campaign.tell(peer, "Park the red Mazda5 by the pontoon drop-off before returning it.")
+	if quest.id == "story_parts" and not envoy_parked(yard.points.unload, 23.0):
+		campaign.tell(peer, "Park the Envoy by the pontoon drop-off and step out before returning it.")
 		return
 	if not Chain.complete(state(), QUESTS, quest.id):
 		return
+	if quest.id == "story_parts":
+		state().loans.erase("transport")
+		state().erase("envoy_pose")
 	if quest.id == "story_fish":
 		state().rod_owned = true
 	state().flags.clear()
@@ -715,15 +785,15 @@ func turn_in(peer: int, quest: Dictionary) -> void:
 	campaign.tell(peer, reply)
 
 
-func wagon_parked(point: Vector3, radius: float) -> bool:
-	var car = game.marina_cars.cars[0]
-	return absf(car.speed) < .65 and car.global_position.distance_to(point) <= radius
+func envoy_parked(point: Vector3, radius: float) -> bool:
+	var fleet = game.marina_cars
+	var car = fleet.cars[fleet.ENVOY]
+	return fleet.drivers[fleet.ENVOY] == 0 and absf(car.speed) < .65 and car.global_position.distance_to(point) <= radius
 
 
-func can_recover_wagon() -> bool:
-	if not is_instance_valid(game.marina_cars) or game.marina_cars.cars.is_empty():
-		return false
-	return game.marina_cars.drivers[0] == 0 and not wagon_parked(game.marina_cars.LOT, 42.0)
+func can_recover_envoy() -> bool:
+	return is_instance_valid(game.marina_cars) and not envoy_parked(game.marina_cars.LOT, 42.0) \
+		and game.marina_cars.drivers[game.marina_cars.ENVOY] == 0
 
 
 func crew_ashore() -> bool:
@@ -757,20 +827,22 @@ func use_yard(peer: int, action: String) -> void:
 			campaign.tell(peer, "Princecraft and rod loaned. Find the boat at the public launch sign.")
 		"borrow_car":
 			state().loans.transport = true
-			campaign.tell(peer, "Use the red Mazda5 in the marina parking row. E at its door.")
-		"recover_wagon":
-			if not game.marina_cars.recover_restoration_wagon():
-				campaign.tell(peer, "Clear the parking bay before recovering the Mazda5.")
+			campaign.tell(peer, "The GMC Envoy is at the far end of the marina parking row. Press E at its door.")
+		"recover_envoy":
+			if not game.marina_cars.recover_envoy():
+				campaign.tell(peer, "Clear the parking bay before recovering the Envoy.")
 				return
-			campaign.tell(peer, "The Mazda5 is back in its marina bay. Your cargo is still secured.")
-		"bench":
-			state().loans[tool_for_quest()] = true
-			campaign.tell(peer, "%s loaned. Equip it in the Backpack (I)." % tool_name_for_quest())
-		"pontoon_pickup", "unload":
-			var radius := 23.0 if action == "unload" else 20.0
-			if not wagon_parked(yard.points[action], radius):
-				campaign.tell(peer, "Park Rich’s dark wagon near this loading point.")
+			campaign.tell(peer, "The Envoy is back in its marina bay.")
+		"pontoon_pickup":
+			if not envoy_parked(yard.workshop.parking, 12.0):
+				campaign.tell(peer, "Cal: Park Rich’s Envoy in the gravel lot and hop out. I’ll help with the straps.")
 				return
+			campaign.tell(peer, "Cal: They’re strapped in. The hatch stays up until you unload at Rich’s yard.")
+		"unload":
+			if not envoy_parked(yard.points.unload, 23.0):
+				campaign.tell(peer, "Park the Envoy by the pontoon drop-off and step out to unload.")
+				return
+			campaign.tell(peer, "Pontoons unloaded. Hold E at the hull to install them.")
 		"fuel_pickup":
 			if campaign.ledger.state.cash < 14:
 				campaign.tell(peer, "The reserve costs $14. Sell a catch or do a marina job.")

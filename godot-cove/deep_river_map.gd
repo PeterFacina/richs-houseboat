@@ -15,6 +15,7 @@ const BuildingsDriveways = preload("res://deep_river_driveways.gd")
 const TownHall = preload("res://deep_river_town_hall.gd")
 const PropertySites = preload("res://deep_river_properties.gd")
 const RoadNetwork = preload("res://deep_river_roads.gd")
+const PontoonWorkshop = preload("res://pontoon_workshop.gd")
 const PublicWorks = preload("res://public_works.gd")
 const Waves = preload("res://swell.gd")
 const Landings = preload("res://game_campaign_data.gd")
@@ -499,6 +500,7 @@ func trees_for_tile(col: int, row: int, rng: RandomNumberGenerator, tree: Mesh, 
 		var location := Vector2(x, z)
 		if swisha_patch.area.has_point(location) or marina_patch.area.has_point(location) or canopy_area.has_point(location) \
 				or PublicWorks.road_clearance(location) or PropertySites.clears_tree(location) \
+				or PontoonWorkshop.clears_tree(location) \
 				or highway_has_tree_conflict(location, near_highway):
 			continue
 		if wet_clearance(Vector3(x, 0, z)) > 0.0:

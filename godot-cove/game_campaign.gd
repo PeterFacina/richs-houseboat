@@ -966,7 +966,7 @@ func tick(delta: float, has_input: bool) -> void:
 		save_elapsed += delta
 		if save_elapsed >= 30.0:
 			save_elapsed = 0.0
-			story.save_boat_pose()
+			story.save_vehicle_poses()
 			ledger.save_file()
 	update_info()
 
@@ -1041,7 +1041,7 @@ func changed(persist := true) -> void:
 	houseboat.set_modern_design(ledger.state.get("modern_houseboat", false))
 	story.sync_world()
 	if persist and not crew.is_guest():
-		story.save_boat_pose()
+		story.save_vehicle_poses()
 		ledger.save_file()
 		if not ledger.error.is_empty():
 			message = ledger.error
