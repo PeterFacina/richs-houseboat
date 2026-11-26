@@ -256,7 +256,7 @@ func pose(position: Vector3, turn: float, onboard: bool, animation: Dictionary) 
 		var point: Variant = animation.get(key)
 		if point is Vector3 and point.is_finite():
 			visual[key] = point
-	for key in ["rod", "line", "float", "hand_left_visible", "hand_right_visible", "lighter_visible", "use_smoke"]:
+	for key in ["rod", "line", "float", "hand_left_visible", "hand_right_visible", "lighter_visible", "use_smoke", "cabin_high", "roach_on_foot"]:
 		visual[key] = animation.get(key, false) == true
 	for key in ["stage", "species", "length", "hook_id", "hand_mode", "use_item", "use_serial"]:
 		var value: Variant = animation.get(key)

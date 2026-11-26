@@ -18,6 +18,8 @@ const MIST := Color("#b3cbc4")
 const SUN := Color("#ffd878")
 const SEAFOAM := Color("#8ce3cc")
 
+var quest_items: Label
+
 var equipped := NONE
 var selected := ROD
 var shortcuts: Array[int] = [ROD, NONE, NONE, NONE, NONE, NONE, FISTS]
@@ -324,6 +326,10 @@ func build_inventory() -> void:
 	equip_button.pressed.connect(func(): equip_requested.emit(NONE if selected == equipped else selected))
 	details.add_child(equip_button)
 
+	quest_items = MenuTheme.text("", 17, MenuTheme.NAVY, true)
+	column.add_child(quest_items)
+	quest_items.hide()
+
 	column.add_child(HSeparator.new())
 	var hotbar_heading := HBoxContainer.new()
 	hotbar_heading.add_theme_constant_override("separation", 12)
@@ -345,6 +351,12 @@ func build_inventory() -> void:
 	inventory.visibility_changed.connect(func():
 		if inventory.is_visible_in_tree():
 			gear_buttons[selected].grab_focus())
+
+
+func set_quest_items(count: int) -> void:
+	quest_items.visible = count > 0
+	if quest_items.visible:
+		quest_items.text = "Discarded joint roach  ×%d" % count
 
 
 func inventory_card(height: int) -> Button:

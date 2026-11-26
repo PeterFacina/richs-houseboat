@@ -10,7 +10,7 @@ Players already explore on foot, drive, boat, fish, take mowing jobs, repair and
 
 ## Narrative and progression
 
-The introductory chain starts with Big Rich at the Pier Road yard and introduces fishing, boating, driving, repairs and ownership. The [quest guide](systems/QUESTS.md) documents the eight implemented quests and their integration. Shannon already appears at Public Works as the mowing job contact, with a character model, dialogue and daily routes. An independent Shannon Lapping questline and additional independent or interconnected character stories are planned.
+The introductory chain starts with Big Rich at the Pier Road yard and introduces fishing, boating, driving, repairs and ownership. The [quest guide](systems/QUESTS.md) documents the eight introductory quests and The Roach Reaper, a rare side quest on Silvie Street. Shannon already appears at Public Works as the mowing job contact, with a character model, dialogue and daily routes. An independent Shannon Lapping questline and additional independent or interconnected character stories are planned.
 
 [Universal XP](UNIVERSAL-XP.md) already connects activity rewards and skill ranks to persistent player profiles. Shared campaign funds, ownership and quest state coexist with per-player XP and skill ranks. A future research tree could grant knowledge or capabilities separately from skill proficiency. See [architecture](ARCHITECTURE.md) for system entry points and [progression and economy](systems/PROGRESSION-ECONOMY.md) for the current integration.
 
