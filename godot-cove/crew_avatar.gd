@@ -8,6 +8,7 @@ const Rig = preload("res://fishing_rig.gd")
 const Hands = preload("res://river_hands.gd")
 const Props = preload("res://cabin_props.gd")
 const Actions = preload("res://river_hand_actions.gd")
+const Flashlight = preload("res://player_flashlight.gd")
 
 var body: Node3D
 var head: Node3D
@@ -21,6 +22,7 @@ var free_palms: Array[Node3D] = []
 var tool_palms: Array[Node3D] = []
 var use_props: Array[Node3D] = []
 var use_lighter: Node3D
+var flashlight: SpotLight3D
 var smoke_serial := -1
 var shared_item := -1
 var shared_tool_pose := Transform3D.IDENTITY
@@ -202,6 +204,15 @@ func apply_sample(sample: Dictionary, vessel: Node3D, delta: float, clock: float
 	var cycle_distance := 2.0 * maxf(gait_reach * walking, .08) / gait_stance
 	stride = fposmod(stride + delta * pace * TAU / cycle_distance, TAU)
 	pointing = lerpf(pointing, float(animation.get("pitch", 0.0)), amount)
+	var lit := bool(animation.get("flashlight", false))
+	if lit and flashlight == null:
+		flashlight = Flashlight.new()
+		add_child(flashlight)
+	if flashlight != null:
+		flashlight.visible = lit
+		if lit:
+			flashlight.position = Vector3(.11, 1.50 - eye_drop, -.15)
+			flashlight.rotation.x = pointing
 	bend = lerpf(bend, float(animation.get("tension", 0.0)), amount)
 	var stage := int(animation.get("stage", 0))
 	var phase := float(animation.get("age", 0))

@@ -9,6 +9,7 @@ const NONE := -2
 const FISTS := -1
 const ROD := 0
 const REPAIR := 1
+const PEN := 2
 const Restoration = preload("res://houseboat_restoration.gd")
 const HOTBAR_KEYS := [KEY_1, KEY_2, KEY_3, KEY_4, KEY_5, KEY_6, KEY_7]
 const SLOT_WIDTH := 57
@@ -41,6 +42,7 @@ var gear_buttons: Dictionary = {}
 var gear_states: Dictionary = {}
 var gear_names: Dictionary = {}
 var rod_available := true
+var pen_owned := false
 var rod_description := "Fishing rod"
 var loaned_tool := ""
 var shortcut_buttons: Array[Button] = []
@@ -247,6 +249,7 @@ func build_controls() -> void:
 		["WASD / Space", "Walk, swim / jump"],
 		["Left Shift / Left Ctrl", "Sprint (hold) / crouch"],
 		["1–7 / I", "Equip or stow / backpack"],
+		["T", "Flashlight"],
 		["E / L", "Interact / board or leave a tied boat"],
 		["W/S · R/F", "Raise / lower throttle"],
 		["Space at helm", "Shift to neutral"],
@@ -312,7 +315,9 @@ func build_inventory() -> void:
 	add_gear(gear_row, ROD)
 	add_gear(gear_row, FISTS)
 	add_gear(gear_row, REPAIR)
+	add_gear(gear_row, PEN)
 	gear_buttons[REPAIR].hide()
+	gear_buttons[PEN].hide()
 
 	var detail_margin := MenuTheme.panel(column, MenuTheme.PAPER, MenuTheme.SAND, 9, 12)
 	var details := HBoxContainer.new()
@@ -441,8 +446,31 @@ func set_story_gear(rod_owned_or_loaned: bool, rod_label: String, tool: String) 
 	refresh()
 
 
+func set_pen_owned(owned: bool) -> void:
+	if owned == pen_owned:
+		return
+	pen_owned = owned
+	gear_buttons[PEN].visible = owned
+	if owned and not shortcuts.has(PEN):
+		var slot := shortcuts.find(NONE)
+		if slot >= 0:
+			shortcuts[slot] = PEN
+	if not owned:
+		var slot := shortcuts.find(PEN)
+		if slot >= 0:
+			shortcuts[slot] = NONE
+		if equipped == PEN:
+			set_equipped(NONE)
+		if selected == PEN:
+			selected = FISTS
+	refresh()
+	if owned:
+		reveal_hotbar()
+
+
 func gear_available(gear: int) -> bool:
-	return (gear != ROD or rod_available) and (gear != REPAIR or not loaned_tool.is_empty())
+	return (gear != ROD or rod_available) and (gear != REPAIR or not loaned_tool.is_empty()) \
+		and (gear != PEN or pen_owned)
 
 
 func assign_to(slot: int) -> void:
@@ -473,7 +501,7 @@ func refresh() -> void:
 		label.text = "Equipped" if gear == equipped else "Stowed"
 		if gear == REPAIR and not loaned_tool.is_empty():
 			label.text += " · Property of Big Rich"
-		if not gear_available(gear):
+		if gear == ROD and not gear_available(gear):
 			label.text = "Ask Big Rich for a rod"
 		gear_names[gear].text = gear_name(gear)
 		label.add_theme_color_override("font_color", MenuTheme.BLUE if gear == equipped else MenuTheme.MUTED)
@@ -484,6 +512,7 @@ func refresh() -> void:
 	match selected:
 		ROD: gear_detail.text = rod_description + "  ·  R to cast or reel"
 		REPAIR: gear_detail.text = "Aim at the damaged part and hold E"
+		PEN: gear_detail.text = "Left click to use  ·  Q to drop while equipped"
 		_: gear_detail.text = "Left click  ·  Punch"
 
 
@@ -491,6 +520,7 @@ func gear_name(gear: int) -> String:
 	match gear:
 		NONE: return "Empty"
 		FISTS: return "Fists"
+		PEN: return "Dab pen"
 		REPAIR: return Restoration.TOOLS.get(loaned_tool, "Repair tool")
 	return "Rod"
 
@@ -537,6 +567,10 @@ class HotbarIcon extends Control:
 					Vector2(21, 12)]), ink, 1.7, true)
 				draw_line(Vector2(3, 17), Vector2(8, 12), ink, 3.0, true)
 				draw_circle(Vector2(9, 15), 2.5, ink, false, 1.4, true)
+			"dab pen":
+				draw_line(Vector2(5, 16), Vector2(17, 6), ink, 4.0, true)
+				draw_line(Vector2(16, 7), Vector2(20, 4), ink, 2.4, true)
+				draw_circle(Vector2(10, 12), 1.1, SEAFOAM, true, -1.0, true)
 			"fists":
 				draw_polyline(PackedVector2Array([Vector2(6, 18), Vector2(4, 12), Vector2(4, 8), Vector2(8, 8),
 					Vector2(8, 4), Vector2(19, 4), Vector2(21, 7), Vector2(20, 12), Vector2(16, 18),

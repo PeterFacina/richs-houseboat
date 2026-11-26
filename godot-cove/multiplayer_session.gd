@@ -256,7 +256,7 @@ func pose(position: Vector3, turn: float, onboard: bool, animation: Dictionary) 
 		var point: Variant = animation.get(key)
 		if point is Vector3 and point.is_finite():
 			visual[key] = point
-	for key in ["rod", "line", "float", "hand_left_visible", "hand_right_visible", "lighter_visible", "use_smoke", "cabin_high", "roach_on_foot"]:
+	for key in ["rod", "line", "float", "hand_left_visible", "hand_right_visible", "lighter_visible", "use_smoke", "cabin_high", "roach_on_foot", "flashlight"]:
 		visual[key] = animation.get(key, false) == true
 	for key in ["stage", "species", "length", "hook_id", "hand_mode", "use_item", "use_serial"]:
 		var value: Variant = animation.get(key)
@@ -300,7 +300,7 @@ func last_pose(peer: int) -> Dictionary:
 	var at: Vector3 = sample.at
 	var facing: float = sample.yaw + (boat.rotation.y if sample.onboard else 0.0)
 	return {"at": boat.to_global(at) if sample.onboard else at, "onboard": sample.onboard,
-		"yaw": facing, "pitch": sample.animation.get("pitch", 0.0)}
+		"yaw": facing, "pitch": sample.animation.get("pitch", 0.0), "eye_drop": sample.animation.get("eye_drop", 0.0)}
 
 
 func tick(delta: float, actor: CharacterBody3D, onboard: bool, yaw: float, visual: Callable, clock: float, eye: Vector3) -> bool:

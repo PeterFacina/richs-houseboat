@@ -8,6 +8,8 @@
 
 - Swim to the water side of a marina ladder and look at its rails for the E climb prompt. The player steps onto the floating dock. The Lamure swim float has its own climb interaction.
 
+The Dab pen starts on the houseboat galley tray. Look at it and press E to pick it up. Equip it from the Backpack or assign it to a hotbar slot. Left click uses it on foot, and Q sets it down on a solid surface while equipped. The galley and dropped prop use the same model as the held pen. Carrying it between uses leaves it available in the Backpack, and the smoking sequence applies the existing high effect. T toggles the on-foot flashlight.
+
 ## Solo HUD verification
 
 Use this checklist when changing or reviewing the shared HUD. Keep the run in a disposable solo trip and record the game revision, viewport size, selected destination, and before/after values.
