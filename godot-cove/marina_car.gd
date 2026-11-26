@@ -67,24 +67,24 @@ func ground_basis(angle: float, feet: PackedFloat32Array) -> Basis:
 	return basis * Basis(Vector3.BACK, atan(bank))
 
 
-func drive(delta: float, pedal: float, turning: float, handbrake: bool, occupied: bool, recovery_bonus := 0.0) -> void:
+func drive(delta: float, pedal: float, turning: float, handbrake: bool, occupied: bool, recovery_bonus := 0.0, weather_grip := 1.0) -> void:
 	recovery_seconds = maxf(0.0, recovery_seconds - delta)
 	var previous := speed
 	var moving_against_pedal := absf(pedal) > .01 and speed * pedal < -.12
 	braking = handbrake or moving_against_pedal
 	blocked = false
 	if braking or not occupied:
-		speed = move_toward(speed, 0.0, (10.8 if handbrake else 8.7) * delta)
+		speed = move_toward(speed, 0.0, (10.8 if handbrake else 8.7) * delta * weather_grip)
 	elif not is_zero_approx(pedal):
 		var limit: float = details.limit if pedal > 0 else 5.6
-		var traction := 1.0 - smoothstep(2.0, limit, absf(speed)) * .73
+		var traction := (1.0 - smoothstep(2.0, limit, absf(speed)) * .73) * weather_grip
 		var slope := global_basis.z.y * 3.2
 		speed = clampf(speed + (pedal * float(details.pull) * (1.0 + recovery_bonus if recovery_seconds > 0.0 else 1.0) * traction + slope) * delta, -5.6, details.limit)
 	else:
 		speed = move_toward(speed, 0.0, (.62 + absf(speed) * .04) * delta)
 	var angle_limit := lerpf(.54, .11, smoothstep(2.5, 23.0, absf(speed)))
 	steer = move_toward(steer, -turning * angle_limit, 2.9 * delta)
-	var next_heading := wrapf(heading + speed / wheelbase * tan(steer) * float(details.grip) * delta, -PI, PI)
+	var next_heading := wrapf(heading + speed / wheelbase * tan(steer) * float(details.grip) * delta * weather_grip, -PI, PI)
 	if absf(speed) > .01:
 		var travel := Vector3.FORWARD.rotated(Vector3.UP, lerp_angle(heading, next_heading, .5)) * speed * delta
 		var destination := global_position + travel

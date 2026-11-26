@@ -24,6 +24,16 @@ window/stretch/aspect="expand"
 
 [input]
 
+interact={
+"deadzone": 0.5,
+"events": [Object(InputEventKey,"physical_keycode":69)]
+}
+
+fish_interact={
+"deadzone": 0.5,
+"events": [Object(InputEventKey,"physical_keycode":82)]
+}
+
 sprint={
 "deadzone": 0.5,
 "events": [Object(InputEventKey,"physical_keycode":4194325,"location":1)]
@@ -32,6 +42,13 @@ crouch={
 "deadzone": 0.5,
 "events": [Object(InputEventKey,"physical_keycode":4194326,"location":1)]
 }
+
+[shader_globals]
+
+river_weather_wet={"type":"float","value":0.0}
+river_weather_rain={"type":"float","value":0.0}
+river_weather_wind={"type":"float","value":0.0}
+river_weather_reflection={"type":"float","value":0.75}
 
 [rendering]
 renderer/rendering_method="gl_compatibility"

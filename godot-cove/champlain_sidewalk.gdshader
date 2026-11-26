@@ -1,4 +1,5 @@
 shader_type spatial;
+#include "res://weather_pavement.gdshaderinc"
 render_mode specular_disabled;
 
 uniform sampler2D concrete_scan : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
@@ -33,5 +34,7 @@ void fragment() {
 	}
 	vec3 fresh = vec3(.68, .65, .59) * (.93 + .12 * grit + .10 * field - .20 * slab);
 	ALBEDO = mix(ALBEDO, fresh, COLOR.b);
-	ROUGHNESS = .93;
+	ALBEDO *= 1.0 - river_weather_wet * .19;
+	ROUGHNESS = mix(.93, .56, river_weather_wet);
+	SPECULAR = .23 + river_weather_wet * .23 * river_weather_reflection;
 }

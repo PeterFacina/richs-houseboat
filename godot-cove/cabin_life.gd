@@ -300,7 +300,10 @@ func sight(at: Vector3, radius: float, range_m: float) -> float:
 	var along := offset.dot(-eye.global_basis.z)
 	if along < .12 or offset.length_squared() > range_m * range_m:
 		return INF
-	return (offset + eye.global_basis.z * along).length() / radius + along * .041
+	var score := (offset + eye.global_basis.z * along).length() / radius + along * .041
+	if score < 1.0 and not preload("res://interaction_sight.gd").clear(eye, at):
+		return INF
+	return score
 
 
 func use_focus() -> bool:

@@ -172,6 +172,12 @@ func elbow(start: Vector3, requested: Vector3, plane: Vector3, first: float, sec
 	return start + direction * along + plane.slide(direction).normalized() * height
 
 
+const Idle = preload("res://character_idle.gd")
+var idle_state := Vector3.ZERO
+var idle_weight := 0.0
+var idle_phone: MeshInstance3D
+
+
 func apply_sample(sample: Dictionary, vessel: Node3D, delta: float, clock: float, camera: Vector3) -> void:
 	var next: Vector3 = sample.at
 	var new_frame := not established or riding != bool(sample.onboard) or relative.distance_squared_to(next) > 12.0
@@ -222,13 +228,18 @@ func apply_sample(sample: Dictionary, vessel: Node3D, delta: float, clock: float
 		action_phase = lerpf(action_phase + delta, phase, delta * 3.2)
 	last_stage = stage
 	var bob := absf(sin(stride)) * walking * lerpf(lerpf(.029, .054, sprint_pose), .012, crouch_pose)
-	var breathing := sin(clock * 2.2) * .008 * crouch_pose * (1.0 - walking)
+	idle_state = animation.get("idle", Vector3.ZERO)
+	if idle_state.x > 0.0 and sample.has("received"):
+		idle_state.y += clampf(float(Time.get_ticks_msec() - int(sample.received)) / 1000.0, 0.0, .15)
+	idle_weight = Idle.weight(idle_state) * (1.0 - walking) * (1.0 - crouch_pose)
+	var breathing := sin(clock * 1.9 + float(get_instance_id() % 119)) * .008 * (1.0 - walking)
 	body.position.y = .88 + bob + breathing - bend * .029 - crouch_pose * .49 - sprint_pose * .075
 	var dip: float = animation.get("scoop", .0)
 	var lean := .06 * walking - .065 * bend - .18 * dip - .30 * sprint_pose - .35 * crouch_pose
 	body.rotation = Vector3(lean, sin(stride) * walking * lerpf(.062, .11, sprint_pose),
 		.032 * sin(stride) * walking)
-	head.rotation.x = pointing * .54
+	body.rotation += Idle.torso(idle_state, idle_weight)
+	head.rotation = Vector3(pointing * .54, 0, 0) + Idle.head(idle_state, idle_weight)
 	update_limbs(animation, vessel, stage, clock)
 	update_shared_actions(animation, delta)
 	update_angling(animation, delta, clock, camera)
@@ -318,7 +329,11 @@ func update_shared_actions(animation: Dictionary, delta: float) -> void:
 		var hand := palms[index]
 		var pose: Variant = animation.get("hand_" + key)
 		var visible_hand := bool(animation.get("hand_" + key + "_visible", true))
-		if pose is Transform3D and visible_hand:
+		if idle_weight > 0.0 and int(idle_state.x) >= Idle.STRETCH and int(animation.get("hand_mode", 0)) == 0:
+			hand.transform = Transform3D(Basis(Vector3.RIGHT, -PI * .5),
+				Vector3(side * .28, .91, -.01) + Idle.hand(idle_state, side, idle_weight))
+			Hands.set_pose(hand, "relaxed")
+		elif pose is Transform3D and visible_hand:
 			var target: Transform3D = view * pose
 			hand.transform = hand.transform.interpolate_with(target, 1 - exp(-delta * 24)) if hand.position.distance_to(target.origin) < .5 else target
 			Hands.set_pose(hand, str(animation.get("hand_" + key + "_pose", "relaxed")))
@@ -334,6 +349,13 @@ func update_shared_actions(animation: Dictionary, delta: float) -> void:
 		bind_segment(arms[index * 2], shoulder, elbow_at)
 		bind_segment(arms[index * 2 + 1], elbow_at, wrist)
 		joint_positions[index] = wrist
+	var checking_phone := int(idle_state.x) == Idle.PHONE and idle_weight > .65
+	if checking_phone and idle_phone == null:
+		idle_phone = Kit.box_at(self, Vector3.ZERO, Vector3(.064, .126, .011), Kit.paint(Color("#263138"), .46))
+	if idle_phone != null:
+		idle_phone.visible = checking_phone
+		idle_phone.position = joint_positions[1] + Vector3(0, .045, -.049)
+		idle_phone.rotation.x = -.67
 	if animation.has("rod_pose") and rod.visible:
 		var target: Transform3D = view * Transform3D(animation.rod_pose)
 		rod.transform = rod.transform.interpolate_with(target, blend) if rod.position.distance_to(target.origin) < .5 else target

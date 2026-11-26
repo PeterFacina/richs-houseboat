@@ -194,7 +194,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event is InputEventKey and event.pressed and not event.echo:
 		if event.physical_keycode == KEY_ESCAPE:
 			Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
-		elif event.physical_keycode == KEY_E and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+		elif event.is_action_pressed(&"interact") and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 			interact()
 		elif event.physical_keycode == KEY_F3:
 			fps.visible = not fps.visible

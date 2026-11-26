@@ -367,7 +367,7 @@ func downstream(point: Vector3, time: float) -> Vector3:
 
 
 func wave_height(point: Vector3, time: float) -> float:
-	return Waves.river_height(point.x, point.z, time) * lerpf(.24, 1.0, smoothstep(0.0, 57.0, wet_clearance(point)))
+	return Waves.river_height(point.x, point.z, time) * weather_wave_scale * lerpf(.24, 1.0, smoothstep(0.0, 57.0, wet_clearance(point)))
 
 
 func can_sail(world: Vector3, minimum_depth := .88) -> bool:
@@ -649,12 +649,35 @@ func set_wake(stern: Vector3, behind: Vector3, speed: float, thrust: float, prop
 	near_water.set_shader_parameter("prop_heading", Vector2(prop_heading.x, prop_heading.z))
 
 
+var weather_sample := Vector4.ZERO
+var weather_wave_scale := 1.0
+var weather_flash := 0.0
+var weather_fog_quality := 1.0
+var last_weather := Vector4.INF
+
+
 func update_day_cycle(work_minutes: float) -> void:
 	var minute := snappedf(work_minutes, DayCycle.UPDATE_MINUTES)
-	if minute == last_solar_minute:
+	var weather_key := Vector4(snappedf(weather_sample.x, .012), snappedf(weather_sample.z, .006), snappedf(weather_flash, .04), weather_fog_quality)
+	if minute == last_solar_minute and weather_key.is_equal_approx(last_weather):
 		return
 	last_solar_minute = minute
+	last_weather = weather_key
 	var light := DayCycle.sample(minute)
+	var cloud := clampf(weather_key.x, 0.0, 1.0)
+	var mist := clampf(weather_key.y, 0.0, 1.0)
+	var grey := Color("#606e7f").lerp(Color("#22293a"), light.night)
+	light.zenith = light.zenith.lerp(grey, cloud * .85).lightened(weather_flash * .28)
+	light.horizon = light.horizon.lerp(grey.lightened(.21 * (1.0 - light.night)), cloud * .75).lightened(weather_flash * .22)
+	light.glow = light.glow.lerp(grey, cloud * .82)
+	light.direct = light.direct.lerp(Color("#c3cdd6"), cloud * .82)
+	light.sun_energy *= lerpf(1.0, .24, cloud)
+	light.moon_energy *= lerpf(1.0, .29, cloud)
+	light.ambient_energy = light.ambient_energy * lerpf(1.0, .82, cloud) + weather_flash * .24
+	light.ambient = light.ambient.lerp(Color("#b8c7d4"), cloud * .35)
+	light.fog = light.fog.lerp(light.horizon, maxf(cloud * .32, mist * .77))
+	light.fog_density += pow(mist, 1.7) * .014 * weather_fog_quality
+	light.photo *= lerpf(1.0, .12, cloud)
 	sun_direction = light.sun
 	solar_energy = light.sun_energy
 	last_evening = light.lights
@@ -685,6 +708,10 @@ func update_day_cycle(work_minutes: float) -> void:
 		material.set_shader_parameter("moon_strength", light.moon_energy)
 		material.set_shader_parameter("night_weight", light.night)
 		material.set_shader_parameter("photo_weight", light.photo)
+		material.set_shader_parameter("cloud_coverage", cloud)
+	# Keep the existing solar update cadence for sky and cubemap changes.
+	if cloud > .10:
+		sky_paint.set_shader_parameter("weather_cloud_drift", Vector2(.005, .0025) * minute)
 
 
 func set_bow_light(at: Vector3, direction: Vector3, strength: float) -> void:

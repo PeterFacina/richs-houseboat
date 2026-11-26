@@ -223,17 +223,27 @@ func play(line_id: String, toward: Vector3) -> bool:
 	return true
 
 
+var idle_motion := preload("res://character_idle.gd").new()
+var patrol_idle := Vector3.ZERO
+var preview_left := 0.0
+
+
+func preview_idle(kind: int) -> void:
+	idle_motion.start(kind)
+	preview_left = idle_motion.DURATIONS[idle_motion.kind]
+
+
 func patrol_packet() -> Array:
-	return [position, rotation.y, activity, stop_age]
+	return [position, rotation.y, activity, stop_age, patrol_idle]
 
 
-func follow_patrol(delta: float, crew_on_deck: Array[Vector3], aloud: bool) -> void:
+func follow_patrol(delta: float, crew_on_deck: Array[Vector3], aloud: bool, rain: float) -> void:
 	remote_patrol.clear()
 	if aloud:
 		activity = ""
 		return
 	if not walking:
-		stop_wait -= delta
+		stop_wait -= delta * lerpf(1.0, .55, smoothstep(.45, 1.0, rain))
 		var stop: Array = STOPS[stop_index]
 		activity = stop[2]
 		stop_age += delta
@@ -272,7 +282,7 @@ func follow_patrol(delta: float, crew_on_deck: Array[Vector3], aloud: bool) -> v
 
 
 func tick(delta: float, clock: float, camera: Camera3D, show_subtitles: bool, author: bool,
-		crew_on_deck: Array[Vector3]) -> void:
+		crew_on_deck: Array[Vector3], animate_idle := true, rain := 0.0) -> void:
 	auto_cooldown = maxf(0.0, auto_cooldown - delta)
 	if author and speaking_id.is_empty():
 		if not pending_topic.is_empty():
@@ -297,12 +307,12 @@ func tick(delta: float, clock: float, camera: Camera3D, show_subtitles: bool, au
 	if seated:
 		position = seat_anchor
 		rotation.y = PI
-	elif author:
-		follow_patrol(delta, crew_on_deck, aloud)
+	elif author and preview_left <= 0.0:
+		follow_patrol(delta, crew_on_deck, aloud, rain)
 		if aloud:
 			var to_listener := listening_to - position
 			rotation.y = lerp_angle(rotation.y, atan2(to_listener.x, to_listener.z), 1.0 - exp(-delta * 5.0))
-	elif remote_patrol.size() == 4:
+	elif remote_patrol.size() >= 4:
 		var target: Vector3 = remote_patrol[0]
 		position = position.lerp(target, 1.0 - exp(-delta * 13.0))
 		rotation.y = lerp_angle(rotation.y, float(remote_patrol[1]), 1.0 - exp(-delta * 13.0))
@@ -310,6 +320,15 @@ func tick(delta: float, clock: float, camera: Camera3D, show_subtitles: bool, au
 		stop_age = float(remote_patrol[3])
 	stand.position = position + Vector3.UP * (.81 if seated else .790)
 	var distance := position.distance_to(previous)
+	if animate_idle:
+		if preview_left > 0.0:
+			preview_left = maxf(0.0, preview_left - delta)
+			idle_motion.age += delta
+		else:
+			idle_motion.tick(delta, not aloud and distance < .012 and (activity.is_empty() or activity == "rail"), not seated and activity.is_empty())
+		patrol_idle = idle_motion.packet()
+	else:
+		patrol_idle = remote_patrol[4] if remote_patrol.size() > 4 else Vector3.ZERO
 	traveled += distance
 	captions.visible = aloud and show_subtitles and range_squared < 9.0 * 9.0
 	if range_squared > 28.0 * 28.0:
@@ -330,4 +349,4 @@ func tick(delta: float, clock: float, camera: Camera3D, show_subtitles: bool, au
 		motion = float(lip_motion[sample]) / 255.0
 	var gesture: String = lines[speaking_id].gesture if aloud else ""
 	model.pose(delta, clock, head_yaw, head_pitch, gesture, time_spoken if aloud else 0.0,
-		motion, traveled, glide, activity if not aloud else "", stop_age, seated)
+		motion, traveled, glide, activity if not aloud and preview_left <= 0.0 else "", stop_age, seated, patrol_idle)

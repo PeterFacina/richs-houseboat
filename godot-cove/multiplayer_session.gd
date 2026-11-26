@@ -6,11 +6,13 @@ signal requested(peer: int, action: String, argument: Variant)
 signal command_received(throttle: float, rudder: float, center_wheel: bool)
 signal state_received(state: Dictionary, dock: int, captain: int, revision: int)
 signal ship_received(state: Dictionary)
+signal weather_received(state: Dictionary, minute: float)
 signal result_received(message: String, board_at: int, use_boat: bool)
 signal rich_heard(line_id: String, toward: Vector3)
 signal member_left(peer: int)
 
 const Avatar = preload("res://crew_avatar.gd")
+const Idle = preload("res://character_idle.gd")
 const PORT := 28460
 const MAX_GUESTS := 3
 
@@ -204,6 +206,8 @@ func roster(names: Dictionary) -> void:
 func enter_river(initial_ship: Dictionary) -> void:
 	if mode == "guest" and not started:
 		ship_received.emit(initial_ship)
+		if initial_ship.has("weather"):
+			weather_received.emit(initial_ship.weather, float(initial_ship.work_minutes))
 		started = true
 		changed.emit()
 
@@ -235,6 +239,12 @@ func share_ship(state: Dictionary) -> void:
 	ship_received.emit(state)
 
 
+@rpc("authority", "call_remote", "reliable")
+func share_weather(state: Dictionary, minute: float) -> void:
+	if is_guest():
+		weather_received.emit(state, minute)
+
+
 @rpc("any_peer", "call_remote", "unreliable_ordered", 2)
 func steer(throttle: float, rudder: float, center_wheel := false) -> void:
 	if on_server() and is_finite(throttle) and is_finite(rudder):
@@ -252,6 +262,10 @@ func pose(position: Vector3, turn: float, onboard: bool, animation: Dictionary) 
 	if not onboard and (position.x < 0.0 or position.z < 0.0 or position.x > 31500 or position.z > 22600):
 		return
 	var visual := {}
+	var idle: Variant = animation.get("idle")
+	if idle is Vector3 and idle.is_finite() and idle.x >= Idle.SHIFT and idle.x <= Idle.PHONE:
+		var gesture := int(idle.x)
+		visual.idle = Vector3(gesture, clampf(idle.y, 0.0, Idle.DURATIONS[gesture]), -1.0 if idle.z < 0.0 else 1.0)
 	for key in ["move", "end", "fish", "direction"]:
 		var point: Variant = animation.get(key)
 		if point is Vector3 and point.is_finite():

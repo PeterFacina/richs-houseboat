@@ -1,4 +1,5 @@
 shader_type spatial;
+global uniform float river_weather_wind;
 render_mode cull_disabled, diffuse_burley;
 
 uniform sampler2D leaves : source_color, filter_linear_mipmap_anisotropic, repeat_disable;
@@ -22,7 +23,7 @@ void vertex() {
 	leaf_color = mix(birch, maple, smoothstep(.67, .91, season));
 	leaf_color = mix(leaf_color, sumac, smoothstep(.90, .99, season));
 	float wind = sin(TIME * .92 + plant.x * .15 + plant.z * .17);
-	VERTEX.x += wind * (VERTEX.y + .5) * .021;
+	VERTEX.x += wind * (VERTEX.y + .5) * (.021 + river_weather_wind * .067);
 }
 
 void fragment() {
