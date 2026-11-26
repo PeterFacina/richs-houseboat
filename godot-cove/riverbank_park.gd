@@ -134,7 +134,8 @@ func clear_old_path_paint(surface: Image) -> void:
 
 
 func build(parent: Node3D, survey: PackedFloat32Array, marina: Marina, pines: Pines,
-		elevation: Callable, clearance: Callable, stone_scan: Texture2D) -> void:
+		elevation: Callable, clearance: Callable, stone_scan: Texture2D,
+		grass_excluded := Callable()) -> void:
 	ground = elevation
 	random.seed = 81619
 	var park := Node3D.new()
@@ -193,7 +194,7 @@ func build(parent: Node3D, survey: PackedFloat32Array, marina: Marina, pines: Pi
 				return false
 			pines.plant(foot, height, random)
 			return true)
-	build_verge(park, marina, clearance)
+	build_verge(park, marina, clearance, grass_excluded)
 
 
 static func in_amphitheatre(at: Vector2) -> bool:
@@ -526,7 +527,7 @@ func build_waterfront_stones(park: Node3D, stone: Material, clearance: Callable)
 
 
 
-func build_verge(park: Node3D, marina: Marina, clearance: Callable) -> void:
+func build_verge(park: Node3D, marina: Marina, clearance: Callable, grass_excluded: Callable) -> void:
 	var grass: Array[Transform3D] = []
 	for trail in [trails[1], trails[2]]:
 		for i in range(1, trail.size()):
@@ -535,7 +536,9 @@ func build_verge(park: Node3D, marina: Marina, clearance: Callable) -> void:
 			var edge := (b - a).normalized().orthogonal()
 			for _sample in ceili(a.distance_to(b) * 2.0):
 				var location := a.lerp(b, random.randf()) + edge * random.randf_range(-6.5, 6.5)
-				if near_trail(location, 1.86) or in_amphitheatre(location) or location.distance_to(GAZEBO_SITE) < 12.0:
+				if near_trail(location, 2.6 if grass_excluded.is_valid() else 1.86) \
+						or in_amphitheatre(location) or location.distance_to(GAZEBO_SITE) < 12.0 \
+						or (grass_excluded.is_valid() and grass_excluded.call(location)):
 					continue
 				var foot := on_land(location)
 				if foot.y < .52 or clearance.call(foot) > .05:

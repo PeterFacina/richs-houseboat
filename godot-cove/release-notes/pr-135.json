@@ -3,6 +3,6 @@
   "player_facing": true,
   "bullets": [
     "Try the experimental Riverside look at Deep River Marina with the --riverside-poc launch option. The regular look remains the default.",
-    "The Riverside experiment now has continuous grassy marina terrain, varied autumn trees, and fallen leaves. Mowing still cuts and regrows the grass."
+    "The approved grass now streams across eligible ground throughout the playable map while roads, paths, paved areas, sand, water, buildings and steep rock stay clear. Mowing still cuts and regrows the grass."
   ]
 }

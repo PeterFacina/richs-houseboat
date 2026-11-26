@@ -220,14 +220,15 @@ func build_ground_cover(parent: Node3D, pavilion: Vector3, ground: Callable, sho
 			if clear_route.is_valid() and clear_route.call(place):
 				continue
 			counts.eligible += 1
-			var cell := Vector2i(floori(p.x / CHUNK), floori(p.z / CHUNK))
-			if not grass_cells.has(cell):
-				var tuft: Array[Transform3D] = []
-				grass_cells[cell] = tuft
 			var scale := Vector3.ONE if prototype else Vector3(random.randf_range(1.10, 1.48),
 				random.randf_range(.65, 1.12), random.randf_range(1.10, 1.48))
-			grass_cells[cell].append(Transform3D(Basis(Vector3.UP, random.randf_range(0.0, TAU)).scaled_local(scale), p))
+			var angle := random.randf_range(0.0, TAU)
 			if prototype:
+				var cell := Vector2i(floori(p.x / CHUNK), floori(p.z / CHUNK))
+				if not grass_cells.has(cell):
+					var tuft: Array[Transform3D] = []
+					grass_cells[cell] = tuft
+				grass_cells[cell].append(Transform3D(Basis(Vector3.UP, angle).scaled_local(scale), p))
 				continue
 			if random.randf() < .0007 and local.length_squared() > 12.0 * 12.0:
 				shrubs.append(Transform3D(Basis(Vector3.UP, random.randf_range(0.0, TAU)).scaled_local(
@@ -243,9 +244,9 @@ func build_ground_cover(parent: Node3D, pavilion: Vector3, ground: Callable, sho
 				rocks.append(Transform3D(Basis(Vector3.UP, random.randf_range(0.0, TAU)).scaled_local(
 					Vector3(random.randf_range(.25, .55), random.randf_range(.17, .34), random.randf_range(.24, .48))), p))
 	print("RIVERSIDE_COVER prototype=", prototype, " ", counts, " chunks=", grass_cells.size())
-	var grass_mesh := godotgrass_blade() if prototype else grass_blades()
-	var grass_material := ShaderMaterial.new()
 	if prototype:
+		var grass_mesh := godotgrass_blade()
+		var grass_material := ShaderMaterial.new()
 		grass_material.shader = preload("res://riverside_godotgrass.gdshader")
 		var wind_noise := FastNoiseLite.new()
 		wind_noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
@@ -256,17 +257,14 @@ func build_ground_cover(parent: Node3D, pavilion: Vector3, ground: Callable, sho
 		wind_texture.seamless = true
 		wind_texture.noise = wind_noise
 		grass_material.set_shader_parameter("wind_noise", wind_texture)
-	else:
-		grass_material.shader = preload("res://riverside_grass.gdshader")
-	var kit := Kit.new()
-	for transforms: Array in grass_cells.values():
-		var typed: Array[Transform3D] = []
-		typed.assign(transforms)
-		var batch := kit.scatter(parent, grass_mesh, typed, grass_material)
-		batch.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		batch.set_meta("riverside_count", typed.size())
-		Graphics.batch(batch, "riverside_grass")
-	if prototype:
+		var kit := Kit.new()
+		for transforms: Array in grass_cells.values():
+			var typed: Array[Transform3D] = []
+			typed.assign(transforms)
+			var batch := kit.scatter(parent, grass_mesh, typed, grass_material)
+			batch.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			batch.set_meta("riverside_count", typed.size())
+			Graphics.batch(batch, "riverside_grass")
 		return
 	scatter_model(parent, "Bush_Common", shrubs)
 	scatter_model(parent, "Fern_1", ferns)

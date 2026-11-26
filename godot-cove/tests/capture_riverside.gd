@@ -35,7 +35,7 @@ func capture() -> void:
 			await process_frame
 	game.graphics.level = 0 if OS.get_cmdline_user_args().has("--preset=performance") else (2 if OS.get_cmdline_user_args().has("--preset=scenic") else 1)
 	game.graphics.apply(game.river, game.eye)
-	if OS.get_cmdline_user_args().has("--riverside-grass-prototype"):
+	if OS.get_cmdline_user_args().has("--riverside-grass-prototype") or OS.get_cmdline_user_args().has("--capture-clear-weather"):
 		var minute: float = game.campaign.ledger.state.work_minutes
 		var weather_state: Dictionary = game.campaign.ledger.state.weather
 		var clear: Vector4 = Weather.CONDITIONS[Weather.CLEAR]
@@ -44,6 +44,8 @@ func capture() -> void:
 			"wet": 0.0, "strength": 1.0, "wind": -1.0}, true)
 		game.weather_fx.update(game, weather_state, minute, .2)
 	print("RENDER_PROFILE opt_in=", game.river.riverside_enabled, " preset=", game.graphics.description())
+	if game.river.world_grass != null:
+		verify_world_surfaces(game)
 	var pavilion: Array = game.river.meta.marina.pavilion
 	var x := float(pavilion[0])
 	var z := float(pavilion[1])
@@ -65,22 +67,58 @@ func capture() -> void:
 		["golden_hour", Vector3(x + 83.0, 2.2, z + 15.0), Vector3(x - 45.0, 2.1, z + 140.0), Cycle.GOLDEN_HOUR],
 		["night_marina", Vector3(x + 83.0, 2.2, z + 15.0), Vector3(x + 17.0, 1.5, z + 125.0), Cycle.NIGHT],
 	]
+	if game.river.world_grass != null:
+		views.append(land_view(game, "residential", Vector2(18515, 13829), Vector2(18508, 13836)))
+		views.append(land_view(game, "downtown", Vector2(17957, 13320), Vector2(17991, 13330)))
+		views.append(land_view(game, "roadside", Vector2(17620, 13138), Vector2(17620, 13126)))
+		views.append(land_view(game, "lamure_beach", Vector2(18700, 13190), Vector2(18680, 13210)))
+		views.append(land_view(game, "riverbank", Vector2(18240, 13170), Vector2(18227, 13155)))
+		var forest: Array = game.river.meta.brockhouse.walkways[1]
+		views.append(land_view(game, "forest_trail", Vector2(forest[4][0], forest[4][1]),
+			Vector2(forest[7][0], forest[7][1])))
+		var routes: Array[Dictionary] = game.river.world_grass_surface.driveways.accepted
+		if not routes.is_empty():
+			var drive: Dictionary = routes[0]
+			for route: Dictionary in routes:
+				if route.entry.distance_to(route.end) > 12.0 and route.style.r > .6:
+					drive = route
+					break
+			var approach: Vector2 = (drive.end - drive.entry).normalized()
+			views.append(land_view(game, "gravel_driveway", drive.entry - approach * 4.0, drive.end))
 	var selected := ""
 	for argument in OS.get_cmdline_user_args():
 		if argument.begins_with("--view="):
 			selected = argument.trim_prefix("--view=")
 	for view in views:
-		if selected != "" and view[0] != selected:
+		if selected != "" and not selected.split(",").has(view[0]):
 			continue
 		game.river.update_day_cycle(view[3])
 		game.eye.global_position = view[1]
 		game.eye.look_at(view[2], Vector3.UP)
 		game.river.update_water(view[1], 120.0)
+		if game.river.world_grass != null:
+			game.river.world_grass.build_budget_usec = 20000
+			for frame in 3600:
+				game.river.update_grass(view[1], game.graphics.level)
+				await process_frame
+				if game.river.world_grass.ready_all():
+					break
+				if frame > 0 and frame % 600 == 0:
+					print("WORLD_GRASS_LOADING ", view[0], " frame=", frame,
+						" active=", game.river.world_grass.active.size(),
+						" target=", game.river.world_grass.desired.size())
+			game.river.world_grass.build_budget_usec = game.river.world_grass.BUILD_BUDGET_USEC
+			print("WORLD_GRASS_CAPTURE ", view[0], " chunks=", game.river.world_grass.active.size(),
+				" near_ready=", game.river.world_grass.ready_near(),
+				" all_ready=", game.river.world_grass.ready_all())
+			verify_instanced_grass(game, view[0])
 		for frame in 8:
 			await process_frame
 		var image := root.get_viewport().get_texture().get_image()
 		var path := ProjectSettings.globalize_path(output.path_join(view[0] + ".png"))
 		print("CAPTURE ", path, " ", image.get_width(), "x", image.get_height(), " ", image.save_png(path))
+		if OS.get_cmdline_user_args().has("--stream-benchmark") and game.river.world_grass != null:
+			await benchmark_streaming(game, view, output)
 		if OS.get_cmdline_user_args().has("--benchmark"):
 			var frames: Array[float] = []
 			for sample in 300:
@@ -107,3 +145,147 @@ func capture() -> void:
 		game.river.update_water(Vector3(x + 450.0, 2.0, z + 450.0), 160.0)
 		print("CHECK profile outside marina ", not game.river.riverside_near)
 	quit()
+
+
+func land_view(game: Node3D, label: String, at: Vector2, look: Vector2) -> Array:
+	return [label, Vector3(at.x, game.river.ground_height(at.x, at.y) + 2.0, at.y),
+		Vector3(look.x, game.river.ground_height(look.x, look.y) + 1.0, look.y), Cycle.MIDDAY]
+
+
+func verify_world_surfaces(game: Node3D) -> void:
+	var surface = game.river.world_grass_surface
+	var road_checked := 0
+	var road_clear := 0
+	var seen_roads := {}
+	for bucket: Array in surface.roads.values():
+		for span in bucket:
+			var key := Vector4(span.start.x, span.start.y, span.end.x, span.end.y)
+			if seen_roads.has(key):
+				continue
+			seen_roads[key] = true
+			var at: Vector2 = span.start.lerp(span.end, .5)
+			road_checked += 1
+			road_clear += int(not is_finite(surface.grass_height(at, surface.masks)))
+			if road_checked == 64:
+				break
+		if road_checked == 64:
+			break
+	var drive_checked := 0
+	var drive_clear := 0
+	for route: Dictionary in surface.driveways.accepted:
+		var at: Vector2 = route.entry.lerp(route.end, .5)
+		drive_checked += 1
+		drive_clear += int(not is_finite(surface.grass_height(at, surface.masks)))
+		if drive_checked == 64:
+			break
+	print("WORLD_GRASS_SURFACE road_centers=", road_clear, "/", road_checked,
+		" driveway_centers=", drive_clear, "/", drive_checked)
+	if road_checked == 0 or drive_checked == 0 or road_clear != road_checked or drive_clear != drive_checked:
+		push_error("World grass surface placement failed a road or driveway sample")
+	for at: Vector2 in [Vector2(18235, 13174), Vector2(18238, 13170), Vector2(18240, 13167)]:
+		print("WORLD_GRASS_RIVERBANK_PROBE ", at, " road=", surface.road_or_walk(at),
+			" trail=", surface.park.near_trail(at, 2.6),
+			" eligible=", is_finite(surface.grass_height(at, surface.masks)))
+	for at: Vector2 in [Vector2(17620, 13063), Vector2(17612, 13070), Vector2(17628, 13070),
+			Vector2(17620, 13085)]:
+		print("WORLD_GRASS_DRIVE_PROBE ", at, " road=", surface.road_or_walk(at),
+			" paved=", surface.paved(at, surface.masks), " occupied=", surface.occupied(at),
+			" height=", surface.world.ground_height(at.x, at.y),
+			" eligible=", is_finite(surface.grass_height(at, surface.masks)))
+
+
+func verify_instanced_grass(game: Node3D, label: String) -> void:
+	var surface = game.river.world_grass_surface
+	var checked := 0
+	var invalid := 0
+	for item: Dictionary in game.river.world_grass.active.values():
+		if item.batch == null:
+			continue
+		var group: MultiMesh = item.batch.multimesh
+		for i in range(0, group.instance_count, maxi(1, ceili(float(group.instance_count) / 8.0))):
+			var origin := group.get_instance_transform(i).origin
+			checked += 1
+			if not is_finite(surface.grass_height(Vector2(origin.x, origin.z), surface.masks)):
+				invalid += 1
+	print("WORLD_GRASS_INSTANCE_CHECK ", label, " valid=", checked - invalid, "/", checked)
+	if invalid > 0:
+		push_error("World grass instances overlap excluded surfaces")
+
+
+func benchmark_streaming(game: Node3D, view: Array, output: String) -> void:
+	var direction := Vector2(view[2].x - view[1].x, view[2].z - view[1].z).normalized()
+	for pace in [2.0, 15.0]:
+		var start := Vector2(view[1].x, view[1].z)
+		var course := road_course(game.river.world_grass_surface, start) if pace == 15.0 else {}
+		if not course.is_empty():
+			start = course.start
+			direction = course.direction
+		if pace == 15.0:
+			print("WORLD_GRASS_COURSE ", view[0], " road_span=", not course.is_empty(),
+				" start=", start, " direction=", direction)
+		var update_ms: Array[float] = []
+		var frame_ms: Array[float] = []
+		var fast_frames := 0
+		var previous := Time.get_ticks_usec()
+		for sample in 300:
+			var at: Vector2 = start + direction * pace * float(sample) / 60.0
+			var pose := Vector3(at.x, game.river.ground_height(at.x, at.y) + 2.0, at.y)
+			game.eye.global_position = pose
+			game.eye.look_at(pose + Vector3(direction.x * 20.0, -.7, direction.y * 20.0), Vector3.UP)
+			var started := Time.get_ticks_usec()
+			game.river.update_grass(pose, game.graphics.level)
+			fast_frames += int(game.river.world_grass.moving_fast)
+			update_ms.append(float(Time.get_ticks_usec() - started) / 1000.0)
+			await process_frame
+			var now := Time.get_ticks_usec()
+			frame_ms.append(float(now - previous) / 1000.0)
+			previous = now
+		update_ms.sort()
+		frame_ms.sort()
+		var near_total := 0
+		var near_missing := 0
+		var near_fallback := 0
+		for cell: Vector2i in game.river.world_grass.desired:
+			if game.river.world_grass.desired[cell] == 0:
+				near_total += 1
+				if not game.river.world_grass.active.has(cell) or game.river.world_grass.active[cell].lod != 0:
+					near_missing += 1
+					near_fallback += int(game.river.world_grass.active.has(cell) and
+						game.river.world_grass.active[cell].batch != null)
+		print("WORLD_GRASS_MOVE ", view[0], " speed_mps=", pace,
+			" update_median_ms=", update_ms[150], " update_p95_ms=", update_ms[285],
+			" frame_median_ms=", frame_ms[150], " frame_p95_ms=", frame_ms[285],
+			" chunks=", game.river.world_grass.active.size(),
+			" near_ready=", game.river.world_grass.ready_near(),
+			" near_missing=", near_missing, "/", near_total,
+			" near_fallback=", near_fallback,
+			" fast_frames=", fast_frames,
+			" end_on_road=", game.river.world_grass_surface.road_or_walk(
+				Vector2(game.eye.global_position.x, game.eye.global_position.z)),
+			" end_ground_eligible=", is_finite(game.river.world_grass_surface.grass_height(
+				Vector2(game.eye.global_position.x, game.eye.global_position.z),
+				game.river.world_grass_surface.masks)))
+		print("WORLD_GRASS_QUEUE ", view[0], " speed_mps=", pace,
+			" waiting=", game.river.world_grass.waiting.size(),
+			" current=", game.river.world_grass.current.get("cell", Vector2i.ZERO),
+			" current_lod=", game.river.world_grass.current.get("lod", -1),
+			" current_index=", game.river.world_grass.current.get("index", -1))
+		if pace == 15.0:
+			var path := ProjectSettings.globalize_path(output.path_join(view[0] + "_drive_end.png"))
+			var frame := root.get_viewport().get_texture().get_image()
+			print("CAPTURE ", path, " ", frame.get_width(), "x", frame.get_height(), " ", frame.save_png(path))
+
+
+func road_course(surface, near: Vector2) -> Dictionary:
+	var best := INF
+	var selected := {}
+	for span in surface.roads.get(Vector2i((near / 32.0).floor()), []):
+		var closest := Geometry2D.get_closest_point_to_segment(near, span.start, span.end)
+		var reach := maxf(closest.distance_to(span.start), closest.distance_to(span.end))
+		var distance := near.distance_to(closest)
+		if reach < 76.0 or distance >= best:
+			continue
+		best = distance
+		var toward: Vector2 = span.end if closest.distance_to(span.end) > closest.distance_to(span.start) else span.start
+		selected = {"start": closest, "direction": (toward - closest).normalized()}
+	return selected

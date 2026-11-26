@@ -16,6 +16,8 @@ const TownHall = preload("res://deep_river_town_hall.gd")
 const EssoPlaza = preload("res://deep_river_esso_plaza.gd")
 const PropertySites = preload("res://deep_river_properties.gd")
 const RoadNetwork = preload("res://deep_river_roads.gd")
+const RiversideGrassSurface = preload("res://riverside_grass_surface.gd")
+const RiversideWorldGrass = preload("res://riverside_world_grass.gd")
 const PontoonWorkshop = preload("res://pontoon_workshop.gd")
 const PublicWorks = preload("res://public_works.gd")
 const Waves = preload("res://swell.gd")
@@ -117,6 +119,8 @@ var esso_plaza: EssoPlaza
 var canopy_area := Rect2()
 var waterfront := Marina.new()
 var riverside_enabled := OS.get_cmdline_user_args().has("--riverside-poc")
+var world_grass_surface
+var world_grass
 var riverside_near := false
 var riverside_minutes := 660.0
 var riverside_cloud_step := -1
@@ -125,6 +129,8 @@ var lamure := LamureBeach.new()
 
 func build(checkpoint := Callable()) -> void:
 	meta = JSON.parse_string(FileAccess.get_file_as_string(BASE + "river.json"))
+	if riverside_enabled and not OS.get_cmdline_user_args().has("--riverside-grass-prototype"):
+		world_grass_surface = RiversideGrassSurface.new()
 	for index: int in RoadNetwork.HIGHWAY:
 		var line: Array = meta.streets[index]
 		for i in range(1, line.size()):
@@ -321,11 +327,18 @@ func build(checkpoint := Callable()) -> void:
 				or point.distance_squared_to(RiverbankPark.GAZEBO_SITE) < 36.0 \
 				or (lamure_patch != null and pines.place_from_survey(foot, height)))
 	if meta.has("riverbank"):
-		park.build(self, town_canopy, waterfront, pines, ground_height, wet_clearance, riverbed)
+		var grass_excluded := Callable(world_grass_surface, "road_or_walk") if world_grass_surface != null else Callable()
+		park.build(self, town_canopy, waterfront, pines, ground_height, wet_clearance, riverbed, grass_excluded)
 	if meta.has("brockhouse"):
 		BrockhouseWay.new().build(self, meta.brockhouse, ground_height, waterfront, pines)
 	pines.build(self)
 	plant_pine_reach(waterfront)
+	if world_grass_surface != null:
+		world_grass_surface.finish(self, park)
+		if world_grass_surface.ready:
+			world_grass = RiversideWorldGrass.new()
+			add_child(world_grass)
+			world_grass.setup(world_grass_surface)
 
 
 func build_lamure(ground: ShaderMaterial) -> void:
@@ -863,6 +876,10 @@ func build_town(paving_texture: Texture2D, terrain: Material, brick: Texture2D,
 	await buildings.build(self, footprints, textures, ground_height, meta.distance_scale,
 		brick, asphalt_scan, wood_scan, roads.paved, meta.streets,
 		regional_streets, meta.buildings, concrete_scan, checkpoint)
+	if world_grass_surface != null:
+		world_grass_surface.index_roads(roads.spans)
+		world_grass_surface.index_buildings(meta)
+		world_grass_surface.driveways = buildings.driveways
 	town_walkways = roads.build_walkways(buildings.driveways, concrete_scan, asphalt_scan, terrain)
 	windows = buildings.windows
 	bind_day_sky(windows)
@@ -875,6 +892,11 @@ func build_town(paving_texture: Texture2D, terrain: Material, brick: Texture2D,
 	esso_plaza.build(ground_height, asphalt_scan, concrete_scan, brick)
 	bind_day_sky(esso_plaza.glazing)
 	return buildings.driveways
+
+
+func update_grass(viewpoint: Vector3, preset: int) -> void:
+	if world_grass != null:
+		world_grass.update_around(viewpoint, preset)
 
 
 static func highway_has_tree_conflict(point: Vector2, spans: Array) -> bool:

@@ -866,6 +866,7 @@ func _physics_process(delta: float) -> void:
 	else:
 		river.set_prop_wash(Vector3.ZERO, Vector3.BACK, 0.0)
 	river.update_water(viewpoint, clock)
+	river.update_grass(eye.global_position, graphics.level)
 	effects.update_bow_spray(vessel, eye.global_position, clock, absf(vessel.speed), river.wave_wind)
 	if trophy.update(delta, clock) and viewpoint.distance_squared_to(trophy.slick) < 48.0 * 48.0:
 		var roll := trophy.circling(clock)
