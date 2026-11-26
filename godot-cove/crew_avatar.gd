@@ -57,8 +57,8 @@ var no_line := true
 var tool_grip := Transform3D.IDENTITY
 
 
-func setup(display_name: String, color_index: int) -> void:
-	var canvas := Kit.paint(Color("#425250"), .94)
+func setup(display_name: String, color_index: int, outfit := Color.TRANSPARENT) -> void:
+	var canvas := Kit.paint(outfit if outfit.a > 0.0 else Color("#425250"), .94)
 	var seam := Kit.paint(Color("#303c3a"), .86)
 	var jacket := Kit.paint([Color("#b3683e"), Color("#91834d"), Color("#517f83"), Color("#a0564f")][color_index % 4], .83)
 	var edge := Kit.paint(Color("#d1c19a"), .71)
@@ -67,7 +67,7 @@ func setup(display_name: String, color_index: int) -> void:
 	var boot_paint := Kit.paint(Color("#262c28"), .78)
 	var glove := Kit.paint(Color("#333b34"), .93)
 	var skin := Kit.paint([Color("#c39777"), Color("#986d53"), Color("#bc8768")][color_index % 3], .86)
-	var cap := Kit.paint(Color("#52635c"), .88)
+	var cap := Kit.paint(outfit.darkened(.22) if outfit.a > 0.0 else Color("#52635c"), .88)
 	body = Node3D.new()
 	add_child(body)
 	body.position.y = .88

@@ -22,6 +22,14 @@ Pause **Settings** saves camera smoothing, head bob, weather effects, rain parti
 
 In a Godot debug build, the solo player or crew host can open **F2 → Environment and camera** to force a preset, set intensity and wind, advance the clock, trigger lightning, preview a Big Rich idle, toggle camera motion, or display the active reticle category.
 
+## Riverbank Park residents
+
+Five fictional residents walk short, authored routes on the Riverbank Park lookout during solo trips. [Riverbank Residents](../../godot-cove/riverbank_residents.gd) uses the campaign calendar to choose stops. Each resident has weekday and weekend timetables with a stable daily offset. When a trip loads, residents start at the stops for the saved time. After a clock change during play, they walk to their next stops. They pause when a physics body obstructs their route and continue when it clears. Distant idle avatars skip pose updates.
+
+This first stage covers the lookout and uses the existing crew avatar appearance and animation. Residents remain at a park stop overnight. Homes, jobs, dialogue, relationships, weather reactions and shared crew simulation are future stages.
+
+The full-world `res://tests/verify_riverbank_residents.gd` fixture checks schedules and movement on the actual lookout, including an obstruction that appears and clears. Use a fresh APPDATA directory containing `houseboat-142`.
+
 ## Implementation files
 
 | Area | Main source files |
