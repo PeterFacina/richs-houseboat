@@ -1,0 +1,8 @@
+{
+  "pr": 121,
+  "player_facing": true,
+  "bullets": [
+    "Pick up the Dab pen in the houseboat galley and equip it from the Backpack or hotbar. Use it on foot or set it down with Q while it's equipped.",
+    "Deep River now follows the in-game clock from dawn to night. Streetlights come on at dusk, and T toggles your on-foot flashlight."
+  ]
+}

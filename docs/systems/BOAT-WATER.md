@@ -11,6 +11,8 @@ Verify current source; this is not a physics specification.
 - W/S quickly adjusts the throttle and R/F makes smaller changes. Releasing the key leaves the lever set. Space shifts straight to neutral. The lever also passes through neutral when changing direction and returns to neutral when leaving the helm or securing the boat.
 - [water.gdshader](../../godot-cove/water.gdshader) is a rendering starting point; do not assume shader waves and physical motion are identical.
 
+[The day and night profile](../../godot-cove/river_day_cycle.gd) defines the clock thresholds, lighting colours, brightness and transition widths. The Deep River map applies the same sun direction, moonlight and sky palette to the backdrop, Ottawa River water, the Swisha headpond and building reflections. Nearby street and building lights fade in during dusk and out through dawn.
+
 ## Preserve and verify
 
 Check movement with no driver, helm entry/exit, neutral coasting, forward/reverse thrust, steering, wind/current and wave behavior, boarding/collision, fuel behavior and host/guest agreement as applicable. Verify actual equations and units in current source; no numerical constants are prescribed here. Query current issues and PRs for drift, helm and water changes; inspect relevant diffs before overlapping work. Run startup checks plus targeted tests and human playtesting; record what was not tested.

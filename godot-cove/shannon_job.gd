@@ -116,7 +116,16 @@ func current_day() -> int:
 
 func update_clock(delta: float) -> void:
 	var state: Dictionary = game.campaign.ledger.state
-	state.work_minutes += delta * Routes.MINUTES_PER_SECOND
+	var campaign = game.campaign
+	if campaign.crew.is_guest():
+		if campaign.remote_ship.has("work_minutes"):
+			var target := float(campaign.remote_ship.work_minutes)
+			var current := float(state.work_minutes)
+			if target > current:
+				state.work_minutes = target if target - current > 1.0 else lerpf(current, target, 1.0 - exp(-delta * 18.0))
+	else:
+		state.work_minutes += delta * Routes.MINUTES_PER_SECOND
+	game.river.update_day_cycle(state.work_minutes)
 	var today := current_day()
 	var minute := posmod(floori(state.work_minutes), Routes.MINUTES_PER_DAY)
 	calendar.text = "%s  %02d:%02d" % [Routes.DAYS[today % Routes.DAYS.size()], floori(minute / 60.0), minute % 60]
