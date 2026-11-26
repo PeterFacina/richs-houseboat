@@ -6,7 +6,8 @@ const CHUNK := 16.0
 const COVER_RADIUS := 178.0
 const COVER_SPACING := .55
 const PROTOTYPE_RADIUS := 17.0
-const PROTOTYPE_DENSITY := 112.0 # Individual blades per square metre; slightly fuller than reference.
+const PROTOTYPE_DENSITY := 170.0 # Individual blades per square metre.
+const PROTOTYPE_PAVING_CLEARANCE := .35 # Covers the maximum wind displacement and blade half-width.
 const PROTOTYPE_OFFSET := Vector2(-42.0, 12.0) # Relative to the pavilion.
 const ASSET_DIR := "res://third_party/quaternius_nature/"
 const TREE_MODELS := ["CommonTree_1", "CommonTree_2", "Pine_1", "Pine_3"]
@@ -153,8 +154,15 @@ func build_ground_cover(parent: Node3D, pavilion: Vector3, ground: Callable, sho
 			for point: Vector2 in polygon:
 				bounds = bounds.expand(point)
 			reserved.append({"bounds": bounds.grow(1.2), "zone": polygon})
-	var counts := {"candidates": 0, "eligible": 0, "masked": 0, "mowing": 0}
+	var counts := {"candidates": 0, "eligible": 0, "approach": 0, "masked": 0, "mowing": 0}
 	var prototype := OS.get_cmdline_user_args().has("--riverside-grass-prototype")
+	if prototype and (not masks.has_all(["approach", "apron", "path"]) or not clear_route.is_valid()):
+		push_error("Riverside grass prototype requires all paved-surface exclusions")
+		return
+	var paving_samples: Array[Vector2] = [Vector2.ZERO]
+	if prototype:
+		for direction in 8:
+			paving_samples.append(Vector2.RIGHT.rotated(TAU * float(direction) / 8.0) * PROTOTYPE_PAVING_CLEARANCE)
 	var spacing := 1.0 / sqrt(PROTOTYPE_DENSITY) if prototype else COVER_SPACING
 	var radius := PROTOTYPE_RADIUS if prototype else COVER_RADIUS
 	var center := pavilion + Vector3(PROTOTYPE_OFFSET.x, 0.0, PROTOTYPE_OFFSET.y) if prototype else pavilion
@@ -176,15 +184,22 @@ func build_ground_cover(parent: Node3D, pavilion: Vector3, ground: Callable, sho
 				continue
 			var place := Vector2(p.x, p.z)
 			if near_approach(masks, place):
+				counts.approach += 1
 				continue
-			if masks.has("apron") and mask_value(masks.apron, place).r > .08:
+			var paved := false
+			for offset: Vector2 in paving_samples:
+				var sample := place + offset
+				if masks.has("apron") and mask_value(masks.apron, sample).r > .08:
+					paved = true
+					break
+				if masks.has("path"):
+					var path := mask_value(masks.path, sample)
+					if maxf(maxf(path.r, path.g), path.b) > .11:
+						paved = true
+						break
+			if paved:
 				counts.masked += 1
 				continue
-			if masks.has("path"):
-				var path := mask_value(masks.path, place)
-				if maxf(maxf(path.r, path.g), path.b) > .11:
-					counts.masked += 1
-					continue
 			var blocked := false
 			for area: Dictionary in reserved:
 				if area.bounds.has_point(place) and Geometry2D.is_point_in_polygon(place, area.zone):
