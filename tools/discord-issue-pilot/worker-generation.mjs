@@ -55,11 +55,11 @@ export async function workerGeneration({
   await once(server, 'listening');
   const generateBrief = studioClient('http://127.0.0.1:' + server.address().port);
   return {
-    async generate(note, issue) {
+    async generate(note, issue, { authorizedRetry = false } = {}) {
       if (active) throw new Error('The worker is already processing a report.');
       // The existing capture store makes this hold survive polling and restarts.
       // A new main revision alone must never spend another generation attempt.
-      requireGenerationReview(inbox, note, issue);
+      if (!authorizedRetry) requireGenerationReview(inbox, note, issue);
       active = { note, issue };
       try {
         const { record, exportPassed } = await generateBrief(note, { details: true });

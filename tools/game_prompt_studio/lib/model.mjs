@@ -31,11 +31,12 @@ const unsafe = [
   [/https?:\s*\/|(?:\bftp|\bfile):\/|(?:^|[\s("'=])www\./i, 'External or file URL'],
   [/\b(?:ignore|override|disregard|forget|bypass)\b.{0,75}\b(?:instructions|rules|guardrails|permissions|polic(?:y|ies)|system prompt)\b/i, 'Instruction override'],
   [/\b(?:disable|bypass|weaken|remove|turn off)\b.{0,60}\b(?:authentication|access checks|security checks|certificate validation|sign-in|password protection)\b/i, 'Security or access changes outside the game task'],
-  [/\b(?:send|upload|post|transmit|exfiltrate|publish|forward|disclose|leak|transfer|share)\b[^.!?;]{0,100}\b(?:repo(?:sitory)?|source code|files?|secrets?|credentials?|tokens?|passwords?|project data|prompt)\b/i, 'Potential project data disclosure'],
+  [/\b(?:send|upload|post|transmit|exfiltrate|publish|forward|disclose|leak|transfer|share)\b.{0,100}\b(?:repo(?:sitory)?|source\s+code|files?|secrets?|credentials?|tokens?|passwords?|project\s+data|prompt)\b/i, 'Potential project data disclosure'],
   [/\b(?:invoke-webrequest|invoke-restmethod|curl(?:\.exe)?|wget|certutil|powershell(?:\.exe)?\s+[-/]|cmd(?:\.exe)?\s+\/c|git\s+push|rm\s+-[rf]|remove-item\s+-|schtasks|frombase64string)\b/i, 'Unrelated or sensitive shell operation'],
   [/\b(?:reveal|read|access|print|dump|collect|export|find)\b.{0,75}\b(?:system prompt|credentials?|api[_ -]?keys?|passwords?|environment secrets?|access tokens?)\b/i, 'Sensitive data request']
 ];
 const codePaths = /(?:res:\/\/)?(?:[A-Za-z0-9_.-]+[\\/])*[A-Za-z0-9_-][A-Za-z0-9_.-]*\.(?:gdshaderinc|gdshader|gd|tscn|tres|godot|png|webp|jpe?g|glb|gltf|fbx|cs|py|js)\b/gi;
+export const handoffSection = 'HANDOFF\n- Report the changed files, actual test results, any screenshots captured, and remaining gaps. Preserve existing controls, saves, and unrelated behavior.';
 
 function canonicalPath(path) {
   return path.replaceAll('\\', '/').replace(/^res:\/\//i, 'godot-cove/').toLowerCase();
@@ -49,7 +50,17 @@ export function checkExport(text, evidence, facts = []) {
   const normalized = guarded.normalize('NFKC').replace(/\p{Cf}/gu, '').replace(/\s+/gu, ' ');
   const findings = [];
   if (text !== text.replace(/\p{Cf}/gu, '') || /[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/.test(text)) findings.push('Hidden control characters');
-  for (const [pattern, label] of unsafe) if (pattern.test(normalized)) findings.push(label);
+  for (const [pattern, label] of unsafe) {
+    let candidate = normalized;
+    if (label === 'Potential project data disclosure') {
+      // Only the exact application-owned final handoff is outside generated
+      // instructions. Never exempt gameplay prose or stop scanning at punctuation.
+      const trimmed = guarded.trimEnd();
+      candidate = (trimmed.endsWith(handoffSection) ? trimmed.slice(0, -handoffSection.length) : guarded)
+        .normalize('NFKC').replace(/\p{Cf}/gu, '').replace(/[^\p{L}\p{N}]+/gu, ' ');
+    }
+    if (pattern.test(candidate)) findings.push(label);
+  }
   const indexed = [...evidence, ...facts].flatMap(item => [item.path, item.referencedPath].filter(Boolean).map(canonicalPath));
   for (const match of normalized.matchAll(codePaths)) {
     const path = canonicalPath(match[0]);
@@ -108,7 +119,7 @@ export function buildDraft(payload, title, facts, evidence, note = "") {
     const quotations = note.trim().split(/\r?\n/).map(line => '> ' + line).join('\n');
     sections.splice(2, 0, 'CURRENT PLAYER REQUEST (verbatim context)\n' + quotations);
   }
-  sections.push('HANDOFF\n- Report the changed files, actual test results, any screenshots captured, and remaining gaps. Preserve existing controls, saves, and unrelated behavior.');
+  sections.push(handoffSection);
   const exportTitle = checkExport(title, evidence, facts).length ? 'Game implementation task' : title;
   return exportTitle + '\n\n' + sections.filter(Boolean).join('\n\n') + '\n';
 }

@@ -4,6 +4,7 @@ import { dirname, join } from 'node:path';
 import { homedir } from 'node:os';
 import { DatabaseSync } from 'node:sqlite';
 import { buildDraft, checkExport } from '../game_prompt_studio/lib/model.mjs';
+import { generationJobs } from './generation-jobs.mjs';
 
 export const trainingPath = () => join(process.env.LOCALAPPDATA || homedir(),
   'HouseboatPromptTraining', 'examples.sqlite');
@@ -41,7 +42,7 @@ function completedOutcome(review, capture) {
   };
 }
 
-export function openTrainingInbox(path = trainingPath(), { readOnly = false } = {}) {
+export function openTrainingInbox(path = trainingPath(), { readOnly = false, now = Date.now } = {}) {
   if (!readOnly) mkdirSync(dirname(path), { recursive: true });
   const db = new DatabaseSync(path, { readOnly });
   if (!readOnly) db.exec('PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000;');
@@ -50,6 +51,7 @@ export function openTrainingInbox(path = trainingPath(), { readOnly = false } = 
     + ' CREATE TABLE IF NOT EXISTS reviews (issue INTEGER NOT NULL, at TEXT NOT NULL, data TEXT NOT NULL);'
     + ' CREATE TABLE IF NOT EXISTS github_outcomes (issue INTEGER PRIMARY KEY, data TEXT NOT NULL);');
   return {
+    jobs: generationJobs(db, { readOnly, now }),
     capture(issue, input, brief) {
       const serialized = JSON.stringify(input);
       const id = digest(serialized + '\n' + brief);

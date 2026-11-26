@@ -1,6 +1,7 @@
 import { execFile } from 'node:child_process';
 import { pages, queuedReport } from '../discord-issue-pilot/gpu-queue.mjs';
 import { findGpuBrief, linkedPull } from '../discord-issue-pilot/workflow.mjs';
+import { findGpuJob } from '../discord-issue-pilot/generation-jobs.mjs';
 import { date, oneOf, positive, publication, repository, text } from './contract.mjs';
 
 const githubApi = 'https://api.github.com/repos' + new URL(repository).pathname;
@@ -45,6 +46,7 @@ async function list(get, route, select) {
 async function loadIssues(get) {
   const rows = new Map();
   const briefs = new Map();
+  const jobs = new Map();
   const pulls = [];
   await Promise.all([
     list(get, '/issues?state=all&sort=created&direction=desc', item => {
@@ -57,6 +59,9 @@ async function loadIssues(get) {
         assigned: Boolean(item.assignees?.length), queued: state === 'open' && Boolean(report) });
     }),
     list(get, '/issues/comments', item => {
+      const jobIssue = Number(item.issue_url?.slice((githubApi + '/issues/').length));
+      const job = findGpuJob([item]);
+      if (job && item.issue_url === githubApi + '/issues/' + jobIssue) jobs.set(jobIssue, job);
       if (!findGpuBrief([item])) return;
       const issue = Number(item.issue_url?.slice((githubApi + '/issues/').length));
       if (item.issue_url !== githubApi + '/issues/' + issue || briefs.has(issue)) return;
@@ -71,7 +76,7 @@ async function loadIssues(get) {
       const number = positive(linked?.number);
       const pull = number ? { number, mergedAt: date(linked.merged_at),
         state: linked.merged_at ? 'merged' : linked.state === 'closed' ? 'closed' : linked.draft ? 'draft' : 'review' } : null;
-      return { ...row, brief: briefs.get(row.issue) ?? null, pull };
+      return { ...row, brief: briefs.get(row.issue) ?? null, job: jobs.get(row.issue) ?? null, pull };
     });
 }
 

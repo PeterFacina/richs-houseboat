@@ -106,3 +106,9 @@ Repository startup used current `AGENTS.md`, the task bootstrap, the architectur
 5. To stop remote review, turn the feature flags off and restart the two dashboard services. The worker can continue collecting outcome evidence. Preserve the current inbox and its new review history if rolling back code. Restoring a database backup is for recovery after reconciling new records.
 
 Review writes require the same Tailscale HTTPS origin, JSON requests, the authenticated reviewer on the writer allowlist and the existing trusted adapter connection. GitHub descriptions and comments render as plain text. The inbox audit records corrections, verification, explicit decisions and approved lesson fingerprints. Positive feedback and a merged PR never confer training approval.
+
+## Persistent GPU job status
+
+Reviewer Overview and GitHub issues show the worker's persisted attempt counts and held/failed/retry-wait/publication-pending states. Reads are projections of the existing training inbox and sanitized GitHub status, with no raw error or report text. This does not grant new viewer or training approval rights.
+
+Generation has three automatic attempts per issue/report fingerprint. Export rejection holds immediately; transient failures stop after their persistent budget. A configured human GitHub retry operator may comment the displayed `/gpu-retry JOB_ID` to grant one additional attempt without changing the original request. This permission is separate from Tailscale training-review access. See [the incident runbook](GPU-GUARD-RETRY-INCIDENT.md) for authentication, audit, controlled canaries and the reviewed restart gate. Deploy the matching Discord bot to show these statuses in its existing cards.

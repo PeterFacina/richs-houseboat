@@ -5,7 +5,8 @@ import { DatabaseSync } from 'node:sqlite';
 import { setTimeout as delay } from 'node:timers/promises';
 import { openDb } from '../game_prompt_studio/lib/db.mjs';
 import { createOllama, isLocalModel } from '../game_prompt_studio/lib/model.mjs';
-import { pages, processGpuIssue, queuedReport } from './gpu-queue.mjs';
+import { pages, queuedReport } from './gpu-queue.mjs';
+import { processGpuJob } from './process-gpu-job.mjs';
 import { sourceKnowledge } from './source-knowledge.mjs';
 import { workerGeneration } from './worker-generation.mjs';
 import { repository } from './workflow.mjs';
@@ -45,38 +46,22 @@ async function github(path, method = 'GET', body) {
   return response.json();
 }
 
-const retryAt = new Map();
-const guardHolds = new Map();
-async function poll(generate, linkBrief) {
+async function poll(generate, inbox) {
   const waiting = [];
   for await (const batch of pages(github, '/issues?state=open&sort=created&direction=asc')) {
     waiting.push(...batch.filter(issue => queuedReport(issue)));
   }
-  const open = new Set(waiting.map(issue => issue.number));
-  for (const number of retryAt.keys()) if (!open.has(number)) retryAt.delete(number);
-  for (const number of guardHolds.keys()) if (!open.has(number)) guardHolds.delete(number);
+  const reviewers = (process.env.HOUSEBOAT_RETRY_REVIEWERS || 'PeterFacina').split(',').map(name => name.trim()).filter(Boolean);
   for (const issue of waiting) {
     if (stop.signal.aborted) break;
-    if (guardHolds.get(issue.number) === queuedReport(issue)) continue;
-    if ((retryAt.get(issue.number) ?? 0) > Date.now()) continue;
     try {
-      const result = await processGpuIssue(issue, github, generate, linkBrief);
-      if (result.status !== 'already posted') console.log('Issue #' + issue.number + ': ' + result.status);
-      retryAt.delete(issue.number);
-    } catch (error) {
-      if (!stop.signal.aborted) {
-        if (error.code === 'GUARD_REVIEW_REQUIRED') {
-          guardHolds.set(issue.number, queuedReport(issue));
-          console.error('Issue #' + issue.number + ': ' + error.message);
-          continue;
-        }
-        retryAt.set(issue.number, Date.now() + 120_000);
-        console.error('Issue #' + issue.number + ': ' + error.message);
-      }
+      const result = await processGpuJob(issue, github, generate, inbox, { reviewers });
+      if (result.status === 'posted') console.log('Issue #' + issue.number + ': posted');
+    } catch {
+      console.error('Issue #' + issue.number + ': queue/status check unavailable; persisted budget preserved.');
     }
   }
 }
-
 const storage = resolve(process.env.HOUSEBOAT_KNOWLEDGE_DIR || join(local, 'HouseboatGpuKnowledge'));
 mkdirSync(lockDir, { recursive: true });
 const lock = new DatabaseSync(join(lockDir, 'worker-lock.sqlite'));
@@ -138,7 +123,7 @@ try {
         status?.phase('generating', args[1].number);
         try { return await generation.generate(...args); }
         finally { status?.phase('watching'); }
-      }), inbox.link);
+      }), inbox);
       status?.warning(null);
     } catch (error) {
       if (!stop.signal.aborted) {
