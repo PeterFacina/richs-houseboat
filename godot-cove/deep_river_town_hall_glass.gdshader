@@ -5,6 +5,7 @@ render_mode unshaded;
 
 uniform float evening = 0.0;
 uniform float tone = 1.0;
+uniform float reflection_strength = 1.0;
 
 void fragment() {
 	vec3 ray = normalize(mat3(INV_VIEW_MATRIX) * reflect(-VIEW, NORMAL));
@@ -16,5 +17,5 @@ void fragment() {
 		sky_grain(vec2(azimuth * 240., ray.y * 80.)));
 	vec3 reflected = mix(trees * (1. - .42 * evening), river_sky(ray, .75, evening), air);
 	float reflectance = mix(.48, .81, pow(1. - max(0., dot(NORMAL, VIEW)), 3.));
-	ALBEDO = (vec3(.038, .070, .103) + reflected * reflectance) * tone;
+	ALBEDO = (vec3(.038, .070, .103) + reflected * (reflectance * reflection_strength)) * tone;
 }

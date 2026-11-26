@@ -11,7 +11,10 @@ const ORIGIN := Roads.SIGNALS.JUNCTION
 const ALONG := Vector2(-0.79388, -0.60807)
 const FRONT := Vector2(0.60807, -0.79388)
 const LOT := Rect2(-51, -51, 48, 43)
-const RESTAURANT_LOT := Rect2(5.5, -67, 32, 58)
+const RESTAURANT_LOT := Rect2(5.5, -74, 33.5, 65)
+const CONNECTOR := Rect2(LOT.end.x, -32.5, RESTAURANT_LOT.position.x - LOT.end.x, 7.5)
+const RESTAURANT_WALL := Rect2(9.35, -64.24, 12.39, 28.86)
+const RESTAURANT_DINING_START := -47.1
 const ROAD_EDGE := -Roads.HIGHWAY_HALF_WIDTH
 const PIZZA_LEFT := -47.0
 const ASPHALT_LIFT := .075
@@ -24,13 +27,16 @@ var cream := Kit.paint(Color("#b9ae98"))
 var white := Kit.paint(Color("#ece9df"))
 var red := Kit.paint(Color("#b72428"))
 var dark := Kit.paint(Color("#393a38"))
-var glazing := Kit.paint(Color("#4f5955"), .26)
+var glazing := ShaderMaterial.new()
+var storefront_trim := Kit.paint(Color("#afa99d"), .35, .24)
+var door_hardware := Kit.paint(Color("#bbb9ad"), .27, .48)
 
 
 static func clears_tree(point: Vector2) -> bool:
 	var offset := point - ORIGIN
 	var local := Vector2(offset.dot(ALONG), offset.dot(FRONT))
-	return LOT.grow(1.6).has_point(local) or RESTAURANT_LOT.grow(1.6).has_point(local)
+	return LOT.grow(1.6).has_point(local) or RESTAURANT_LOT.grow(1.6).has_point(local) \
+		or CONNECTOR.grow(1.6).has_point(local)
 
 
 func build(elevation: Callable, asphalt: Texture2D, paving: Texture2D, brick: Texture2D) -> void:
@@ -42,11 +48,17 @@ func build(elevation: Callable, asphalt: Texture2D, paving: Texture2D, brick: Te
 	add_child(solid)
 	concrete = Kit.paint(Color("#bcb5a5"))
 	concrete.albedo_texture = paving
+	concrete.uv1_triplanar = true
+	concrete.uv1_scale = Vector3.ONE * .5
+	glazing.shader = preload("res://deep_river_town_hall_glass.gdshader")
+	glazing.set_shader_parameter("tone", .78)
+	glazing.set_shader_parameter("reflection_strength", .43)
 
 	var pavement := ShaderMaterial.new()
 	pavement.shader = preload("res://deep_river_esso_asphalt.gdshader")
 	pavement.set_shader_parameter("asphalt_scan", asphalt)
 	build_forecourt(pavement)
+	surface(CONNECTOR, ASPHALT_LIFT, ASPHALT_LIFT, pavement, PAVEMENT_LAYERS)
 	build_restaurant_lot(pavement, brick)
 	var siding := siding_material()
 	build_shops(siding)
@@ -77,10 +89,9 @@ func build_forecourt(asphalt: Material) -> void:
 	for curb in [Vector2(-51, -45), Vector2(-12, -3)]:
 		surface(Rect2(curb.x, -8.85, curb.y - curb.x, .85), .20, .20, concrete)
 		surface(Rect2(curb.x, -8, curb.y - curb.x, .42), .20, .02, concrete)
-	surface(Rect2(-30, -35, 24, 2.6), .20, .20, concrete)
-	surface(Rect2(PIZZA_LEFT, -39, 14, 2.4), .20, .20, concrete)
 
-func surface(area: Rect2, back: float, front: float, material: Material, collision_layer := 1) -> void:
+func surface(area: Rect2, back: float, front: float, material: Material, collision_layer := 1,
+		level_back := false) -> void:
 	var mesh := SurfaceTool.new()
 	mesh.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var cols := ceili(area.size.x)
@@ -89,7 +100,9 @@ func surface(area: Rect2, back: float, front: float, material: Material, collisi
 		for col in cols + 1:
 			var p := area.position + area.size * Vector2(float(col) / cols, float(row) / rows)
 			mesh.set_uv(p * .24)
-			mesh.add_vertex(Vector3(p.x, grade(p.x, p.y) + lerpf(back, front, float(row) / rows), p.y))
+			var terrain_y := grade(p.x, p.y)
+			var back_y := back if level_back else terrain_y + back
+			mesh.add_vertex(Vector3(p.x, lerpf(back_y, terrain_y + front, float(row) / rows), p.y))
 	var stride := cols + 1
 	for row in rows:
 		for col in cols:
@@ -103,6 +116,19 @@ func surface(area: Rect2, back: float, front: float, material: Material, collisi
 		item.create_trimesh_collision()
 		var body := item.get_child(0) as StaticBody3D
 		body.collision_layer = collision_layer
+
+
+func entry_steps(x: float, z: float, width: float, threshold: float) -> void:
+	# The apron follows the lot at its toe and meets the first riser at a fixed height.
+	# Both closed risers are within the existing player's 0.24 m step-up limit.
+	const RISER := .145
+	const TOP_TREAD := .75
+	const LOWER_TREAD := .42
+	var apron_z := z + TOP_TREAD + LOWER_TREAD
+	for tread in [Vector2(TOP_TREAD, threshold), Vector2(apron_z - z, threshold - RISER)]:
+		block(Vector3(x, tread.y - .29, z + tread.x * .5), Vector3(width, .58, tread.x), concrete, true)
+	surface(Rect2(x - width * .5, apron_z, width, 1.45),
+		threshold - RISER * 2.0, ASPHALT_LIFT + .008, concrete, 1, true)
 
 
 func siding_material() -> StandardMaterial3D:
@@ -124,15 +150,13 @@ func build_shops(siding: Material) -> void:
 	var base := minf(grade(-30, -46), grade(-6, -46)) - .25
 	block(Vector3(-18, (base + floor_y + 3.65) * .5, -41), Vector3(24, floor_y + 3.65 - base, 12), siding, true)
 	block(Vector3(-18, floor_y + 3.65, -41), Vector3(24.35, .21, 12.35), white)
-	block(Vector3(-18, floor_y + .1, -34.45), Vector3(24, .22, 1.1), concrete, true)
+	entry_steps(-18, z, 24, floor_y)
 	storefront("B&R CONVENIENCE", -26.0, floor_y, z, 6.5, red)
 	storefront("DEEP RIVER CANNABIS", -18.0, floor_y, z, 6.8, Kit.paint(Color("#214f3f")))
 	var green := Kit.paint(Color("#14723c"))
 	storefront("SUBWAY", -10.0, floor_y, z, 7.0, green)
 	for at in [-44.0, -41.7, -39.4]:
-		var pane := Vector3(-5.97, floor_y + 1.47, at)
-		block(pane, Vector3(.115, 1.95, 2.14), white)
-		block(pane + Vector3(.07, 0, 0), Vector3(.05, 1.80, 2.0), glazing)
+		glazed_opening(Vector3(-5.97, floor_y + 1.47, at), 2.14, 1.92, PI * .5)
 	sign_panel("SUBWAY", Vector3(-5.96, floor_y + 3.02, -38.5), 3.3, .76, green, Color("#f4dd60"), PI * .5)
 
 
@@ -140,11 +164,9 @@ func storefront(title: String, x: float, base: float, z: float, width: float, si
 	for offset in [-width * .31, 0.0, width * .31]:
 		var door := is_zero_approx(offset)
 		var tall := 2.18 if door else 1.72
-		var at := Vector3(x + offset, base + (1.22 if door else 1.39), z)
+		var at := Vector3(x + offset, base + (tall * .5 + .018 if door else 1.47), z)
 		var pane_width := 1.28 if door else width * .29
-		block(at, Vector3(pane_width, tall, .13), white)
-		block(at + Vector3(0, 0, .08), Vector3(pane_width - .12, tall - .12, .06), glazing)
-		block(at + Vector3(0, -.25, .12), Vector3(pane_width, .045, .04), white)
+		glazed_opening(at, pane_width, tall, 0.0, door)
 	var ink := Color("#f4dd60") if title == "SUBWAY" else Color.WHITE
 	sign_panel(title, Vector3(x, base + 3.01, z + .09), width - .35, .76, sign, ink)
 
@@ -155,7 +177,7 @@ func build_pizzeria(siding: Material) -> void:
 	add_child(shop)
 	var x := PIZZA_LEFT + 7.0
 	var z := -39.0
-	var base := grade(x, z) + .3
+	var base := maxf(grade(PIZZA_LEFT, z), grade(PIZZA_LEFT + 14, z)) + .22
 	var foundation := minf(grade(PIZZA_LEFT, -48.5), grade(x, z)) - .2
 	block(Vector3(x, (foundation + base + 2.8) * .5, z - 4.75),
 		Vector3(14, base + 2.8 - foundation, 9.5), siding, true)
@@ -164,10 +186,9 @@ func build_pizzeria(siding: Material) -> void:
 	Kit.mesh_at(shop, roof, Vector3(x, base + 3.32, z - 4.75), dark).rotation.y = PI * .5
 	block(Vector3(x, base + 2.785, z - 4.75), Vector3(14.5, .14, 9.95), white)
 	sign_panel("FAMOUS PIZZA", Vector3(x - 2.1, base + 1.95, z + .06), 4.9, .78, red, Color.WHITE)
-	for offset in [2.1, 4.6]:
-		block(Vector3(x + offset, base + 1.19, z + .04), Vector3(1.5, 2.10, .15), white)
-		block(Vector3(x + offset, base + 1.27, z + .14), Vector3(1.3, 1.82, .075), glazing)
-	block(Vector3(x + 3.3, base + .04, z + .44), Vector3(5.0, .25, .9), concrete, true)
+	glazed_opening(Vector3(x + 2.1, base + 1.38, z), 1.50, 1.72)
+	glazed_opening(Vector3(x + 4.6, base + 1.08, z), 1.50, 2.12, 0.0, true)
+	entry_steps(x, z, 14, base)
 
 
 func build_canopy() -> void:
@@ -229,45 +250,109 @@ func build_restaurant_lot(asphalt: Material, brick_scan: Texture2D) -> void:
 	surface(RESTAURANT_LOT, ASPHALT_LIFT, ASPHALT_LIFT, asphalt, PAVEMENT_LAYERS)
 	surface(Rect2(14, RESTAURANT_LOT.end.y, 10, ROAD_EDGE - RESTAURANT_LOT.end.y),
 		ASPHALT_LIFT, .045, asphalt, PAVEMENT_LAYERS)
-	for space in 10:
-		var z := -61.0 + float(space) * 2.65
-		surface(Rect2(30.5, z, 5.1, .095), .087, .087, white, 0)
-	surface(Rect2(35.55, -61.0, .095, 23.9), .087, .087, white, 0)
+	var parking_paint := Kit.paint(Color("#c6c1ad"))
+	for space in 9:
+		var z := -62.5 + float(space) * 2.65
+		surface(Rect2(32.8, z, 5.1, .09), .087, .087, parking_paint, 0)
+	surface(Rect2(37.85, -62.5, .09, 21.2), .087, .087, parking_paint, 0)
+	for space in 4:
+		var x := 29.0 + float(space) * 2.9
+		surface(Rect2(x, -73.3, .09, 5.1), .087, .087, parking_paint, 0)
+	surface(Rect2(29, -73.3, 8.7, .09), .087, .087, parking_paint, 0)
+	parking_island(Vector2(33.8, -39.0), Vector2(6.1, 1.6))
+	parking_island(Vector2(33.9, -64.8), Vector2(6.3, 1.35))
+	parking_island(Vector2(27.8, -13.2), Vector2(5.2, 1.85))
 
-	# This footprint replaces the mapped office stand-in at 243973052.
-	var x := 15.55
-	var front_z := -35.38
-	var back_z := -64.24
-	var center_z := (front_z + back_z) * .5
-	var floor_y := maxf(grade(9.35, front_z), grade(21.74, front_z)) + .20
-	var foundation := minf(grade(9.35, back_z), grade(21.74, back_z)) - .3
+	# Keep the surveyed footprint. The dining-room awning ends at the brick service wing.
+	var front_z := RESTAURANT_WALL.end.y
+	var back_z := RESTAURANT_WALL.position.y
+	var x := RESTAURANT_WALL.get_center().x
+	var center_z := RESTAURANT_WALL.get_center().y
+	var right_wall := RESTAURANT_WALL.end.x
+	var left_wall := RESTAURANT_WALL.position.x
+	var floor_y := maxf(grade(left_wall, front_z), grade(right_wall, front_z)) + .20
+	var foundation := minf(grade(left_wall, back_z), grade(right_wall, back_z)) - .3
 	var eave := floor_y + 3.0
-	var brick := Kit.paint(Color("#b58d72"))
+	var brick := Kit.paint(Color("#c4a284"))
 	brick.albedo_texture = brick_scan
 	brick.uv1_triplanar = true
-	brick.uv1_scale = Vector3.ONE * .55
-	block(Vector3(x, (foundation + eave) * .5, center_z), Vector3(12.39, eave - foundation, 28.86), brick, true)
-	block(Vector3(x, floor_y, front_z + .65), Vector3(12.65, .28, 1.3), concrete, true)
-	var blue := Kit.paint(Color("#213e78"))
+	brick.uv1_scale = Vector3.ONE * .75
+	var base_brick := brick.duplicate() as StandardMaterial3D
+	base_brick.albedo_color = Color("#9f7565")
+	block(Vector3(x, (foundation + eave) * .5, center_z),
+		Vector3(RESTAURANT_WALL.size.x, eave - foundation, RESTAURANT_WALL.size.y), brick, true)
+	block(Vector3(x, (foundation + floor_y + .32) * .5, center_z),
+		Vector3(RESTAURANT_WALL.size.x + .035, floor_y + .32 - foundation, RESTAURANT_WALL.size.y + .035), base_brick)
+	block(Vector3(x, floor_y - .08, front_z + .65), Vector3(12.65, .16, 1.3), concrete, true)
+	surface(Rect2(right_wall, -49.4, 1.55, 14.02), .16, .16, concrete)
+
+	var blue := Kit.paint(Color("#294982"))
 	var fascia := Kit.paint(Color("#a6262c"))
-	var roof_center := Vector3(x, eave, center_z)
-	build_restaurant_eaves(roof_center, blue)
-	block(roof_center + Vector3.UP * 1.23, Vector3(11.45, .25, 27.9), fascia)
-	block(roof_center + Vector3.UP * 1.40, Vector3(11.32, .14, 27.78), dark)
+	var roof_depth := front_z - RESTAURANT_DINING_START
+	var roof_center := Vector3(x, eave, (front_z + RESTAURANT_DINING_START) * .5)
+	build_restaurant_eaves(roof_center, blue, roof_depth)
+	block(roof_center + Vector3.UP * 1.23, Vector3(11.45, .25, roof_depth - .96), fascia)
+	block(roof_center + Vector3.UP * 1.40, Vector3(11.32, .14, roof_depth - 1.02), dark)
+	var service_depth := RESTAURANT_DINING_START - back_z
+	block(Vector3(x, eave + .44, (back_z + RESTAURANT_DINING_START) * .5),
+		Vector3(12.44, .88, service_depth), brick)
+	block(Vector3(x, eave + .90, (back_z + RESTAURANT_DINING_START) * .5),
+		Vector3(12.55, .12, service_depth + .10), dark)
 
-	for offset: float in [-4.38, -2.18, .05, 2.25, 4.45]:
-		var door := is_equal_approx(offset, 2.25)
-		restaurant_glass(Vector3(x + offset, floor_y + 1.47, front_z), 1.95, 2.17 if door else 1.59)
-	for z: float in [-37.35, -39.60, -41.85, -44.10, -46.35]:
-		restaurant_glass(Vector3(21.74, floor_y + 1.46, z), 2.01, 1.59, PI * .5)
-	sign_panel("BURGER KING", Vector3(x, eave + .54, front_z + .69), 4.2, .65, blue, Color("#fff0d2"))
-	sign_panel("BURGER KING", Vector3(22.40, eave + .54, -40.1), 4.2, .65, blue, Color("#fff0d2"), PI * .5)
+	for offset: float in [-4.5, -2.25, 0.0, 2.25, 4.5]:
+		glazed_opening(Vector3(x + offset, floor_y + 1.47, front_z), 2.04, 1.70)
+	var side_door_z := -45.8
+	for z: float in [-37.3, -39.55, -41.8, -44.05]:
+		glazed_opening(Vector3(right_wall, floor_y + 1.46, z), 2.02, 1.69, PI * .5)
+	var door_base := grade(right_wall, side_door_z) + .16
+	glazed_opening(Vector3(right_wall, door_base + 1.08, side_door_z), 1.36, 2.16, PI * .5, true)
+	glazed_opening(Vector3(left_wall, floor_y + 1.49, -51.0), 1.35, .93, -PI * .5)
+	block(Vector3(left_wall - .15, floor_y + .99, -51.0), Vector3(.32, .07, 1.47), dark)
+	for z: float in [-50.0, -60.0]:
+		block(Vector3(right_wall + .07, eave - .25, z), Vector3(.18, .16, .37), dark)
+		block(Vector3(right_wall + .09, eave - .34, z), Vector3(.14, .036, .28), white)
+
+	sign_panel("BURGER KING", Vector3(x, eave + .54, front_z + .69), 4.9, .67, blue, Color("#fff0d2"))
 	build_restaurant_sign(fascia, blue)
+	build_drive_through(parking_paint, blue)
 
 
-func build_restaurant_eaves(center: Vector3, material: Material) -> void:
-	var lower := [Vector2(-6.97, -15.12), Vector2(6.97, -15.12), Vector2(6.97, 15.12), Vector2(-6.97, 15.12)]
-	var upper := [Vector2(-5.72, -13.95), Vector2(5.72, -13.95), Vector2(5.72, 13.95), Vector2(-5.72, 13.95)]
+func parking_island(at: Vector2, size: Vector2) -> void:
+	var curb := CylinderMesh.new()
+	curb.top_radius = .94
+	curb.bottom_radius = 1.0
+	curb.height = .27
+	curb.radial_segments = 20
+	var y := grade(at.x, at.y) + ASPHALT_LIFT
+	var island := Kit.mesh_at(self, curb, Vector3(at.x, y + .04, at.y), concrete)
+	island.scale = Vector3(size.x * .5, 1, size.y * .5)
+	island.create_trimesh_collision()
+	var infill := CylinderMesh.new()
+	infill.top_radius = .86
+	infill.bottom_radius = .86
+	infill.height = .035
+	infill.radial_segments = 20
+	var grass := Kit.mesh_at(self, infill, Vector3(at.x, y + .17, at.y), Kit.paint(Color("#677747")))
+	grass.scale = island.scale
+
+
+func build_drive_through(marking: Material, blue: Material) -> void:
+	var menu := Vector3(6.0, grade(6.0, -59.7), -59.7)
+	block(menu + Vector3.UP * .72, Vector3(.11, 1.45, .16), dark, true)
+	sign_panel("ORDER HERE", menu + Vector3.UP * 1.48, 1.12, .56, blue, Color.WHITE, PI * .5)
+	var guide := Vector3(24.6, grade(24.6, -61.7), -61.7)
+	block(guide + Vector3.UP * .55, Vector3(.10, 1.1, .12), blue, true)
+	sign_panel("DRIVE THRU", guide + Vector3.UP * 1.05, 1.13, .38, blue, Color.WHITE)
+	for z: float in [-58.0, -54.0, -48.0, -42.0]:
+		surface(Rect2(8.78, z, .075, 1.5), .087, .087, marking, 0)
+
+
+
+func build_restaurant_eaves(center: Vector3, material: Material, depth: float) -> void:
+	var lower_depth := depth * .5 + .69
+	var upper_depth := depth * .5 - .48
+	var lower := [Vector2(-6.97, -lower_depth), Vector2(6.97, -lower_depth), Vector2(6.97, lower_depth), Vector2(-6.97, lower_depth)]
+	var upper := [Vector2(-5.72, -upper_depth), Vector2(5.72, -upper_depth), Vector2(5.72, upper_depth), Vector2(-5.72, upper_depth)]
 	var mesh := SurfaceTool.new()
 	mesh.begin(Mesh.PRIMITIVE_TRIANGLES)
 	for i in 4:
@@ -280,35 +365,45 @@ func build_restaurant_eaves(center: Vector3, material: Material) -> void:
 			mesh.add_vertex(p)
 	mesh.generate_normals()
 	Kit.mesh_at(self, mesh.commit(), center, material)
-	block(center - Vector3.UP * .08, Vector3(13.94, .16, 30.24), material)
+	block(center - Vector3.UP * .08, Vector3(13.94, .16, lower_depth * 2.0), material)
 
 
-func restaurant_glass(at: Vector3, width: float, height: float, heading := 0.0) -> void:
-	var trim := Kit.box_at(self, at, Vector3(width, height, .14), white)
+func glazed_opening(at: Vector3, width: float, height: float, heading := 0.0, door := false) -> void:
+	var trim := Kit.box_at(self, at, Vector3(width, height, .12), storefront_trim)
 	trim.rotation.y = heading
-	Kit.box_at(trim, Vector3(0, 0, .084), Vector3(width - .12, height - .13, .05), glazing)
-	Kit.box_at(trim, Vector3(0, 0, .12), Vector3(.065, height, .045), white)
-
+	# Opaque tinted glass masks the building shell. A recessed face catches daylight
+	# and the aluminum rails stay slightly proud of the pane.
+	var kick := .21 if door else .075
+	Kit.box_at(trim, Vector3(0, kick * .5 - .035, .061),
+		Vector3(width - .124, height - kick - .085, .025), glazing)
+	Kit.box_at(trim, Vector3(0, -.21 if door else -.38, .071),
+		Vector3(width - .112, .048, .033), storefront_trim)
+	if door:
+		var pull_x := width * .31
+		for y: float in [-.24, .05]:
+			Kit.box_at(trim, Vector3(pull_x, y, .105), Vector3(.05, .048, .092), door_hardware)
+		Kit.box_at(trim, Vector3(pull_x, -.095, .147), Vector3(.038, .34, .037), door_hardware)
 
 func build_restaurant_sign(fascia: Material, blue: Material) -> void:
 	var x := 27.8
-	var z := -10.5
+	var z := -13.2
 	var y := grade(x, z)
 	block(Vector3(x, y + 2.55, z), Vector3(.22, 5.1, .28), blue, true)
-	var cream_face := Kit.paint(Color("#f2e7d3"))
-	var orange := Kit.paint(Color("#de8f3d"))
-	var at := Vector3(x, y + 4.96, z)
-	restaurant_sign_disc(at, 1.0, .20, blue)
+	var cream_face := Kit.paint(Color("#f6eddb"))
+	var orange := Kit.paint(Color("#eaa153"))
+	var at := Vector3(x, y + 5.0, z)
+	block(at, Vector3(.23, 2.37, 2.22), cream_face)
 	for side: float in [-1.0, 1.0]:
 		var angle := PI * .5 * side
-		restaurant_sign_disc(at + Vector3.RIGHT * side * .114, .91, .034, cream_face)
-		restaurant_sign_disc(at + Vector3.RIGHT * side * .139, .73, .021, orange)
-		var logo := sign_label("BURGER\nKING", 1.55, 1.32, Color("#a6262c"))
+		restaurant_sign_disc(at + Vector3.RIGHT * side * .13, .98, .034, blue)
+		restaurant_sign_disc(at + Vector3.RIGHT * side * .152, .86, .022, cream_face)
+		restaurant_sign_disc(at + Vector3.RIGHT * side * .171, .74, .018, orange)
+		var logo := sign_label("BURGER\nKING", 1.47, 1.31, Color("#b12028"))
 		add_child(logo)
-		logo.position = at + Vector3.RIGHT * side * .157
+		logo.position = at + Vector3.RIGHT * side * .187
 		logo.rotation.y = angle
-		sign_panel("DRIVE THRU", Vector3(x + side * .15, y + 3.54, z), 2.75, .38, fascia, Color.WHITE, angle)
-
+		sign_panel("DRIVE THRU", Vector3(x + side * .15, y + 3.56, z), 2.63, .38, fascia, Color.WHITE, angle)
+		sign_panel("WHOPPER\nWEDNESDAY", Vector3(x + side * .15, y + 2.89, z), 2.21, .81, cream_face, Color("#352e29"), angle)
 
 func restaurant_sign_disc(at: Vector3, radius: float, depth: float, material: Material) -> void:
 	var disc := CylinderMesh.new()
@@ -318,7 +413,6 @@ func restaurant_sign_disc(at: Vector3, radius: float, depth: float, material: Ma
 	disc.radial_segments = 24
 	var face := Kit.mesh_at(self, disc, at, material)
 	face.rotation.z = PI * .5
-	face.scale = Vector3(1.19, 1, 1.34)
 
 func build_utilities() -> void:
 	var timber := Kit.paint(Color("#645b4f"))
