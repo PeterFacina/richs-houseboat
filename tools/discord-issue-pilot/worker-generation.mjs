@@ -5,6 +5,16 @@ import { liveKnowledge } from './source-knowledge.mjs';
 import { studioClient } from './studio.mjs';
 import { repository } from './workflow.mjs';
 import { candidateBrief, candidateRetrieval, deterministicRetriever, originalRetrieval, retrievalConfig, verificationGuidance } from './production-retrieval.mjs';
+import { checkExport } from '../game_prompt_studio/lib/model.mjs';
+
+export function requireGenerationReview(inbox, note, issue) {
+  const previous = inbox.read(issue.number).captures.filter(row => row.input.report === note);
+  if (previous.some(row => row.input.exportPassed === false)) {
+    const error = new Error('Guard review required: this report already has a rejected capture. Correct and explicitly revise the report before retrying.');
+    error.code = 'GUARD_REVIEW_REQUIRED';
+    throw error;
+  }
+}
 
 export async function workerGeneration({
   storage, model, knowledge, github, inbox, fetchOllama = fetch, retrieval = retrievalConfig(), log = console,
@@ -45,8 +55,11 @@ export async function workerGeneration({
   await once(server, 'listening');
   const generateBrief = studioClient('http://127.0.0.1:' + server.address().port);
   return {
-    async generate(note, issue) {
+    async generate(note, issue, { authorizedRetry = false } = {}) {
       if (active) throw new Error('The worker is already processing a report.');
+      // The existing capture store makes this hold survive polling and restarts.
+      // A new main revision alone must never spend another generation attempt.
+      if (!authorizedRetry) requireGenerationReview(inbox, note, issue);
       active = { note, issue };
       try {
         const { record, exportPassed } = await generateBrief(note, { details: true });
@@ -57,12 +70,17 @@ export async function workerGeneration({
         }
         const { knowledge, facts, ...metrics } = record.generation;
         const retrievedContext = input.untrustedRetrievedEvidence;
+        const guardFindings = checkExport(record.prompt, record.evidence, facts);
         const captureId = inbox.capture(issue.number, { repository, issueUrl: issue.html_url, report: note,
           commit: knowledge.commit, knowledge, retrievedContext, model: request.model, modelDigest: metrics.modelDigest,
-          contextBytes: Buffer.byteLength(JSON.stringify(retrievedContext)), request, metrics, exportPassed,
+          contextBytes: Buffer.byteLength(JSON.stringify(retrievedContext)), request, metrics, exportPassed, guardFindings,
           ...(record.evidence.some(item => item.kind === 'verified-lesson') ? { exportEvidence: record.evidence } : {}),
         }, record.prompt.trim());
-        if (!exportPassed) throw new Error('Studio blocked export. The private capture is available for human review.');
+        if (!exportPassed) {
+          const error = new Error('Studio blocked export. The private capture is available for human review. Findings: ' + guardFindings.join('; '));
+          error.code = 'GUARD_REVIEW_REQUIRED';
+          throw error;
+        }
         return { brief: record.prompt.trim(), captureId };
       } finally {
         active = null;

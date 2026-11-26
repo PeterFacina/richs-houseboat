@@ -212,6 +212,11 @@ function modeStats(briefs) {
 async function viewOverview(data) {
   const recent = await api('briefs').catch(() => null);
   const extra = data.role === 'reviewer' ? [
+    panel('GPU jobs needing attention', 'Persisted attempt budgets survive worker restarts. Retries require an authorized GitHub operator.',
+      [(data.jobs ?? []).some(job => ['held', 'failed', 'retry_wait', 'publication_pending'].includes(job.state))
+        ? table(['Issue', 'Status and next action'], data.jobs.filter(job => ['held', 'failed', 'retry_wait', 'publication_pending'].includes(job.state))
+          .map(job => [anchor('#' + job.issue, repository + '/issues/' + job.issue), issueBrief({ job })]))
+        : notice('No held or failed generation jobs recorded.')]),
     el('div', [
       panel('Project facts', 'From files in the indexed revision.', [factList(data.knowledge)]),
       panel('GPU token usage', 'Totals across captures with recorded Ollama usage.', [generationUsage(data.briefs)]),
@@ -290,6 +295,14 @@ function retrievalDetail(result, reviewer) {
 
 function issueBrief(row) {
   if (!row.brief) {
+    if (row.job) return [el('strong', 'GPU job: ' + row.job.state),
+      muted(row.job.attempts + '/' + row.job.limit + ' attempts'),
+      muted(({ guard: 'Guard review required. Inspect the private capture before retrying.',
+        timeout: 'Generation timed out. Check local model health.', malformed: 'Invalid structured model response. Review privately.',
+        output_limit: 'Output limit reached. Review the prompt and output budget.',
+        interrupted: 'Worker interrupted. Attempt remains counted.', unavailable: 'Generation unavailable. Check the operator log.',
+        publication: 'Saved guarded brief awaiting publication; no regeneration needed.' })[row.job.reason] ?? 'Waiting within the bounded attempt budget.'),
+      ['held', 'failed'].includes(row.job.state) ? muted('Authorized GitHub operator can grant one retry with /gpu-retry ' + row.job.id) : null];
     if (row.queued) return 'Waiting for a brief';
     return row.state === 'open' ? 'Outside worker queue' : 'No published brief';
   }

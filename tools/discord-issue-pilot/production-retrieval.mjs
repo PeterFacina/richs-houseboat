@@ -4,6 +4,7 @@ import { buildCodeIndex } from './multistage/code-index.mjs';
 import { collectGameEvidence } from './multistage/game-route-evidence.mjs';
 import { inboxLessons, lessonStatus, relevantLesson } from './learning/lessons.mjs';
 import { trainingPath } from './training-inbox.mjs';
+import { historicalProse } from '../game_prompt_studio/lib/verified-lesson.mjs';
 
 export const originalRetrieval = 'original';
 export const candidateRetrieval = 'deterministic-v1';
@@ -35,7 +36,7 @@ function verifiedEvidence(lesson) {
       text.length <= 240 && !/[\p{Cc}\p{Cf}]/u.test(text))) return null;
   return { kind: 'verified-lesson', title: 'Source-verified lesson from issue #' + lesson.report.number,
     issue: lesson.report.number, pull: lesson.implementation.pull, failed, succeeded, feedback, verification,
-    excerpt: ['Prior task only.', failed, succeeded, feedback, verification].join(' ') };
+    excerpt: ['Prior task only.', failed, succeeded, feedback, verification].map(historicalProse).join(' ') };
 }
 
 export function deterministicRetriever(knowledge, { lessons = defaultLessons, reviewed = join(dirname(trainingPath()), 'reviewed-lessons.json') } = {}) {

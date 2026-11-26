@@ -5,6 +5,7 @@ import { ApplicationCommandType, ButtonBuilder, ButtonStyle, Client, Events, Gat
 import { codexLink, repository, pullStatus, findGpuBrief, gpuPendingMarker, reportCharacterLimit, reportHeader, reportKinds } from './workflow.mjs';
 import { reportInput, ReportInputError } from './report-input.mjs';
 import { studioClient } from './studio.mjs';
+import { findGpuJob, jobMessage } from './generation-jobs.mjs';
 
 const { DISCORD_TOKEN, DISCORD_GUILD_ID, DISCORD_CHANNEL_ID, GITHUB_TOKEN,
   LAUNCH_URL, DISCORD_ROLE_ID } = process.env;
@@ -59,7 +60,7 @@ function card(report, status) {
   return {
     content: (report.gameplay ? '**Rich’s Houseboat gameplay report**' : '**Rich’s Houseboat workflow pilot**')
       + ' · [Issue #' + report.issue + ']('
-      + issueUrl(report.issue) + ')\n' + (waiting ? '**Waiting for GPU brief**' : (status ?? claimStatus))
+      + issueUrl(report.issue) + ')\n' + (waiting ? (status ?? '**Waiting for GPU brief**') : (status ?? claimStatus))
       + (report.url ? '\n[Game Prompt Studio brief](' + report.url + ')' : '')
       + '\nCodex will read the issue, follow the team workflow, and open a linked draft PR.',
     components: waiting ? [] : [new ActionRowBuilder().addComponents(button)],
@@ -209,12 +210,22 @@ async function refresh() {
       try {
         if (!report.url) {
           let brief;
+          const jobComments = [];
           for (let page = 1; !brief; page++) {
             const comments = await github('/issues/' + report.issue + '/comments?per_page=100&page=' + page);
+            jobComments.push(...comments);
             brief = findGpuBrief(comments);
             if (comments.length < 100) break;
           }
-          if (!brief) continue;
+          if (!brief) {
+            const job = findGpuJob(jobComments);
+            if (job) {
+              const message = await channel.messages.fetch(report.reply);
+              const update = card(find.get(report.source), jobMessage(job));
+              if (message.content !== update.content) await message.edit(update);
+            }
+            continue;
+          }
           db.prepare('UPDATE gpu_briefs SET url = ? WHERE source = ?').run(brief.html_url, report.source);
         }
         const message = await channel.messages.fetch(report.reply);
