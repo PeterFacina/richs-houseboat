@@ -1129,6 +1129,9 @@ func add_test_cash() -> void:
 
 
 func perform(peer: int, action: String, value: Variant) -> void:
+	if action == "mario_project":
+		game.project_tomorrow.handle_request(peer, value)
+		return
 	if action == game.properties.ACTION:
 		game.properties.perform(peer, value)
 		return

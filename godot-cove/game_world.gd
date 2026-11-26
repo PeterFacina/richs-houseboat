@@ -24,6 +24,7 @@ const RiverChart = preload("res://river_chart.gd")
 const Notebook = preload("res://player_notebook.gd")
 const StoryOffer = preload("res://npc_quest_offer.gd")
 const RichStory = preload("res://rich_story.gd")
+const MarioProject = preload("res://mario_project_tomorrow.gd")
 const MenuTheme = preload("res://game_menu_theme.gd")
 const Lobby = preload("res://river_lobby.gd")
 const AircraftSteering = preload("res://aircraft_steering.gd")
@@ -88,6 +89,7 @@ var trophy: Trophy
 var properties := preload("res://property_management.gd").new()
 var skill_screen := preload("res://progression_screen.tscn").instantiate()
 var campaign: Campaign
+var project_tomorrow := MarioProject.new()
 var marina_cars: MarinaCars
 var backpack: Backpack
 var cheats: Cheats
@@ -300,6 +302,8 @@ func _ready() -> void:
 	add_child(shannon_job)
 	shannon_job.setup(self, mower, public_works.to_global(Vector3(PublicWorks.SHANNON.x, public_works.office_floor, PublicWorks.SHANNON.y)),
 		PublicWorks.HEADING, public_works.monitor_focus)
+	add_child(project_tomorrow)
+	project_tomorrow.setup(self)
 	campaign.story.setup_transport()
 	safety.setup(self)
 	hud.add_child(pause_menu)
@@ -674,6 +678,8 @@ func _physics_process(delta: float) -> void:
 			public_works.toggle_office(office_leaf, eye)
 		elif can_talk_to_shannon() and shannon_job.in_range():
 			shannon_job.interact()
+		elif project_tomorrow.can_interact():
+			project_tomorrow.interact()
 		elif bay != null:
 			bay.toggle()
 		elif can_mount_mower():
@@ -1712,7 +1718,10 @@ func build_story_ui() -> void:
 	notebook.tracker_changed.connect(update_story_tracker)
 	story_offer.dismissed.connect(close_story_offer)
 	story_offer.chosen.connect(func(npc: String, id: String, action: String):
-		campaign.request(RichStory.ACTION, [npc, id, action])
+		if npc == project_tomorrow.ACTION:
+			campaign.request(project_tomorrow.ACTION, [action, id])
+		else:
+			campaign.request(RichStory.ACTION, [npc, id, action])
 		if action in ["invite", "dismiss"]:
 			close_story_offer())
 	story_tracker = label("", 15, MenuTheme.GOLD)
@@ -1795,6 +1804,14 @@ func open_story_offer(upgrades := false) -> void:
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	story_upgrade_offer = upgrades
 	present_story_offer()
+
+
+func open_mario_offer(data: Dictionary) -> void:
+	if story_offer.visible:
+		return
+	offer_mouse_mode = Input.mouse_mode
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	story_offer.present(data)
 
 
 func close_story_offer() -> void:
@@ -2060,6 +2077,7 @@ func update_hud() -> void:
 	backpack.hud_available = not piloting and not campaign.crewplay.hands_busy() and not cabin.hands_in_use() and not notebook.visible and not story_offer.visible and not cheats.visible \
 		and not campaign.controls_blocked() and not cabin.busy() and not campaign.marina_fuel.is_local_holder() and not tennis.active
 	objective.text = ""
+	objective.text = project_tomorrow.objective_text()
 	var at: Vector3 = vessel.center if aboard() else player.global_position
 	update_story_tracker()
 	instruction.text = ""
@@ -2180,6 +2198,8 @@ func update_hud() -> void:
 				instruction.text = bay.prompt()
 			elif can_mount_mower():
 				instruction.text = "E  Mount lawn mower"
+		if project_tomorrow.can_interact() and clock >= note_until:
+			instruction.text = project_tomorrow.prompt()
 	if play_input() and clock >= note_until and mower.rider == null and marina_cars.active < 0:
 		var property_hint: String = properties.hint()
 		if not property_hint.is_empty():

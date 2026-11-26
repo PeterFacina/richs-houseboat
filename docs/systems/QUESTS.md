@@ -26,3 +26,7 @@ The existing `story_parts` objectives and loan flags drive the workshop rack, ha
 ## Additional characters
 
 [`shannon_job.gd`](../../godot-cove/shannon_job.gd), [`shannon_model.gd`](../../godot-cove/shannon_model.gd) and [`shannon_voice.gd`](../../godot-cove/shannon_voice.gd) implement Shannon at Public Works and the repeatable mowing job. Shannon Lapping's independent questline is planned. Future chains can have their own state, quest givers and optional links to other characters. As those chains arrive, evaluate how to route their state and notebook entries through the existing framework. Consider main and side quests, repeatable and optional objectives, equipment, skill, research and economic requirements, and persistent multiplayer participation.
+
+## Mario's Project Tomorrow first slice
+
+[`mario_project_tomorrow.gd`](../../godot-cove/mario_project_tomorrow.gd) adds a separate, host-validated three-mission arc at 16 Silvie Street. Mission stages, retries, unlock flags and bounded companion memory live in the shared campaign ledger; authored story dialogue remains authoritative. See the [Project Tomorrow guide](MARIO-PROJECT-TOMORROW.md) for interactions, verification limits and future milestones. This slice does not migrate Mario into `quest_chain.gd` or broaden the notebook's current Rich-only quest display; those integrations can be assessed as later story chapters are designed.

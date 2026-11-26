@@ -2,6 +2,7 @@ extends RefCounted
 
 const Property = preload("res://warehouse_property.gd")
 const Kit = preload("res://scenery.gd")
+const MARIO_HOME := Vector2(18455.0, 13792.0)
 
 # Directions face the access road. The first three shells follow the surveyed parcels.
 const LISTINGS := [
@@ -24,6 +25,8 @@ static func replaces(footprint: String) -> bool:
 
 
 static func near_property(area: Rect2) -> bool:
+	if area.grow(43.0).has_point(MARIO_HOME):
+		return true
 	for entry: Dictionary in LISTINGS:
 		if area.grow(43.0).has_point(entry.at):
 			return true
@@ -31,6 +34,9 @@ static func near_property(area: Rect2) -> bool:
 
 
 static func clears_tree(at: Vector2) -> bool:
+	var home_local := (at - MARIO_HOME).rotated(-1.16)
+	if Rect2(Vector2(-23.0, -18.0), Vector2(36.0, 39.0)).has_point(home_local):
+		return true
 	for entry: Dictionary in LISTINGS:
 		if at.distance_squared_to(entry.at) > 65.0 * 65.0:
 			continue

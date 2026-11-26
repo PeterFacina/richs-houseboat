@@ -20,6 +20,7 @@ This is a short navigation map, not a complete specification. Source in the curr
 | Town, roads and vehicles | `deep_river_*.gd`, `marina_car*.gd`, `vehicle_driver.gd` (search actual callers) |
 | Mowing | `lawn_mower.gd`, `shannon_job.gd`, `mowing_routes.gd` |
 | Big Rich, Shannon Lapping, shared quest state | [Quests and character stories](systems/QUESTS.md) |
+| Mario, Project Tomorrow, companion dialogue boundary | [Project Tomorrow first slice](systems/MARIO-PROJECT-TOMORROW.md) |
 | AI and Discord workflow | [AI workflow status](AI-WORKFLOW.md), [team workflow](TEAM-WORKFLOW.md) |
 | Tests and CI | [Build checks](BUILD-CHECKS.md), [universal XP verification](UNIVERSAL-XP.md) |
 
