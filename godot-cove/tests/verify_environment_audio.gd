@@ -91,7 +91,6 @@ func check_weather() -> void:
 	var eye: Camera3D = game.eye
 	var weather_bus := AudioServer.get_bus_index(&"Weather")
 	var filter := AudioServer.get_bus_effect(weather_bus, 0) as AudioEffectLowPassFilter
-	var baseline: float = 0.0
 	fx.weather_quality = 0.0
 	game.player.global_position = Vector3(18000, 80, 13000)
 	eye.position = Vector3.UP * 1.6
@@ -99,11 +98,10 @@ func check_weather() -> void:
 		game.weather.force(state, kind, minute)
 		minute += game.weather.transition_minutes
 		fx.update(game, state, minute, 2.5)
-		check(fx.volumes[3].playing, "Weather audio disabled for " + Weather.NAMES[kind])
-		if kind == Weather.CLEAR:
-			baseline = fx.volumes[3].volume_db
+		var quiet_wind := kind in [Weather.CLEAR, Weather.FOG, Weather.DENSE_FOG]
+		check(fx.volumes[3].playing != quiet_wind, "Wrong wind playback state for " + Weather.NAMES[kind])
 		if kind == Weather.WINDY:
-			check(fx.volumes[3].volume_db > baseline + 12.0, "Wind did not follow weather intensity")
+			check(fx.volumes[3].volume_db > -10.0, "Wind did not follow weather intensity")
 		if kind == Weather.RAIN:
 			check(fx.volumes[0].playing and not fx.volumes[4].playing, "Light rain activated the wrong layers")
 		if kind in [Weather.HEAVY, Weather.STORM]:

@@ -194,8 +194,9 @@ func update_weather_audio(listener: Vector3, delta: float) -> void:
 	var heavy := smoothstep(.42, .89, rain_amount)
 	var outside := 1.0 - shelter
 	var light := rain_amount * (1.0 - .60 * heavy) * outside
+	var wind := sample.w * smoothstep(.14, .35, sample.w)
 	var levels := [light * (1.0 - water_exposure) * .44, light * water_exposure * .51,
-		rain_amount * shelter * .32, sample.w * lerpf(.10, .47, outside), rain_amount * heavy * outside * .48]
+		rain_amount * shelter * .32, wind * lerpf(.10, .47, outside), rain_amount * heavy * outside * .48]
 	var response := 1.0 - exp(-delta * 3.5)
 	for i in volumes.size():
 		fade_loop(volumes[i], levels[i], response)
