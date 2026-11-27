@@ -1,0 +1,7 @@
+{
+  "pr": 151,
+  "player_facing": true,
+  "bullets": [
+    "Added opt-in performance diagnostics for investigating frame pacing without changing normal gameplay."
+  ]
+}
