@@ -95,7 +95,7 @@ func run() -> void:
 				" active=", grass.active.size(), " waiting=", grass.waiting.size(),
 				" loading=", grass.loading.size(), " prefetched=", grass.prefetched.size(),
 				" current_lod=", grass.current.get("lod", -1))
-		if sample == 1199 or sample == 1799:
+		if (sample == 1199 or sample == 1799) and DisplayServer.get_name() != "headless":
 			var name := "arrival.png" if sample == 1199 else "settled.png"
 			var image := root.get_viewport().get_texture().get_image()
 			var path := ProjectSettings.globalize_path(output.path_join(name))

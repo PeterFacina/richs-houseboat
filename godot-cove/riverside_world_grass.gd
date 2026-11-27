@@ -50,6 +50,7 @@ var profile_upload_usec := 0
 var profile_rebuild_usec := 0
 var profile_completed := 0
 var profile_aborted := 0
+var bake_targets: Array[Vector2i] = []
 
 
 func setup(eligibility) -> void:
@@ -310,6 +311,9 @@ func tile_height(point: Vector2, cell: Vector2i, tile: Vector2i, heights: Array)
 
 func rebuild_targets(center: Vector2) -> void:
 	surface.slope_cache.clear()
+	if not bake_targets.is_empty():
+		rebuild_bake_targets()
+		return
 	var radii: Array = RADII[quality]
 	if moving_fast:
 		radii = radii.duplicate()
@@ -413,6 +417,34 @@ func rebuild_targets(center: Vector2) -> void:
 	for item: Dictionary in active.values():
 		if item.batch != null:
 			(item.batch as GeometryInstance3D).visibility_range_end = cutoff
+
+
+func set_bake_targets(cells: Array[Vector2i]) -> void:
+	# Developer bake mode uses the production generator/cache path but restricts
+	# work to explicit cells, avoiding a large and approximate viewpoint sweep.
+	bake_targets = cells.duplicate()
+	view_cell = Vector2i(-999999, -999999)
+
+
+func rebuild_bake_targets() -> void:
+	desired.clear()
+	var pending := []
+	for cell: Vector2i in bake_targets:
+		desired[cell] = 0
+		if (not active.has(cell) or active[cell].lod > 0) and not loading.has(cell):
+			pending.append({"cell": cell, "lod": 0, "distance": 0.0, "priority": 0})
+	for cell: Vector2i in active.keys():
+		if not desired.has(cell):
+			if active[cell].batch != null:
+				(active[cell].batch as Node).queue_free()
+			active.erase(cell)
+			tile_cache.erase(cell)
+	for cell: Vector2i in loading.keys():
+		if not desired.has(cell) and disk_cache.cancel_load(cell, loading[cell]):
+			loading.erase(cell)
+	waiting = pending
+	if not current.is_empty() and not desired.has(current.cell):
+		abort_current()
 
 
 func _batch_from_buffer(cell: Vector2i, lod: int, buffer: PackedFloat32Array) -> MultiMeshInstance3D:
