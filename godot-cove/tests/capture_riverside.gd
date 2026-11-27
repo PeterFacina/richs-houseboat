@@ -202,7 +202,9 @@ func verify_instanced_grass(game: Node3D, label: String) -> void:
 		if item.batch == null:
 			continue
 		var group: MultiMesh = item.batch.multimesh
-		for i in range(0, group.instance_count, maxi(1, ceili(float(group.instance_count) / 8.0))):
+		var stride := 1 if OS.get_cmdline_user_args().has("--verify-all-grass") else \
+			maxi(1, ceili(float(group.instance_count) / 8.0))
+		for i in range(0, group.instance_count, stride):
 			var origin := group.get_instance_transform(i).origin
 			checked += 1
 			if not is_finite(surface.grass_height(Vector2(origin.x, origin.z), surface.masks)):
@@ -271,6 +273,8 @@ func benchmark_streaming(game: Node3D, view: Array, output: String) -> void:
 			" current_lod=", game.river.world_grass.current.get("lod", -1),
 			" current_index=", game.river.world_grass.current.get("index", -1))
 		if pace == 15.0:
+			if OS.get_cmdline_user_args().has("--verify-all-grass"):
+				verify_instanced_grass(game, view[0] + "_drive_end")
 			var path := ProjectSettings.globalize_path(output.path_join(view[0] + "_drive_end.png"))
 			var frame := root.get_viewport().get_texture().get_image()
 			print("CAPTURE ", path, " ", frame.get_width(), "x", frame.get_height(), " ", frame.save_png(path))

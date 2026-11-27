@@ -8,12 +8,17 @@ const TILE := 1.0
 const GRID := 113 # 199.5 candidates/m2, matching the approved 200-blade prototype.
 const LOD_STEPS := [1, 2, 4] # Nested deterministic subsets: 200, 50, 12.5 blades/m2.
 const RADII := [[18.0, 32.0, 52.0], [22.0, 42.0, 69.0], [28.0, 50.0, 115.0]]
-const BUILD_BUDGET_USEC := 3500
+const BUILD_BUDGET_USEC := 1500
+const FALLBACK_LOD := 1
+const CACHE_LIMIT := 64
 
 var surface
 var mesh: Mesh
 var material: ShaderMaterial
 var active := {}
+var cached := {}
+var cache_order := []
+var tile_cache := {}
 var desired := {}
 var waiting := []
 var current := {}
@@ -25,6 +30,13 @@ var has_view := false
 var travel := Vector2.ZERO
 var last_tick := 0
 var moving_fast := false
+var profile_enabled := OS.get_cmdline_user_args().has("--profile-grass")
+var profile_generate_usec := 0
+var profile_tile_usec := 0
+var profile_upload_usec := 0
+var profile_rebuild_usec := 0
+var profile_completed := 0
+var profile_aborted := 0
 
 
 func setup(eligibility) -> void:
@@ -69,33 +81,29 @@ func update_around(viewpoint: Vector3, preset: int) -> void:
 	if center != view_cell or preset != quality:
 		view_cell = center
 		quality = preset
+		var rebuild_started := Time.get_ticks_usec() if profile_enabled else 0
 		rebuild_targets(position)
-	var deadline := Time.get_ticks_usec() + maxi(build_budget_usec, 5500 if moving_fast else 0)
+		if profile_enabled:
+			profile_rebuild_usec += Time.get_ticks_usec() - rebuild_started
+	var deadline := Time.get_ticks_usec() + maxi(build_budget_usec, 2500 if moving_fast else 0)
 	while Time.get_ticks_usec() < deadline:
 		if current.is_empty():
 			if waiting.is_empty():
 				break
 			current = waiting.pop_front()
 			current["index"] = 0
-			current["transforms"] = []
-			current["tiles"] = {}
+			current["buffer"] = PackedFloat32Array()
 			var block: Vector2i = current.cell
+			if not tile_cache.has(block):
+				tile_cache[block] = [{}, {}]
+			current["tiles"] = tile_cache[block][0 if current.lod == 0 else 1]
 			current["masks"] = surface.relevant_masks(Rect2(Vector2(block) * CHUNK,
 				Vector2.ONE * CHUNK).grow(Surface.CLEARANCE))
 		var cell: Vector2i = current.cell
 		if not desired.has(cell):
 			abort_current()
 			continue
-		if current.has("batch"):
-			var batch: MultiMeshInstance3D = current.batch
-			for task in 128:
-				if current.upload >= current.transforms.size():
-					break
-				batch.multimesh.set_instance_transform(current.upload, current.transforms[current.upload])
-				current.upload += 1
-			if current.upload >= current.transforms.size():
-				install_current()
-			continue
+		var generate_started := Time.get_ticks_usec() if profile_enabled else 0
 		var step: int = LOD_STEPS[current.lod]
 		var count := ceili(float(GRID) / float(step))
 		var total := count * count
@@ -104,54 +112,79 @@ func update_around(viewpoint: Vector3, preset: int) -> void:
 				break
 			var local_x: int = (current.index % count) * step
 			var local_z: int = floori(float(current.index) / float(count)) * step
-			var tile := Vector2i(floori((float(local_x) + .5) * CHUNK / GRID / TILE),
-				floori((float(local_z) + .5) * CHUNK / GRID / TILE))
-			if not current.tiles.has(tile):
-				current.tiles[tile] = classify_tile(cell, tile, current.masks)
-			var tile_data: Dictionary = current.tiles[tile]
-			if tile_data.state == -1:
-				current["index"] += 1
-				continue
 			var seed := hash(Vector3i(cell.x, cell.y, local_z * GRID + local_x))
 			var jitter_x := (float(seed & 1023) / 1023.0 - .5) * CHUNK / GRID * .68
 			var jitter_z := (float((seed >> 10) & 1023) / 1023.0 - .5) * CHUNK / GRID * .68
 			var point := Vector2((float(cell.x) + (float(local_x) + .5) / GRID) * CHUNK + jitter_x,
 				(float(cell.y) + (float(local_z) + .5) / GRID) * CHUNK + jitter_z)
+			var tile := Vector2i(floori((float(local_x) + .5) * CHUNK / GRID / TILE),
+				floori((float(local_z) + .5) * CHUNK / GRID / TILE))
+			if not current.tiles.has(tile):
+				var tile_started := Time.get_ticks_usec() if profile_enabled else 0
+				current.tiles[tile] = classify_tile(cell, tile, current.masks, current.lod == 0)
+				if profile_enabled:
+					profile_tile_usec += Time.get_ticks_usec() - tile_started
+			var tile_data: Dictionary = current.tiles[tile]
+			if tile_data.state == -1:
+				current["index"] += 1
+				continue
 			var height: float = surface.grass_height(point, current.masks) if tile_data.state == 0 else \
 				tile_height(point, cell, tile, tile_data.heights)
 			if is_finite(height):
 				var angle := float((seed >> 20) & 1023) / 1023.0 * TAU
-				current.transforms.append(Transform3D(Basis(Vector3.UP, angle), Vector3(point.x, height, point.y)))
+				var sine := sin(angle)
+				var cosine := cos(angle)
+				current.buffer.append_array(PackedFloat32Array([
+					cosine, 0.0, sine, point.x,
+					0.0, 1.0, 0.0, height,
+					-sine, 0.0, cosine, point.y]))
 			current["index"] += 1
 		if current.index >= total:
+			var upload_started := Time.get_ticks_usec() if profile_enabled else 0
 			start_upload()
+			install_current()
+			if profile_enabled:
+				profile_upload_usec += Time.get_ticks_usec() - upload_started
+		if profile_enabled:
+			profile_generate_usec += Time.get_ticks_usec() - generate_started
 		if Time.get_ticks_usec() >= deadline:
 			break
 
 
-func classify_tile(cell: Vector2i, tile: Vector2i, nearby_masks: Array) -> Dictionary:
+func classify_tile(cell: Vector2i, tile: Vector2i, nearby_masks: Array, full_detail: bool) -> Dictionary:
 	var origin := Vector2(cell) * CHUNK + Vector2(tile) * TILE
 	var heights := []
 	var valid := 0
-	for z in 3:
-		for x in 3:
-			var height: float = surface.grass_height(origin + Vector2(x, z) * TILE * .5, nearby_masks)
-			heights.append(height)
-			valid += int(is_finite(height))
-	if valid == 0:
-		return {"state": -1}
-	if valid == 9:
-		var safe := true
+	if full_detail:
 		for z in 3:
 			for x in 3:
-				if not is_finite(surface.grass_height(origin + Vector2(x, z) * TILE * .5,
-						nearby_masks, .35)):
-					safe = false
+				var height: float = surface.grass_height(origin + Vector2(x, z) * TILE * .5, nearby_masks)
+				heights.append(height)
+				valid += int(is_finite(height))
+		if valid == 0:
+			return {"state": -1}
+		if valid == 9:
+			var safe := true
+			for z in 3:
+				for x in 3:
+					if not is_finite(surface.grass_height(origin + Vector2(x, z) * TILE * .5,
+							nearby_masks, .35)):
+						safe = false
+						break
+				if not safe:
 					break
-			if not safe:
-				break
-		if safe:
-			return {"state": 1, "heights": [heights[0], heights[2], heights[6], heights[8]]}
+			if safe:
+				return {"state": 1, "heights": [heights[0], heights[2], heights[6], heights[8]]}
+		return {"state": 0}
+	for offset: Vector2 in [Vector2.ZERO, Vector2(TILE, 0.0), Vector2(0.0, TILE),
+			Vector2(TILE, TILE), Vector2(TILE * .5, TILE * .5)]:
+		var height: float = surface.grass_height(origin + offset, nearby_masks, .35)
+		heights.append(height)
+		valid += int(is_finite(height))
+	if valid == 0:
+		return {"state": -1}
+	if valid == 5:
+		return {"state": 1, "heights": heights}
 	return {"state": 0}
 
 
@@ -179,18 +212,38 @@ func rebuild_targets(center: Vector2) -> void:
 				continue
 			var lod := 0 if distance < float(radii[0]) else (1 if distance < float(radii[1]) else 2)
 			desired[cell] = lod
-			if not active.has(cell) or active[cell].lod != lod:
-				var build_lod := 1 if moving_fast and lod == 0 and not active.has(cell) else lod
+			if not active.has(cell) and cached.has(cell):
+				var restored: Dictionary = cached[cell]
+				cached.erase(cell)
+				cache_order.erase(cell)
+				if restored.batch != null:
+					restored.batch.visible = true
+				active[cell] = restored
+			var build_lod := FALLBACK_LOD if moving_fast and lod == 0 else lod
+			if not active.has(cell) and lod == 0:
+				build_lod = FALLBACK_LOD
+			if not active.has(cell) or active[cell].lod > build_lod:
 				if current.is_empty() or current.cell != cell or current.lod != build_lod:
 					var ahead := (middle - (center + travel)).length() + 8.0
-					var priority := 0 if lod == 0 and not active.has(cell) else (1 if lod == 0 else lod + 1)
+					var priority := 0 if lod == 0 and not active.has(cell) else (1 if not active.has(cell) else lod + 2)
 					pending.append({"cell": cell, "lod": build_lod, "distance": minf(distance, ahead),
 						"priority": priority})
 	for cell: Vector2i in active.keys():
 		if not desired.has(cell):
 			if active[cell].batch != null:
-				(active[cell].batch as Node).queue_free()
+				(active[cell].batch as Node3D).visible = false
+				cached[cell] = active[cell]
+				cache_order.append(cell)
+			else:
+				tile_cache.erase(cell)
 			active.erase(cell)
+	while cache_order.size() > CACHE_LIMIT:
+		var oldest: Vector2i = cache_order.pop_front()
+		if cached.has(oldest):
+			if cached[oldest].batch != null:
+				(cached[oldest].batch as Node).queue_free()
+			cached.erase(oldest)
+			tile_cache.erase(oldest)
 	pending.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
 		if a.priority != b.priority:
 			return a.priority < b.priority
@@ -207,14 +260,13 @@ func rebuild_targets(center: Vector2) -> void:
 
 
 func start_upload() -> void:
-	if current.transforms.is_empty():
-		install_current()
+	if current.buffer.is_empty():
 		return
 	var group := MultiMesh.new()
 	group.transform_format = MultiMesh.TRANSFORM_3D
 	group.mesh = mesh
-	group.instance_count = current.transforms.size()
-	group.visible_instance_count = 0
+	group.instance_count = current.buffer.size() / 12
+	group.buffer = current.buffer
 	var batch := MultiMeshInstance3D.new()
 	batch.multimesh = group
 	batch.material_override = material
@@ -222,13 +274,14 @@ func start_upload() -> void:
 	batch.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	batch.visibility_range_end = Graphics.RANGES["riverside_grass"][quality]
 	batch.visibility_range_end_margin = 14.0
-	batch.set_meta("riverside_count", current.transforms.size())
+	batch.set_meta("riverside_count", group.instance_count)
 	add_child(batch)
 	current["batch"] = batch
-	current["upload"] = 0
 
 
 func install_current() -> void:
+	if profile_enabled:
+		profile_completed += 1
 	var cell: Vector2i = current.cell
 	if active.has(cell):
 		if active[cell].batch != null:
@@ -237,16 +290,29 @@ func install_current() -> void:
 	active[cell] = {"lod": current.lod, "batch": null}
 	if current.has("batch"):
 		var batch: MultiMeshInstance3D = current.batch
-		batch.multimesh.visible_instance_count = batch.multimesh.instance_count
 		Graphics.batch(batch, "riverside_grass")
 		active[cell] = {"lod": current.lod, "batch": batch}
+	if desired.has(cell) and current.lod > desired[cell] and not moving_fast:
+		waiting.append({"cell": cell, "lod": desired[cell], "distance": 0.0,
+			"priority": desired[cell] + 2})
 	current.clear()
 
 
 func abort_current() -> void:
+	if profile_enabled:
+		profile_aborted += 1
 	if current.has("batch"):
 		(current.batch as Node).queue_free()
 	current.clear()
+
+
+func reset_profile() -> void:
+	profile_generate_usec = 0
+	profile_tile_usec = 0
+	profile_upload_usec = 0
+	profile_rebuild_usec = 0
+	profile_completed = 0
+	profile_aborted = 0
 
 
 func ready_near() -> bool:
@@ -262,6 +328,6 @@ func ready_all() -> bool:
 	if desired.is_empty():
 		return false
 	for cell: Vector2i in desired:
-		if not active.has(cell) or active[cell].lod != desired[cell]:
+		if not active.has(cell) or active[cell].lod > desired[cell]:
 			return false
 	return true
