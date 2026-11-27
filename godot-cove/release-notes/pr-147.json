@@ -1,0 +1,9 @@
+{
+  "pr": 147,
+  "player_facing": true,
+  "bullets": [
+    "Experimental Riverside grass is prepared before the loading screen clears near spawn and streams ahead while moving.",
+    "Previously visited areas reuse cached grass, so returning to them should show fewer late patches.",
+    "The approved grass appearance, paved-surface exclusions, and mowing behavior are preserved."
+  ]
+}
