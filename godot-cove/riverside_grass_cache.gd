@@ -6,17 +6,22 @@ extends RefCounted
 # scene tree, Image, Mesh, or rendering server.
 const ROOT := "user://riverside-grass-cache"
 const BUNDLED := "res://deep_river/grass_baked"
+const READY_BUNDLED := "res://deep_river/grass_ready"
 const MAGIC := 0x47524331
 const FORMAT := 3
+const READY_MAGIC := 0x47524231
+const READY_FORMAT := 2
+const BUNDLE_VERSION := "4b1c01676d8764cb84a78d02"
 const GRID := 113
 const CHUNK := 8.0
 const LOD_STEPS := [1, 2, 4]
-const MAX_JOBS := 4
+const MAX_JOBS := 256
 const MAX_DISK_BYTES := 256 * 1024 * 1024
 const MAX_FILES := 4096
 
 var directory := ""
 var bundled_directory := ""
+var ready_bundled_directory := ""
 var thread := Thread.new()
 var mutex := Mutex.new()
 var wake := Semaphore.new()
@@ -29,26 +34,13 @@ var invalid_paths := {}
 
 
 func start() -> void:
-	var source := "grass-cache-%d-%s" % [FORMAT, Engine.get_version_info().string]
-	var files := PackedStringArray([
-		"res://riverside_world_grass.gd",
-		"res://riverside_grass_surface.gd",
-		"res://deep_river_map.gd",
-		"res://deep_river_driveways.gd",
-		"res://riverbank_park.gd",
-	])
-	for name: String in DirAccess.get_files_at("res://deep_river"):
-		if name.ends_with(".json") or name.ends_with(".bin") or name.ends_with(".png"):
-			files.append("res://deep_river/" + name)
-	files.sort()
-	for path: String in files:
-		var digest := FileAccess.get_sha256(path)
-		if digest.is_empty():
-			return # Do not reuse unverifiable geographic data.
-		source += digest
-	var version := source.sha256_text().substr(0, 24)
+	# Runtime scheduling and profiling changes must not silently orphan a shipped
+	# geographic bundle. Bump this explicit version only when eligibility or the
+	# approved blade placement algorithm changes.
+	var version := BUNDLE_VERSION
 	directory = ROOT.path_join(version)
 	bundled_directory = BUNDLED.path_join(version)
+	ready_bundled_directory = READY_BUNDLED.path_join(version)
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(directory))
 	thread.start(Callable(self, "_work"))
 
@@ -62,10 +54,14 @@ func has(cell: Vector2i, lod: int) -> bool:
 
 
 func request_load(cell: Vector2i, lod: int) -> bool:
-	var path := _load_path(cell, lod)
+	var path := _ready_path(cell, lod) if not OS.get_cmdline_user_args().has("--grass-compact-control") else ""
+	var ready := not path.is_empty() and FileAccess.file_exists(path) and not _is_bad(path)
+	if not ready:
+		path = _load_path(cell, lod)
 	if path.is_empty():
 		return false
-	return _enqueue({"kind": "load", "cell": cell, "lod": lod, "path": path})
+	return _enqueue({"kind": "load", "cell": cell, "lod": lod, "path": path,
+		"ready": ready, "enqueued_usec": Time.get_ticks_usec()})
 
 
 func request_save(cell: Vector2i, lod: int, heights: PackedFloat32Array,
@@ -117,6 +113,10 @@ func _bundled_path(cell: Vector2i, lod: int) -> String:
 	return bundled_directory.path_join("%d_%d_%d.gzc" % [cell.x, cell.y, lod])
 
 
+func _ready_path(cell: Vector2i, lod: int) -> String:
+	return ready_bundled_directory.path_join("%d_%d_%d.gzr" % [cell.x, cell.y, lod])
+
+
 func _is_bad(path: String) -> bool:
 	mutex.lock()
 	var bad := invalid_paths.has(path)
@@ -153,7 +153,9 @@ func _work() -> void:
 		mutex.unlock()
 		var result := {}
 		if job.kind == "load":
-			var buffer := _load(job.path, job.cell, job.lod)
+			var work_started := Time.get_ticks_usec()
+			var buffer := _load_ready(job.path, job.lod) if job.ready else \
+				_load(job.path, job.cell, job.lod)
 			if buffer.is_empty():
 				mutex.lock()
 				invalid_paths[job.path] = true
@@ -162,7 +164,13 @@ func _work() -> void:
 					DirAccess.remove_absolute(ProjectSettings.globalize_path(job.path))
 			result = {"cell": job.cell, "lod": job.lod,
 				"buffer": buffer.get("buffer", PackedFloat32Array()),
-				"valid": not buffer.is_empty()}
+				"valid": not buffer.is_empty(), "ready": job.ready,
+				"bundled": job.path.begins_with("res://"),
+				"queue_usec": work_started - int(job.enqueued_usec),
+				"disk_usec": int(buffer.get("disk_usec", 0)),
+				"decompress_usec": int(buffer.get("decompress_usec", 0)),
+				"reconstruct_usec": int(buffer.get("reconstruct_usec", 0)),
+				"worker_done_usec": Time.get_ticks_usec()}
 		else:
 			_save(job.path, job.lod, job.heights, job.buffer)
 			mutex.lock()
@@ -182,7 +190,13 @@ func _load_path(cell: Vector2i, lod: int) -> String:
 	# Prefer the requested tier, then progressively finer records. A full-detail
 	# bundled record therefore services all three runtime LOD requests.
 	for source_lod in range(lod, -1, -1):
-		for path: String in [_path(cell, source_lod), _bundled_path(cell, source_lod)]:
+		var paths: Array[String] = []
+		if OS.get_cmdline_user_args().has("--grass-bundle-only"):
+			paths.append(_bundled_path(cell, source_lod))
+		else:
+			paths.append(_path(cell, source_lod))
+			paths.append(_bundled_path(cell, source_lod))
+		for path: String in paths:
 			if FileAccess.file_exists(path) and not _is_bad(path):
 				return path
 	return ""
@@ -191,9 +205,12 @@ func _load_path(cell: Vector2i, lod: int) -> String:
 func _load(path: String, cell: Vector2i, lod: int) -> Dictionary:
 	if not FileAccess.file_exists(path):
 		return {}
+	var disk_started := Time.get_ticks_usec()
 	var file := FileAccess.open_compressed(path, FileAccess.READ)
 	if file == null:
 		return {}
+	var disk_usec := Time.get_ticks_usec() - disk_started
+	var decompress_started := Time.get_ticks_usec()
 	if file.get_32() != MAGIC or file.get_32() != FORMAT:
 		return {}
 	var source_lod := file.get_32()
@@ -211,6 +228,8 @@ func _load(path: String, cell: Vector2i, lod: int) -> Dictionary:
 	digest.update(heights_bytes)
 	if digest.finish() != expected_digest:
 		return {}
+	var decompress_usec := Time.get_ticks_usec() - decompress_started
+	var reconstruct_started := Time.get_ticks_usec()
 	var heights := heights_bytes.to_float32_array()
 	var step: int = LOD_STEPS[lod]
 	var source_step: int = LOD_STEPS[source_lod]
@@ -248,7 +267,45 @@ func _load(path: String, cell: Vector2i, lod: int) -> Dictionary:
 		transforms[at + 11] = point.y
 		written += 1
 	transforms.resize(written * 12)
-	return {"buffer": transforms}
+	return {"buffer": transforms, "disk_usec": disk_usec,
+		"decompress_usec": decompress_usec,
+		"reconstruct_usec": Time.get_ticks_usec() - reconstruct_started}
+
+
+func _load_ready(path: String, lod: int) -> Dictionary:
+	if not FileAccess.file_exists(path):
+		return {}
+	var disk_started := Time.get_ticks_usec()
+	var file := FileAccess.open(path, FileAccess.READ)
+	if file == null:
+		return {}
+	if file.get_32() != READY_MAGIC or file.get_32() != READY_FORMAT or file.get_32() != lod:
+		return {}
+	var buffer_count := file.get_32()
+	var count := ceili(float(GRID) / float(LOD_STEPS[lod]))
+	if buffer_count < 0 or buffer_count > count * count * 12 or buffer_count % 12 != 0:
+		return {}
+	var buffer_bytes := file.get_buffer(buffer_count * 4)
+	if buffer_bytes.size() != buffer_count * 4:
+		return {}
+	return {"buffer": buffer_bytes.to_float32_array(),
+		"disk_usec": Time.get_ticks_usec() - disk_started, "decompress_usec": 0,
+		"reconstruct_usec": 0}
+
+
+func save_ready(cell: Vector2i, lod: int, buffer: PackedFloat32Array) -> bool:
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(ready_bundled_directory))
+	var bytes := buffer.to_byte_array()
+	var file := FileAccess.open(_ready_path(cell, lod), FileAccess.WRITE)
+	if file == null:
+		return false
+	file.store_32(READY_MAGIC)
+	file.store_32(READY_FORMAT)
+	file.store_32(lod)
+	file.store_32(buffer.size())
+	file.store_buffer(bytes)
+	file.close()
+	return true
 
 
 func _save(path: String, lod: int, heights: PackedFloat32Array,

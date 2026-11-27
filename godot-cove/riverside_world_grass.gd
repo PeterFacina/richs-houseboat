@@ -47,9 +47,20 @@ var profile_enabled := OS.get_cmdline_user_args().has("--profile-grass")
 var profile_generate_usec := 0
 var profile_tile_usec := 0
 var profile_upload_usec := 0
+var profile_activation_usec := 0
+var profile_disk_usec := 0
+var profile_decompress_usec := 0
+var profile_reconstruct_usec := 0
+var profile_queue_usec := 0
+var profile_result_wait_usec := 0
+var profile_queue_max_usec := 0
+var profile_result_wait_max_usec := 0
 var profile_rebuild_usec := 0
 var profile_completed := 0
 var profile_aborted := 0
+var profile_ready_loaded := 0
+var profile_compact_loaded := 0
+var profile_bundled_loaded := 0
 var bake_targets: Array[Vector2i] = []
 
 
@@ -83,11 +94,28 @@ func update_around(viewpoint: Vector3, preset: int) -> void:
 	while not pending_saves.is_empty() and disk_cache.request_save(pending_saves[0].cell,
 			pending_saves[0].lod, pending_saves[0].heights, pending_saves[0].buffer):
 		pending_saves.pop_front()
-	var loaded: Dictionary = disk_cache.poll()
-	if not loaded.is_empty():
+	while true:
+		var loaded: Dictionary = disk_cache.poll()
+		if loaded.is_empty():
+			break
+		if profile_enabled:
+			profile_disk_usec += int(loaded.get("disk_usec", 0))
+			profile_decompress_usec += int(loaded.get("decompress_usec", 0))
+			profile_reconstruct_usec += int(loaded.get("reconstruct_usec", 0))
+			var queue_usec := int(loaded.get("queue_usec", 0))
+			var result_wait_usec := maxi(0, Time.get_ticks_usec() - \
+				int(loaded.get("worker_done_usec", Time.get_ticks_usec())))
+			profile_queue_usec += queue_usec
+			profile_result_wait_usec += result_wait_usec
+			profile_queue_max_usec = maxi(profile_queue_max_usec, queue_usec)
+			profile_result_wait_max_usec = maxi(profile_result_wait_max_usec, result_wait_usec)
+			profile_ready_loaded += int(loaded.get("ready", false))
+			profile_compact_loaded += int(not loaded.get("ready", false))
+			profile_bundled_loaded += int(loaded.get("bundled", false))
 		loading.erase(loaded.cell)
 		if loaded.valid and desired.has(loaded.cell) and (not active.has(loaded.cell) \
 				or active[loaded.cell].lod > loaded.lod):
+			var upload_started := Time.get_ticks_usec() if profile_enabled else 0
 			if loaded.lod == 0 and active.has(loaded.cell) \
 					and (desired[loaded.cell] > 0 or moving_fast):
 				_store_prefetch(loaded.cell, _batch_from_buffer(loaded.cell, 0, loaded.buffer))
@@ -95,8 +123,16 @@ func update_around(viewpoint: Vector3, preset: int) -> void:
 				var interrupted := current
 				current = {"cell": loaded.cell, "lod": loaded.lod, "buffer": loaded.buffer}
 				start_upload()
+				if profile_enabled:
+					profile_upload_usec += Time.get_ticks_usec() - upload_started
+				var activation_started := Time.get_ticks_usec() if profile_enabled else 0
 				install_current()
+				if profile_enabled:
+					profile_activation_usec += Time.get_ticks_usec() - activation_started
 				current = interrupted
+			if profile_enabled and loaded.lod == 0 and active.has(loaded.cell) \
+					and (desired[loaded.cell] > 0 or moving_fast):
+				profile_upload_usec += Time.get_ticks_usec() - upload_started
 			profile_cache_loaded += 1
 		elif not loaded.valid and desired.has(loaded.cell):
 			waiting.push_front({"cell": loaded.cell, "lod": loaded.lod, "distance": 0.0,
@@ -246,8 +282,7 @@ func update_around(viewpoint: Vector3, preset: int) -> void:
 			if disk_cache.available() and not disk_cache.has(cell, current.lod):
 				var save := {"cell": cell, "lod": current.lod, "heights": current.heights,
 					"buffer": current.buffer}
-				if not disk_cache.request_save(cell, current.lod, current.heights, current.buffer) \
-						and pending_saves.size() < 16:
+				if not disk_cache.request_save(cell, current.lod, current.heights, current.buffer):
 					pending_saves.append(save)
 			var upload_started := Time.get_ticks_usec() if profile_enabled else 0
 			start_upload()
@@ -524,9 +559,20 @@ func reset_profile() -> void:
 	profile_generate_usec = 0
 	profile_tile_usec = 0
 	profile_upload_usec = 0
+	profile_activation_usec = 0
+	profile_disk_usec = 0
+	profile_decompress_usec = 0
+	profile_reconstruct_usec = 0
+	profile_queue_usec = 0
+	profile_result_wait_usec = 0
+	profile_queue_max_usec = 0
+	profile_result_wait_max_usec = 0
 	profile_rebuild_usec = 0
 	profile_completed = 0
 	profile_aborted = 0
+	profile_ready_loaded = 0
+	profile_compact_loaded = 0
+	profile_bundled_loaded = 0
 	profile_cache_loaded = 0
 	profile_height_cache_hits = 0
 
