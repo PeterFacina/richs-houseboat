@@ -20,7 +20,7 @@ Weather layers on top of existing solar, sky, and water lighting. Rain gradually
 
 The local camera hears the closest mapped riverbank through one reusable spatial emitter. It fades with distance and has an 80 m cutoff. Hull lapping takes priority alongside the boat, and prop wash follows thrust. The Swisha spillway remains a separate spatial source. See [asset credits](../../godot-cove/GAME%20GUIDE%20AND%20ASSET%20CREDITS.md#environmental-audio) for the field recordings.
 
-Wind and rain levels follow the synchronized weather sample. Heavy rain blends into a separate bed as precipitation grows. Recent host lightning events trigger one spatial thunder sound with a delay based on each camera's distance from the strike. Late-join snapshots establish the event counter without playing old strikes. Roof checks, vehicle occupancy, and houseboat cabin detection reduce and low-pass outdoor water and weather. Rain under cover uses its own quieter bed.
+Wind and rain levels follow the synchronized weather sample. Heavy rain blends into a separate bed as precipitation grows. Recent host lightning events trigger one spatial thunder sound with a delay based on each camera's distance from the strike. Late-join snapshots establish the event counter without playing old strikes. Roof checks, vehicle occupancy, and houseboat cabin detection reduce and low-pass outdoor water and weather. Rain under cover uses its own quieter bed. A Master limiter caps combined peaks at -1 dBFS.
 
 ## Settings and developer controls
 
@@ -54,7 +54,7 @@ Run `res://tests/verify_town_residents.gd` with isolated APPDATA containing `hou
 
 Run `res://tests/verify_gameplay_polish.gd` with isolated APPDATA containing `houseboat-polish-`. It checks the nine presets, fade and wetness, save/reload, sight lines and shelter, camera mount/teleport, key rebinding, ENet late join, and host weather and idle updates. It also captures a local OpenGL weather sequence when run with a display.
 
-Run `res://tests/verify_environment_audio.gd` with isolated APPDATA or XDG_DATA_HOME containing `houseboat-audio-148`. It checks the mapped waterfront and inland locations, hull and prop audio, all nine weather presets, cab muffling, lightning playback, and independent volume persistence.
+Run `res://tests/verify_environment_audio.gd` with isolated APPDATA or XDG_DATA_HOME containing `houseboat-audio-148`. It checks the mapped waterfront and inland locations, hull and prop audio, all nine weather presets, cab muffling, lightning playback, and independent volume persistence. With a display and audio device it also measures the native mix at the waterfront and inland, and checks peak headroom with rain and thunder.
 
 A 120-frame static marina comparison in Godot 4.7.2 OpenGL at 960 × 540 on a GTX 1060 recorded 13.34 ms median and 14.27 ms p95 on the base revision, versus 13.57 ms median and 14.46 ms p95 with the update. This is a renderer smoke check for one viewpoint. In the separate weather capture, clear weather averaged 13.76 ms per frame and heavy rain averaged 14.57 ms. The existing Dab pen and calendar regression also exercised a host, two guests, and reconnect. The New Legs quest verification passed.
 

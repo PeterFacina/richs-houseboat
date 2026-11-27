@@ -181,7 +181,7 @@ func check_native_mix() -> void:
 	fx.thunder_delay = .01
 	fx.update_weather_audio(camera.global_position, 3.0)
 	var storm_peak := await peak(main_capture, 4.0)
-	check(storm_peak > .01 and storm_peak < .99, "Native combined storm mix was silent or clipped")
+	check(storm_peak > .01 and storm_peak <= .9, "Native combined storm mix was silent or clipped")
 	print("Native mix peaks: waterfront water %.1f dBFS, storm master %.1f dBFS." %
 		[linear_to_db(shore_peak), linear_to_db(storm_peak)])
 	AudioServer.remove_bus_effect(water, AudioServer.get_bus_effect_count(water) - 1)
