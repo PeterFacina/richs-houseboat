@@ -1,10 +1,16 @@
 extends SceneTree
 
+var render_pre_usec := 0
+var render_post_usec := 0
+var render_duration_usec := 0
+
 func _initialize() -> void:
 	call_deferred("profile")
 
 
 func profile() -> void:
+	RenderingServer.frame_pre_draw.connect(record_render_pre)
+	RenderingServer.frame_post_draw.connect(record_render_post)
 	var load_started := Time.get_ticks_usec()
 	var game = load("res://game_world.tscn").instantiate()
 	root.add_child(game)
@@ -14,7 +20,14 @@ func profile() -> void:
 	for frame in 30:
 		await process_frame
 	game.pause_menu.set_fullscreen(false, false)
-	DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED)
+	var requested_window_mode := "windowed"
+	for argument in OS.get_cmdline_user_args():
+		if argument.begins_with("--window-mode="):
+			requested_window_mode = argument.trim_prefix("--window-mode=")
+	match requested_window_mode:
+		"exclusive": DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_EXCLUSIVE_FULLSCREEN)
+		"fullscreen": DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)
+		_: DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED)
 	var benchmark_size := Vector2i(1280, 720)
 	for argument in OS.get_cmdline_user_args():
 		if argument.begins_with("--resolution="):
@@ -38,6 +51,7 @@ func profile() -> void:
 	var variant := "riverside" if grass != null else "original"
 	print("PROFILE_SETUP variant=", variant, " viewport=", root.get_viewport().get_visible_rect().size,
 		" vsync=", DisplayServer.window_get_vsync_mode(), " msaa=", root.get_viewport().msaa_3d,
+		" window_mode=", requested_window_mode,
 		" camera_far=", game.eye.far, " shadow_range=", game.river.landscape_light.directional_shadow_max_distance,
 		" camera_mode=", game.camera_mode(), " riverside_enabled=", game.river.riverside_enabled,
 		" world_grass_present=", grass != null)
@@ -45,6 +59,11 @@ func profile() -> void:
 		print_architecture_inventory(game)
 	for frame in 120:
 		await process_frame
+	for argument in OS.get_cmdline_user_args():
+		if argument.begins_with("--capture="):
+			var capture_path := argument.trim_prefix("--capture=")
+			var capture_error := root.get_viewport().get_texture().get_image().save_png(capture_path)
+			print("PROFILE_CAPTURE path=", capture_path, " error=", capture_error)
 	if OS.get_cmdline_user_args().has("--focused-performance"):
 		await focused_performance(game, variant)
 		quit()
@@ -202,7 +221,8 @@ func route_sample(game: Node3D, label: String, route: Callable, frames: int) -> 
 		primitives.append(primitive)
 		objects.append(object_count)
 		if elapsed >= 33.33:
-			spike_rows.append("frame=%d ms=%.3f physics_steps=%d process=%.3f physics=%.3f draws=%.0f ddraws=%+.0f objects=%.0f dobjects=%+.0f primitives=%.0f camera=(%.1f,%.1f,%.1f) mode=%s" % [frame, elapsed, physics_steps, process, physics, draw, draw - previous_draws, object_count, object_count - previous_objects, primitive, game.eye.global_position.x, game.eye.global_position.y, game.eye.global_position.z, game.camera_mode()])
+			var since_render_post := float(now - render_post_usec) / 1000.0 if render_post_usec > 0 else -1.0
+			spike_rows.append("frame=%d ms=%.3f physics_steps=%d render_stage_ms=%.3f post_to_process_ms=%.3f process=%.3f physics=%.3f draws=%.0f ddraws=%+.0f objects=%.0f dobjects=%+.0f primitives=%.0f camera=(%.1f,%.1f,%.1f) mode=%s" % [frame, elapsed, physics_steps, float(render_duration_usec) / 1000.0, since_render_post, process, physics, draw, draw - previous_draws, object_count, object_count - previous_objects, primitive, game.eye.global_position.x, game.eye.global_position.y, game.eye.global_position.z, game.camera_mode()])
 		previous_draws = draw
 		previous_objects = object_count
 	print_sample_result(label, frame_ms, process_ms, physics_ms, draws, primitives, objects)
@@ -212,6 +232,15 @@ func route_sample(game: Node3D, label: String, route: Callable, frames: int) -> 
 		game.print_performance_probe(label)
 	for row in spike_rows:
 		print("PROFILE_SPIKE label=", label, " ", row)
+
+
+func record_render_pre() -> void:
+	render_pre_usec = Time.get_ticks_usec()
+
+
+func record_render_post() -> void:
+	render_post_usec = Time.get_ticks_usec()
+	render_duration_usec = render_post_usec - render_pre_usec
 
 
 func print_sample_result(label: String, frame_ms: Array[float], process_ms: Array[float],

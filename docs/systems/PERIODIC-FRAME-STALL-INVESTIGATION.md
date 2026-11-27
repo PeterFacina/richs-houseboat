@@ -35,3 +35,21 @@ The profiler now changes both OS-window size and root viewport content scale. A 
 5. Validate active residents near multiple players before making any resident scheduling change.
 
 No production optimization is included yet.
+
+## Renderer comparison update
+
+Temporary command-line overrides leave the project configuration unchanged. Three fresh-process Vulkan Mobile runs at the same 1280x720 marina camera produced:
+
+| Run | Median | p95 | p99 | Worst | 1% low |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Mobile 1 (cold) | 10.12 ms | 24.68 ms | 38.49 ms | 45.90 ms | 23.71 FPS |
+| Mobile 2 | 9.74 ms | 29.88 ms | 51.40 ms | 64.41 ms | 17.92 FPS |
+| Mobile 3 | 8.51 ms | 24.56 ms | 42.16 ms | 54.15 ms | 21.57 FPS |
+
+The periodic signature remains, but is materially smaller than Compatibility. A cold Forward+ run produced 14.74/29.43/60.15/76.37 ms median/p95/p99/worst. Forward+ repeats and same-camera captures remain required. Mobile warned that realtime sky radiance is clamped to 256; visual equivalence is not yet accepted.
+
+Exclusive fullscreen Compatibility produced 14.97/46.82/84.95/121.04 ms in its first run. It improved median and p95 but did not eliminate the cadence or worst tail, so window mode is a contributing factor rather than the root fix.
+
+Render-stage signals show slow frames contain both a long `frame_pre_draw` to `frame_post_draw` interval and a long post-draw to next-process interval. This supports rendering/presentation synchronization as the initiating mechanism.
+
+Teammates can run `tools\Run Rendering Benchmark.cmd -Renderer mobile` (or `compatibility` / `forward_plus`). The launcher records OS, CPU, memory, display count, NVIDIA GPU/driver when available, exact renderer output, frame distribution and every detected stall to a timestamped text file under `benchmark-results`. Teammate results are not yet available and no cross-hardware claim is made.
