@@ -68,6 +68,10 @@ func update_around(viewpoint: Vector3, preset: int) -> void:
 		var speed := delta.length() / seconds
 		var fast := (speed > 7.0 or (moving_fast and speed > 2.0)) and delta.length_squared() < 4.0
 		if fast != moving_fast:
+			# A partial full-detail chunk can otherwise consume the travel budget while
+			# newly approached cells still have no grass. Its tile samples stay cached.
+			if fast and current.get("lod", -1) == 0:
+				abort_current()
 			moving_fast = fast
 			view_cell = Vector2i(-999999, -999999)
 		if delta.length_squared() > .0001 and delta.length_squared() < 4.0:
