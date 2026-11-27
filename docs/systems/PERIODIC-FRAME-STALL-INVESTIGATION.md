@@ -53,3 +53,25 @@ Exclusive fullscreen Compatibility produced 14.97/46.82/84.95/121.04 ms in its f
 Render-stage signals show slow frames contain both a long `frame_pre_draw` to `frame_post_draw` interval and a long post-draw to next-process interval. This supports rendering/presentation synchronization as the initiating mechanism.
 
 Teammates can run `tools\Run Rendering Benchmark.cmd -Renderer mobile` (or `compatibility` / `forward_plus`). The launcher records OS, CPU, memory, display count, NVIDIA GPU/driver when available, exact renderer output, frame distribution and every detected stall to a timestamped text file under `benchmark-results`. Teammate results are not yet available and no cross-hardware claim is made.
+
+## Scene-complexity controls
+
+Manual Vulkan Mobile playtesting still exhibits the recurring stutter despite approximately 45 FPS and acceptable graphics. A second teammate reports similar stutter on stronger, not-yet-characterized hardware. Mobile remains a throughput improvement, not a stutter solution.
+
+`tests/profile_render_controls.gd` isolates presentation from full-world rendering over 720 measured frames:
+
+| Renderer / control | Median | p95 | p99 | Worst | Frames over 33 ms |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Compatibility empty | 0.40 ms | 0.63 ms | 0.84 ms | 1.18 ms | 0 |
+| Compatibility 2,600 static MeshInstances | 3.90 ms | 9.48 ms | 14.44 ms | 24.82 ms | 0 |
+| Mobile empty | 0.51 ms | 3.09 ms | 3.81 ms | 4.80 ms | 0 |
+| Mobile 2,600 static MeshInstances | 2.37 ms | 7.46 ms | 11.83 ms | 15.26 ms | 0 |
+
+The static stress scene uses 2,600 individually submitted visible objects with a shared mesh/material and no shadows. The cadence therefore requires full-world rendering state; it is not an unconditional engine/Windows presentation event or draw count alone.
+
+Fresh-process full-world controls also reject two likely periodic systems:
+
+- static quality sky instead of realtime sky: 16.34/57.76/98.30/131.13 ms median/p95/p99/worst;
+- all shadow-casting lights disabled: 14.63/52.60/82.89/120.53 ms.
+
+Both retain the clustered cadence. The next bisection should isolate water/ground shaders, texture/resource diversity and top-level world visibility. Renderer switching, static sky and shadow removal are not production fixes.

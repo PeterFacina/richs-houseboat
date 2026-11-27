@@ -38,6 +38,17 @@ func profile() -> void:
 	root.content_scale_size = benchmark_size
 	game.graphics.level = 0
 	game.graphics.apply(game.river, game.eye)
+	if OS.get_cmdline_user_args().has("--static-sky"):
+		game.river.landscape_environment.sky.process_mode = Sky.PROCESS_MODE_QUALITY
+		print("PROFILE_CONTROL static_sky=true")
+	if OS.get_cmdline_user_args().has("--no-shadows"):
+		var disabled_lights := 0
+		for node in game.find_children("*", "Light3D", true, false):
+			var light := node as Light3D
+			if light.shadow_enabled:
+				light.shadow_enabled = false
+				disabled_lights += 1
+		print("PROFILE_CONTROL shadows=false lights=", disabled_lights)
 	if OS.get_cmdline_user_args().has("--physics-step-cap-one"):
 		Engine.max_physics_steps_per_frame = 1
 	paused = false
