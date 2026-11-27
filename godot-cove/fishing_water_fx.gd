@@ -33,6 +33,7 @@ func _ready() -> void:
 	var surface := Kit.mesh_at(self, splash_mesh, Vector3.ZERO, overlay())
 	surface.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	sound = AudioStreamPlayer3D.new()
+	sound.bus = &"Water"
 	sound.unit_size = 5.6
 	sound.max_distance = 47.0
 	sound.volume_db = -6.0

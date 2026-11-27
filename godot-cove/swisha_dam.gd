@@ -216,6 +216,7 @@ func build_discharge(assets: String) -> void:
 	roar.loop_mode = AudioStreamWAV.LOOP_FORWARD
 	roar.loop_end = roar.data.size() >> 1
 	var source := AudioStreamPlayer3D.new()
+	source.bus = &"Water"
 	source.name = "SpillwayRoar"
 	source.stream = roar
 	source.unit_size = 7.8 * STRUCTURE_SCALE

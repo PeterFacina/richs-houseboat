@@ -39,6 +39,7 @@ func setup(data: Dictionary, at: Vector3, angle: float, elevation: Callable, sou
 	var feet := footprint(at, heading)
 	global_transform = Transform3D(ground_basis(heading, feet), Vector3(at.x, mean_height(feet), at.z))
 	engine = AudioStreamPlayer3D.new()
+	engine.bus = &"Vehicles"
 	engine.stream = sound
 	engine.volume_db = -22.0
 	engine.unit_size = 4.5

@@ -176,6 +176,7 @@ func build_at(river: Node3D, site: Dictionary) -> void:
 	Kit.mesh_at(plate, tray, Vector3.ZERO, mat)
 	plate.hide()
 	speaker = AudioStreamPlayer3D.new()
+	speaker.bus = &"Ambience"
 	speaker.stream = crackle()
 	speaker.max_distance = 18.0
 	speaker.unit_size = 1.27
@@ -316,6 +317,7 @@ func animate(clock: float, dusk: float) -> void:
 			food.show()
 			if cooking:
 				var sound := AudioStreamPlayer3D.new()
+				sound.bus = &"Ambience"
 				sound.stream = grill_sound
 				sound.volume_db = -16
 				sound.unit_size = 1.3
