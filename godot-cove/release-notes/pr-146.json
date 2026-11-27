@@ -1,0 +1,8 @@
+{
+  "pr": 146,
+  "player_facing": true,
+  "bullets": [
+    "Experimental Riverside grass now prepares some patches ahead of your movement and keeps recently passed patches ready a little longer.",
+    "Grass appearance, paved-area exclusions and mowing are unchanged. Fast travel can still reveal late-loading grass."
+  ]
+}
