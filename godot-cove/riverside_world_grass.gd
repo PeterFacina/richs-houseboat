@@ -108,9 +108,10 @@ func update_around(viewpoint: Vector3, preset: int) -> void:
 			current["buffer"] = buffer
 			var block: Vector2i = current.cell
 			if not tile_cache.has(block):
-				tile_cache[block] = [{}, {}, {}]
+				tile_cache[block] = [{}, {}, {}, [{}, {}]]
 			current["tiles"] = tile_cache[block][0 if current.lod == 0 else 1]
 			current["edge_cache"] = tile_cache[block][2]
+			current["tile_samples"] = tile_cache[block][3]
 			current["masks"] = surface.relevant_masks(Rect2(Vector2(block) * CHUNK,
 				Vector2.ONE * CHUNK).grow(Surface.CLEARANCE))
 		var cell: Vector2i = current.cell
@@ -121,11 +122,18 @@ func update_around(viewpoint: Vector3, preset: int) -> void:
 		var step: int = LOD_STEPS[current.lod]
 		var count := ceili(float(GRID) / float(step))
 		var total := count * count
+		var transforms: PackedFloat32Array = current.buffer
+		var index: int = current.index
+		var written: int = current.written
+		var tiles: Dictionary = current.tiles
+		var edge_cache: Dictionary = current.edge_cache
+		var tile_samples: Array = current.tile_samples
+		var masks: Array = current.masks
 		for task in 24:
-			if current.index >= total:
+			if index >= total:
 				break
-			var local_x: int = (current.index % count) * step
-			var local_z: int = floori(float(current.index) / float(count)) * step
+			var local_x: int = (index % count) * step
+			var local_z: int = (index / count) * step
 			var seed := hash(Vector3i(cell.x, cell.y, local_z * GRID + local_x))
 			var jitter_x := (float(seed & 1023) / 1023.0 - .5) * CHUNK / GRID * .68
 			var jitter_z := (float((seed >> 10) & 1023) / 1023.0 - .5) * CHUNK / GRID * .68
@@ -133,47 +141,49 @@ func update_around(viewpoint: Vector3, preset: int) -> void:
 				(float(cell.y) + (float(local_z) + .5) / GRID) * CHUNK + jitter_z)
 			var tile := Vector2i(floori((float(local_x) + .5) * CHUNK / GRID / TILE),
 				floori((float(local_z) + .5) * CHUNK / GRID / TILE))
-			if not current.tiles.has(tile):
+			if not tiles.has(tile):
 				var tile_started := Time.get_ticks_usec() if profile_enabled else 0
-				current.tiles[tile] = classify_tile(cell, tile, current.masks, current.lod == 0)
+				tiles[tile] = classify_tile(cell, tile, masks, current.lod == 0, tile_samples)
 				if profile_enabled:
 					profile_tile_usec += Time.get_ticks_usec() - tile_started
-			var tile_data: Dictionary = current.tiles[tile]
+			var tile_data: Dictionary = tiles[tile]
 			if tile_data.state == -1:
-				current["index"] += 1
+				index += 1
 				continue
 			var height: float
 			if tile_data.state == 0:
 				var key := local_z * GRID + local_x
-				if current.edge_cache.has(key):
-					height = current.edge_cache[key]
+				if edge_cache.has(key):
+					height = edge_cache[key]
 					if profile_enabled:
 						profile_height_cache_hits += 1
 				else:
-					height = surface.grass_height(point, current.masks)
-					current.edge_cache[key] = height
+					height = surface.grass_height(point, masks)
+					edge_cache[key] = height
 			else:
 				height = tile_height(point, cell, tile, tile_data.heights)
 			if is_finite(height):
 				var angle := float((seed >> 20) & 1023) / 1023.0 * TAU
 				var sine := sin(angle)
 				var cosine := cos(angle)
-				var at: int = current.written * 12
-				current.buffer[at] = cosine
-				current.buffer[at + 1] = 0.0
-				current.buffer[at + 2] = sine
-				current.buffer[at + 3] = point.x
-				current.buffer[at + 4] = 0.0
-				current.buffer[at + 5] = 1.0
-				current.buffer[at + 6] = 0.0
-				current.buffer[at + 7] = height
-				current.buffer[at + 8] = -sine
-				current.buffer[at + 9] = 0.0
-				current.buffer[at + 10] = cosine
-				current.buffer[at + 11] = point.y
-				current["written"] += 1
-			current["index"] += 1
-		if current.index >= total:
+				var at: int = written * 12
+				transforms[at] = cosine
+				transforms[at + 1] = 0.0
+				transforms[at + 2] = sine
+				transforms[at + 3] = point.x
+				transforms[at + 4] = 0.0
+				transforms[at + 5] = 1.0
+				transforms[at + 6] = 0.0
+				transforms[at + 7] = height
+				transforms[at + 8] = -sine
+				transforms[at + 9] = 0.0
+				transforms[at + 10] = cosine
+				transforms[at + 11] = point.y
+				written += 1
+			index += 1
+		current["index"] = index
+		current["written"] = written
+		if index >= total:
 			var upload_started := Time.get_ticks_usec() if profile_enabled else 0
 			start_upload()
 			install_current()
@@ -185,34 +195,42 @@ func update_around(viewpoint: Vector3, preset: int) -> void:
 			break
 
 
-func classify_tile(cell: Vector2i, tile: Vector2i, nearby_masks: Array, full_detail: bool) -> Dictionary:
-	var origin := Vector2(cell) * CHUNK + Vector2(tile) * TILE
+func tile_sample(cell: Vector2i, tile: Vector2i, x: int, z: int, nearby_masks: Array,
+		strict: bool, samples: Array) -> float:
+	var key := Vector2i(tile.x * 2 + x, tile.y * 2 + z)
+	var cache: Dictionary = samples[0 if strict else 1]
+	if cache.has(key):
+		return cache[key]
+	var point := Vector2(cell) * CHUNK + Vector2(tile) * TILE + Vector2(x, z) * TILE * .5
+	var height: float = surface.grass_height(point, nearby_masks, .35 if strict else 0.0)
+	cache[key] = height
+	return height
+
+
+func classify_tile(cell: Vector2i, tile: Vector2i, nearby_masks: Array, full_detail: bool,
+		samples: Array) -> Dictionary:
 	var heights := []
 	var valid := 0
 	if full_detail:
+		# Interior tiles need only the conservative pass. It returns the same
+		# terrain heights as the regular pass when every sample is eligible.
 		for z in 3:
 			for x in 3:
-				var height: float = surface.grass_height(origin + Vector2(x, z) * TILE * .5, nearby_masks)
+				var height: float = tile_sample(cell, tile, x, z, nearby_masks, true, samples)
 				heights.append(height)
 				valid += int(is_finite(height))
+		if valid == 9:
+			return {"state": 1, "heights": [heights[0], heights[2], heights[6], heights[8]]}
+		valid = 0
+		for z in 3:
+			for x in 3:
+				valid += int(is_finite(tile_sample(cell, tile, x, z, nearby_masks, false, samples)))
 		if valid == 0:
 			return {"state": -1}
-		if valid == 9:
-			var safe := true
-			for z in 3:
-				for x in 3:
-					if not is_finite(surface.grass_height(origin + Vector2(x, z) * TILE * .5,
-							nearby_masks, .35)):
-						safe = false
-						break
-				if not safe:
-					break
-			if safe:
-				return {"state": 1, "heights": [heights[0], heights[2], heights[6], heights[8]]}
 		return {"state": 0}
-	for offset: Vector2 in [Vector2.ZERO, Vector2(TILE, 0.0), Vector2(0.0, TILE),
-			Vector2(TILE, TILE), Vector2(TILE * .5, TILE * .5)]:
-		var height: float = surface.grass_height(origin + offset, nearby_masks, .35)
+	for offset: Vector2i in [Vector2i.ZERO, Vector2i(2, 0), Vector2i(0, 2),
+			Vector2i(2, 2), Vector2i.ONE]:
+		var height: float = tile_sample(cell, tile, offset.x, offset.y, nearby_masks, true, samples)
 		heights.append(height)
 		valid += int(is_finite(height))
 	if valid == 0:

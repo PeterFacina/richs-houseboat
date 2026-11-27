@@ -103,13 +103,18 @@ func capture() -> void:
 		game.eye.look_at(view[2], Vector3.UP)
 		game.river.update_water(view[1], 120.0)
 		if game.river.world_grass != null:
-			game.river.world_grass.build_budget_usec = 20000
+			var cold := OS.get_cmdline_user_args().has("--cold-stream-benchmark")
+			if not cold:
+				game.river.world_grass.build_budget_usec = 20000
+			var loading_started := Time.get_ticks_usec()
 			var first_near := -1
-			for frame in 3600:
+			var first_near_ms := -1.0
+			for frame in (1800 if cold else 3600):
 				game.river.update_grass(view[1], game.graphics.level)
 				await process_frame
 				if first_near == -1 and game.river.world_grass.ready_near():
 					first_near = frame + 1
+					first_near_ms = float(Time.get_ticks_usec() - loading_started) / 1000.0
 				if game.river.world_grass.ready_all():
 					break
 				if frame > 0 and frame % 600 == 0:
@@ -120,7 +125,22 @@ func capture() -> void:
 			print("WORLD_GRASS_CAPTURE ", view[0], " chunks=", game.river.world_grass.active.size(),
 				" near_ready=", game.river.world_grass.ready_near(),
 				" all_ready=", game.river.world_grass.ready_all(),
-				" first_near_frame=", first_near)
+				" first_near_frame=", first_near, " first_near_ms=", first_near_ms,
+				" all_ready_ms=", float(Time.get_ticks_usec() - loading_started) / 1000.0)
+			if OS.get_cmdline_user_args().has("--hash-grass"):
+				var cells: Array = game.river.world_grass.active.keys()
+				cells.sort()
+				var geometry_hash := 0
+				var instances := 0
+				for cell: Vector2i in cells:
+					var item: Dictionary = game.river.world_grass.active[cell]
+					if item.batch == null:
+						continue
+					var group: MultiMesh = item.batch.multimesh
+					geometry_hash = hash([geometry_hash, cell, item.lod, group.buffer])
+					instances += group.instance_count
+				print("WORLD_GRASS_GEOMETRY ", view[0], " chunks=", cells.size(),
+					" instances=", instances, " hash=", geometry_hash)
 			verify_instanced_grass(game, view[0])
 		for frame in 8:
 			await process_frame

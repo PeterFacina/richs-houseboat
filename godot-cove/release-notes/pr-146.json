@@ -3,6 +3,7 @@
   "player_facing": true,
   "bullets": [
     "Experimental Riverside grass now prepares some patches ahead of your movement and keeps recently passed patches ready a little longer.",
+    "Riverside now prepares the starting area's grass while the game loads. This can lengthen the loading screen on slower PCs.",
     "Grass appearance, paved-area exclusions and mowing are unchanged. Fast travel can still reveal late-loading grass."
   ]
 }
