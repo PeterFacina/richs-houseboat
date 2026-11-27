@@ -67,6 +67,7 @@ func setup(map: Node3D, parking: Vector3, heading: float, grass_owner: Animatabl
 	global_transform = pose if pose.origin.is_finite() else Transform3D(Basis(Vector3.UP, yaw), parking)
 	update_wheels(0.0, 0.0, 0.0)
 	motor = AudioStreamPlayer3D.new()
+	motor.bus = &"Vehicles"
 	motor.stream = engine_loop()
 	motor.position = Vector3(0, .57, .79)
 	motor.unit_size = 2.2

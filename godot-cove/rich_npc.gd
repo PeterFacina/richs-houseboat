@@ -84,6 +84,7 @@ func setup(ship: AnimatableBody3D, hud: Control) -> void:
 	voice.unit_size = 2.35
 	voice.max_distance = 13.0
 	voice.volume_db = -1.5
+	voice.bus = &"NPC voices"
 	add_child(voice)
 	make_captions(hud)
 

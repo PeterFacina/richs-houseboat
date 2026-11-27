@@ -174,6 +174,7 @@ func build_tv() -> void:
 	display.rotation.y = -PI * .5
 	Kit.box_at(boat, TV + Vector3(.035, 0, 0), Vector3(.055, .60, 1.02), Kit.paint(Color("#111a20"), .6))
 	television_audio = AudioStreamPlayer3D.new()
+	television_audio.bus = &"Ambience"
 	boat.add_child(television_audio)
 	television_audio.position = TV
 	television_audio.max_distance = 11
@@ -365,6 +366,7 @@ func play_flush(serial: int, variant: int) -> void:
 	if serial <= last_sound: return
 	last_sound = serial
 	var sound := AudioStreamPlayer3D.new()
+	sound.bus = &"Ambience"
 	boat.add_child(sound)
 	sound.position = Vector3(.96, 1.2, 5.65)
 	sound.max_distance = 15

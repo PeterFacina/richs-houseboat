@@ -6,9 +6,21 @@ const GameRelease = preload("res://game_release.gd")
 const MIST := MenuTheme.MUTED
 const TEAL := MenuTheme.BLUE
 const Graphics = preload("res://river_graphics.gd")
+const AUDIO_BUSES := {
+	"water_volume": &"Water",
+	"weather_volume": &"Weather",
+	"ambience_volume": &"Ambience",
+	"vehicle_volume": &"Vehicles",
+	"footstep_volume": &"Footsteps",
+	"npc_volume": &"NPC voices",
+	"music_volume": &"Music",
+	"ui_volume": &"UI",
+}
 var game: Node3D
 var graphics: Graphics
 var preferences := {"volume": .8, "sensitivity": 1.0, "fov": 78.0,
+	"water_volume": 1.0, "weather_volume": 1.0, "ambience_volume": 1.0, "vehicle_volume": 1.0,
+	"footstep_volume": 1.0, "npc_volume": 1.0, "music_volume": 1.0, "ui_volume": 1.0,
 	"fullscreen": false, "vsync": true, "fps": false, "hand_motion": .65,
 	"camera_smoothing": .55, "head_bob": .35, "weather_quality": 1.0, "particle_quality": .7,
 	"reflection_quality": .75, "fog_quality": 1.0, "water_detail": .5, "toggle_crouch": false, "aircraft_invert_pitch": false}
@@ -249,6 +261,8 @@ func resize_settings() -> void:
 
 func build_settings(settings: VBoxContainer) -> void:
 	slider(settings, "Master volume", "volume", 0, 1, .01)
+	for key: String in AUDIO_BUSES:
+		slider(settings, AUDIO_BUSES[key], key, 0, 1, .01)
 	slider(settings, "Mouse sensitivity", "sensitivity", .25, 2.5, .05)
 	slider(settings, "Field of view", "fov", 60, 100, 1)
 	slider(settings, "Hand motion", "hand_motion", 0, 1, .05)
@@ -351,8 +365,10 @@ func apply_settings() -> void:
 	preferences.sensitivity = clampf(float(preferences.sensitivity), .25, 2.5)
 	preferences.fov = clampf(float(preferences.fov), 60, 100)
 	preferences.hand_motion = clampf(float(preferences.hand_motion), 0, 1)
-	AudioServer.set_bus_volume_db(0, linear_to_db(maxf(.0001, preferences.volume)))
-	AudioServer.set_bus_mute(0, preferences.volume <= 0)
+	set_audio_volume(0, preferences.volume)
+	for key: String in AUDIO_BUSES:
+		preferences[key] = clampf(float(preferences[key]), 0, 1)
+		set_audio_volume(AudioServer.get_bus_index(AUDIO_BUSES[key]), preferences[key])
 	if game != null:
 		game.aircraft_steering.invert_pitch = preferences.aircraft_invert_pitch
 		game.mouse_sensitivity = .0022 * preferences.sensitivity
@@ -370,6 +386,11 @@ func apply_settings() -> void:
 		game.fps.visible = preferences.fps
 	if DisplayServer.get_name() != "headless":
 		DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_ENABLED if preferences.vsync else DisplayServer.VSYNC_DISABLED)
+
+
+static func set_audio_volume(bus: int, gain: float) -> void:
+	AudioServer.set_bus_volume_db(bus, linear_to_db(maxf(.0001, gain)))
+	AudioServer.set_bus_mute(bus, gain <= 0.0)
 
 
 func persist() -> void:

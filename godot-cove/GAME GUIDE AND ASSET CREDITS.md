@@ -80,6 +80,19 @@ First-person hand meshes, skin/normal/ORM textures and finger poses are by Digit
 
 Use **Alt+Enter** or **F11** for fullscreen. **Esc** or **F10** releases the cursor so native window controls remain reachable; **Esc > Settings > Maximize window** also fills the desktop with a normal resizable window.
 
+## Environmental audio
+
+Deep River uses edited [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) field recordings under `deep_river/environment_audio/`. The game versions use Freesound's publicly served audio previews. The files were trimmed, filtered, level-matched and encoded as 32 kHz Ogg Vorbis. The beds use 0.8-second loop-seam crossfades. Waterfront lapping and thunder are mono for positional playback.
+
+| Game audio | Field recording |
+| --- | --- |
+| Freshwater lapping (shore and hull) | TRP, small waves on Lake Ontario. [Waves gentle med cu lake water](https://freesound.org/people/TRP/sounds/573191/) |
+| Light rain and rain over water | myLoop, two edited sections of [Rain in Munich Westpark](https://freesound.org/people/myLoop/sounds/849800/). The water mix also supplies the low-level prop wash. |
+| Rain under cover | deadrobotmusic, rain recorded inside a car. [PNW rain perfect loop 114](https://freesound.org/people/deadrobotmusic/sounds/549909/) |
+| Heavy rain | Alex_hears_things, rain during Cyclone Alfred. [Heavy Rain Downpour with Close Water](https://freesound.org/people/Alex_hears_things/sounds/812614/) |
+| Wind | Nox_Sound, [Ambiance Wind Forest Trees Loop 01](https://freesound.org/people/Nox_Sound/sounds/530908/) |
+| Thunder | Dave Welsh, an edited eight-second excerpt from [Thunder Clap OWB KY 441x16](https://freesound.org/people/Dave%20Welsh/sounds/194364/) |
+
 ## Zero Turn controls
 
 While seated, use W/S to drive, A/D to steer, Q/R to lower or raise the throttle, X for the blades, C to change the camera view, and E to dismount. The throttle indicator shows Low, Normal, High, or Transport.

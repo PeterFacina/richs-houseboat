@@ -21,7 +21,7 @@ The near mesh follows the player on a fixed world grid. Its displacement fades b
 
 The host sends recent wake emissions in the ship stream and seeds a late join with the full live trail. The existing ship clock and host weather determine wave phase and amplitude. Wake packets expire in memory and add no save fields. Bow spray, fishing and swimming ripples, and water audio render or play locally.
 
-**Settings → Water detail** changes fine ripples, rain rings, local reflections, bow spray and ripple geometry. Graphics presets still set water mesh density. Water detail changes only local presentation. Shore, hull and prop wash audio use spatial sources and blend with the existing weather mix.
+**Settings → Water detail** changes fine ripples, rain rings, local reflections, bow spray and ripple geometry. Graphics presets still set water mesh density. Water detail changes only local presentation. Shore, hull and prop wash use spatial sources. The local Water volume and [environmental audio mix](GAMEPLAY-POLISH.md#environmental-audio) are independent of Water detail.
 
 The visual target is sheltered, dark freshwater with restrained foam. Deep River Marina photography and the Ottawa River beach walk are the local references. The game references are freshwater surface detail in Red Dead Redemption 2, hull response in Sea of Thieves, and persistent disturbed water behind boats in GTA V. [Deep River Marina](https://www.deepriver.ca/) · [Deep River beach walk](https://www.youtube.com/watch?v=RiagUuvnkkY) · [Red Dead Redemption 2](https://www.rockstargames.com/reddeadredemption2) · [Sea of Thieves](https://www.seaofthieves.com/) · [Grand Theft Auto V](https://www.rockstargames.com/gta-v)
 

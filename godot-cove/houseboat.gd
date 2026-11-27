@@ -107,6 +107,7 @@ func _ready() -> void:
 		motor.scale = Vector3.ONE * motor_size()
 		add_child(motor)
 		startup_audio = AudioStreamPlayer3D.new()
+		startup_audio.bus = &"Vehicles"
 		startup_audio.name = "OutboardStartup"
 		startup_audio.position = motor.sound.position
 		startup_audio.unit_size = 5.1
@@ -114,6 +115,7 @@ func _ready() -> void:
 		startup_audio.volume_db = START_VOLUME
 		motor.add_child(startup_audio)
 		shutdown_audio = AudioStreamPlayer3D.new()
+		shutdown_audio.bus = &"Vehicles"
 		shutdown_audio.name = "OutboardShutdown"
 		shutdown_audio.position = motor.sound.position
 		shutdown_audio.unit_size = 5.1

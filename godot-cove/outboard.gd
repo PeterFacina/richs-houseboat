@@ -78,6 +78,7 @@ func _ready() -> void:
 		var mesh := Kit.mesh_at(prop, blade, Vector3.ZERO, propeller)
 		mesh.rotation.z = TAU * blade_index / 3.0
 	sound = AudioStreamPlayer3D.new()
+	sound.bus = &"Vehicles"
 	sound.position = Vector3(0, .13, .32)
 	sound.unit_size = 5.1
 	sound.max_distance = 87.0
@@ -85,6 +86,7 @@ func _ready() -> void:
 	sound.volume_db = -80.0
 	add_child(sound)
 	load_sound = AudioStreamPlayer3D.new()
+	load_sound.bus = &"Vehicles"
 	load_sound.name = "OutboardLoadSound"
 	load_sound.position = sound.position
 	load_sound.unit_size = sound.unit_size

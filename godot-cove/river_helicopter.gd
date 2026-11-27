@@ -213,6 +213,7 @@ func build_model() -> void:
 
 func create_rotor_player(player_name: String, stream: AudioStreamWAV, looping := false) -> AudioStreamPlayer3D:
 	var player := AudioStreamPlayer3D.new()
+	player.bus = &"Vehicles"
 	player.name = player_name
 	player.position.y = 2.0
 	player.max_distance = 220.0
