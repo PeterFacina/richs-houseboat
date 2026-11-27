@@ -1,0 +1,100 @@
+{
+  "schema_version": 1,
+  "region_id": "deep_river",
+  "status": "planning_only_non_destructive",
+  "coordinate_system": {
+    "engine": "Godot 4.7.2",
+    "units": "metres",
+    "horizontal_axes": ["x", "z"],
+    "source_distance_scale": 1.0,
+    "source_extent_metres": [31248.0, 22344.0]
+  },
+  "provisional_boundary": {
+    "shape": "axis_aligned_rectangle",
+    "minimum_xz": [14500.0, 10000.0],
+    "maximum_xz": [20500.0, 15800.0],
+    "size_metres": [6000.0, 5800.0],
+    "area_square_kilometres": 34.8,
+    "approval_required": "Reconcile against the missing boundary screenshot before any production bake."
+  },
+  "authoritative_source": {
+    "policy": "Preserve all original geographic arrays, rasters, metadata and generated gameplay sources. This manifest does not crop, move, resample or delete source data.",
+    "entry_points": [
+      "godot-cove/deep_river_map.gd",
+      "godot-cove/deep_river_meta.gd",
+      "godot-cove/game_world.gd"
+    ],
+    "source_asset_root": "godot-cove/deep_river/"
+  },
+  "ownership": {
+    "include_when_intersecting_boundary": [
+      "coarse terrain render tiles",
+      "coarse terrain collision tiles",
+      "regional crown MultiMesh cells",
+      "regional trunk MultiMesh cells"
+    ],
+    "include_whole_system": [
+      "Deep River town buildings and details",
+      "marina and Riverbank Park",
+      "Lamure Beach",
+      "roads, walkways, traffic controls and street furniture",
+      "near and far water needed by the region",
+      "town detail, silhouette and stem vegetation",
+      "gameplay collision and navigation required by included locations",
+      "local NPC, quest, vehicle, boating and weather integration points"
+    ],
+    "external_proxy_only": [
+      "Swisha",
+      "Chalk River Laboratories",
+      "terrain and forest wholly outside the provisional boundary"
+    ],
+    "boundary_policy": "Keep crossing tiles/cells intact for the first bake. Splitting is a later measured optimization, never an implicit destructive crop."
+  },
+  "measured_inventory": {
+    "terrain": {
+      "inside_tiles": 123,
+      "crossing_tiles": 10,
+      "outside_tiles": 174,
+      "inside_triangles": 460318,
+      "crossing_triangles": 38720,
+      "outside_triangles": 586020
+    },
+    "regional_crowns": {
+      "inside_cells": 76,
+      "crossing_cells": 43,
+      "outside_cells": 3048,
+      "inside_instances": 4004,
+      "crossing_instances": 3912,
+      "outside_instances": 137264
+    },
+    "regional_trunks": {
+      "inside_cells": 76,
+      "crossing_cells": 43,
+      "outside_cells": 3048,
+      "inside_instances": 2002,
+      "crossing_instances": 1956,
+      "outside_instances": 68632
+    },
+    "town_content": {
+      "building_shell_nodes_inside": 542,
+      "building_detail_nodes_inside": 475,
+      "tree_detail_instances_inside": 73302,
+      "tree_silhouette_instances_inside": 46194,
+      "tree_stem_instances_inside": 29777,
+      "known_outside_town_nodes": 0
+    }
+  },
+  "runtime_policy": {
+    "transfers_implemented": false,
+    "streaming_implemented": false,
+    "existing_gameplay_changed": false,
+    "intended_first_use": "offline deterministic region bake and validation only"
+  },
+  "acceptance_checks": [
+    "Original source data hashes remain unchanged.",
+    "Every included gameplay landmark retains its original world coordinates.",
+    "Crossing geometry remains whole until a separately reviewed split operation exists.",
+    "The current monolithic game remains the default launch path.",
+    "A generated region must be reproducible from source and disposable without data loss."
+  ]
+}

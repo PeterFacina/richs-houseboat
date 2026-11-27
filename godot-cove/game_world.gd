@@ -164,6 +164,7 @@ var pen_drop_pressed := false
 var pen_use_pressed := false
 var tennis_previous_gear := Backpack.NONE
 var ignition_hold := -1.0
+var performance_trace := OS.get_cmdline_user_args().has("--performance-trace")
 var ignition_prompt: Label
 var ignition_ring: IgnitionRing
 var mower := LawnMower.new()
@@ -748,6 +749,13 @@ func camera_mode() -> String:
 
 
 func _physics_process(delta: float) -> void:
+	var trace_start := Time.get_ticks_usec() if performance_trace else 0
+	var trace_interaction := trace_start
+	var trace_locomotion := trace_start
+	var trace_environment := trace_start
+	var trace_gameplay := trace_start
+	var trace_campaign := trace_start
+	var trace_simulation := trace_start
 	camera_motion.restore(eye)
 	clock += delta
 	var wants_flight := campaign.crew.mode == "solo" and cheats.flight.button_pressed and not in_aircraft()
@@ -829,6 +837,8 @@ func _physics_process(delta: float) -> void:
 			campaign.helm()
 	interact_pressed = false
 	has_input = play_input()
+	if performance_trace:
+		trace_interaction = Time.get_ticks_usec()
 	walk_multiplier = cabin.walk_scale() * campaign.crewplay.movement_scale()
 	helicopter.tick(delta, has_input and get_window().has_focus() and not cabin.busy())
 	grounded_motion = false
@@ -864,6 +874,8 @@ func _physics_process(delta: float) -> void:
 		or marina_cars.active >= 0 or mower.rider != null or campaign.amenities.seated() or campaign.dive.active)
 	marina_cars.step(delta, axis(KEY_W, KEY_S), axis(KEY_D, KEY_A), Input.is_physical_key_pressed(KEY_SPACE),
 		has_input and not cabin.busy())
+	if performance_trace:
+		trace_locomotion = Time.get_ticks_usec()
 	var viewpoint: Vector3 = vessel.center if aboard() else player.global_position
 	if vessel.visible and vessel.departed:
 		var behind := vessel.global_basis.z.slide(Vector3.UP).normalized()
@@ -883,6 +895,8 @@ func _physics_process(delta: float) -> void:
 		effects.break_surface(effects.on_water(roll, clock), .94, "splash")
 		notify_angling("A big fish rolled by the slick. Cast near the ripples.", 7.1)
 	stock.update(viewpoint)
+	if performance_trace:
+		trace_environment = Time.get_ticks_usec()
 	update_fish_finder(delta)
 	var free_hands := has_input and hands_available()
 	if rod_pressed:
@@ -896,12 +910,18 @@ func _physics_process(delta: float) -> void:
 		and rig.punch_elapsed >= rig.PUNCH_DURATION and (ground_motion if grounded_motion else player.velocity).length_squared() < .035 \
 		and not Input.is_action_pressed(&"interact") and not Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT)
 	standing_idle.tick(delta, stationary, hands_available() and backpack.equipped == Backpack.NONE and not driving)
+	if performance_trace:
+		trace_gameplay = Time.get_ticks_usec()
 	campaign.tick(delta, has_input)
 	marina_cars.hide_drivers()
 	campaign.story.tick_transport(delta, has_input and not cabin.busy())
 	shannon_job.tick(delta, play_input() and can_talk_to_shannon())
+	if performance_trace:
+		trace_campaign = Time.get_ticks_usec()
 	if not multiplayer_trip or campaign.crew.started:
 		tick_residents(delta)
+	if performance_trace:
+		trace_simulation = Time.get_ticks_usec()
 	update_tennis(delta, has_input and get_window().has_focus())
 	camera_motion.update(eye, player, delta, camera_mode(),
 		ground_motion.length() if grounded_motion else 0.0, sprint_blend, crouch_camera_blend)
@@ -910,6 +930,19 @@ func _physics_process(delta: float) -> void:
 		campaign.mark_world()
 	regions.tick(delta)
 	safety.tick(delta)
+	if performance_trace:
+		var trace_end := Time.get_ticks_usec()
+		var total := trace_end - trace_start
+		if total >= 12000:
+			print("PHYSICS_TRACE total_ms=", float(total) / 1000.0,
+				" interaction_ms=", float(trace_interaction - trace_start) / 1000.0,
+				" locomotion_ms=", float(trace_locomotion - trace_interaction) / 1000.0,
+				" environment_ms=", float(trace_environment - trace_locomotion) / 1000.0,
+				" gameplay_ms=", float(trace_gameplay - trace_environment) / 1000.0,
+				" campaign_ms=", float(trace_campaign - trace_gameplay) / 1000.0,
+				" residents_ms=", float(trace_simulation - trace_campaign) / 1000.0,
+				" presentation_ms=", float(trace_end - trace_simulation) / 1000.0,
+				" mode=", camera_mode())
 
 
 func tick_residents(delta: float) -> void:
