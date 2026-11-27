@@ -65,3 +65,22 @@ A separate 300-frame cold live Performance profile moved from 27.92 / 91.29 ms m
 After the final loading screen cleared, a 300-frame stationary sample at the marina measured **25.44 / 73.81 ms** median / p95 at the saved 1920 × 1080 Balanced setting (305 active chunks). Switching the same loaded scene to a 1280 × 720 Performance window measured **17.16 / 59.10 ms** (266 active chunks), roughly 58.3 FPS at the median with large spikes. An earlier 20 ms preload trial measured 25.29 / 82.39 ms Balanced and 16.76 / 59.15 ms Performance, illustrating run-to-run variation. A separate standard-mode Performance smoke sample without Riverside grass measured 17.57 / 57.97 ms. Neither mode establishes stable 60 FPS on this test PC, and the tested GTX 1050 is not the owner's GTX 1050 Ti. A wider rendering and frame-pacing change would need its own measured visual review; this grass fix does not claim to solve that cost.
 
 Still required before claiming the 60 FPS target: a repeatable benchmark on the owner's actual GTX 1050 Ti, including their resolution, graphics preset and reported field location; sustained driving and return travel; and host/guest playtests. The 30 s loading cap can still leave some grass streaming on larger presets or slower machines. This PR remains a draft for human visual and load-time review.
+
+## Tennis-court lawn follow-up: late nearby detail
+
+The owner clarified that the lawn's final density is acceptable. Grass arrives late while moving near the Marina tennis courts, sometimes within a few metres, and the GTX 1050 Ti playtest is laggy. The tennis court centre is rejected by the existing grass eligibility mask; the sampled lawn at `(17940, 12775)` is eligible. This is chunk preparation and detail scheduling, not evidence of texture assets being loaded at that distance. The CPU scheduler can affect faster GPUs too; actual team-machine frame rates have not been measured.
+
+The previous queue appended full-detail upgrades behind the entire pending region. In a matched scripted 1280 × 720 Performance walk toward the verified tennis lawn, then ten seconds standing there, all 16 nearby chunks remained at temporary detail even though over 130 chunks were still queued. A trial that prioritized full detail while walking created more empty patches and worse p95 frame time, so it was discarded. The retained change preserves the existing walking order and reorders the queue when movement stops: empty nearby patches first, then nearby full-detail upgrades, then distant patches. It does not change the 1.5 ms gameplay preparation budget or any blade data.
+
+The replay script is [`profile_tennis_stream.gd`](../../godot-cove/tests/profile_tennis_stream.gd). It starts without the game's initial grass prewarm to isolate travel streaming, moves the same camera for 1,200 frames, then holds for 600. Both runs used Godot 4.7.2 GL Compatibility on the local GTX 1050, with older game windows present. Values are single-run observations, not a claim about the owner's GTX 1050 Ti.
+
+| Tennis-lawn sample | Previous PR head | Queue follow-up |
+| --- | ---: | ---: |
+| Nearby chunks at frame 1199, arrival | 16/16 temporary, 0 full | 15/16 temporary, 0 full |
+| Nearby chunks at frame 1799, after 10 s standing | 16/16 temporary, 0 full | 5/16 temporary, 11 full |
+| Grass update median / p95 | 1.933 / 4.203 ms | 1.812 / 4.025 ms |
+| Frame interval median / p95 | 17.156 / 33.646 ms | 16.986 / 34.366 ms |
+
+The endpoint lies on a chunk boundary. At frame 1200, the target set shifts and the follow-up temporarily has 12/16 nearby chunks; by frame 1440 all 16 are present. This remains visible loading during travel, and the small frame-time differences are within single-run noise. The change improves full-detail scheduling after stopping but does **not** resolve the reported two-metre walking pop-in or establish stable 60 FPS. A future fix for that would need measured additional preparation throughput or precomputed data without increasing frame spikes. The existing 64-chunk return cache and all eligibility, mowing and save paths are unchanged.
+
+Matched runtime captures: [previous arrival](../riverside-evidence/phase2/tennis-lawn-baseline/arrival.png), [follow-up arrival](../riverside-evidence/phase2/tennis-lawn-stationary/arrival.png), [previous after 10 s](../riverside-evidence/phase2/tennis-lawn-baseline/settled.png), [follow-up after 10 s](../riverside-evidence/phase2/tennis-lawn-stationary/settled.png). Visual review and the owner's actual-hardware replay remain required before the PR leaves draft.

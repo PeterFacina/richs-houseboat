@@ -79,10 +79,15 @@ func update_around(viewpoint: Vector3, preset: int) -> void:
 				abort_current()
 			moving_fast = fast
 			view_cell = Vector2i(-999999, -999999)
-		if delta.length_squared() > .0001 and delta.length_squared() < 4.0:
-			travel = delta.normalized() * (minf(MAX_LOOKAHEAD, maxf(20.0, speed * 1.5)) if moving_fast else 0.0)
-		elif delta.length_squared() >= 4.0:
+		var was_travelling := travel.length_squared() > 0.0
+		if delta.length_squared() > .0001 and delta.length_squared() < 4.0 and speed > .8:
+			travel = delta.normalized() * (minf(MAX_LOOKAHEAD, maxf(20.0, speed * 1.5)) \
+				if moving_fast else 20.0)
+		else:
 			travel = Vector2.ZERO
+		if was_travelling and travel == Vector2.ZERO:
+			# Reorder the remaining queue when the player stops moving.
+			view_cell = Vector2i(-999999, -999999)
 	last_view = position
 	last_tick = now
 	has_view = true
@@ -287,7 +292,9 @@ func rebuild_targets(center: Vector2) -> void:
 			if not active.has(cell) or active[cell].lod > build_lod:
 				if current.is_empty() or current.cell != cell or current.lod != build_lod:
 					var priority := 0 if lod == 0 and not active.has(cell) else \
-						(1 if approaching and not active.has(cell) else (2 if not active.has(cell) else lod + 3))
+						(1 if approaching and not active.has(cell) else \
+						(1 if lod == 0 and travel == Vector2.ZERO else \
+						(2 if not active.has(cell) else lod + 3)))
 					pending.append({"cell": cell, "lod": build_lod,
 						"distance": ahead if approaching else distance,
 						"priority": priority})
@@ -357,8 +364,17 @@ func install_current() -> void:
 		Graphics.batch(batch, "riverside_grass")
 		active[cell] = {"lod": current.lod, "batch": batch}
 	if desired.has(cell) and current.lod > desired[cell] and not moving_fast:
-		waiting.append({"cell": cell, "lod": desired[cell], "distance": 0.0,
-			"priority": desired[cell] + 2})
+		var upgrade := {"cell": cell, "lod": desired[cell], "distance": 0.0,
+			"priority": 1 if desired[cell] == 0 and travel == Vector2.ZERO \
+				else desired[cell] + 2}
+		if travel != Vector2.ZERO:
+			# During travel, fill missing patches before replacing fallback detail.
+			waiting.append(upgrade)
+		else:
+			var insert_at := 0
+			while insert_at < waiting.size() and waiting[insert_at].priority < upgrade.priority:
+				insert_at += 1
+			waiting.insert(insert_at, upgrade)
 	current.clear()
 
 
