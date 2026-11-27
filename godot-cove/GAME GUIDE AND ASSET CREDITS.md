@@ -86,7 +86,7 @@ Deep River uses edited [CC0 1.0](https://creativecommons.org/publicdomain/zero/1
 
 | Game audio | Field recording |
 | --- | --- |
-| Freshwater lapping (shore and hull) | TRP, small waves on Lake Ontario. [Waves gentle med cu lake water](https://freesound.org/people/TRP/sounds/573191/) |
+| Freshwater lapping and shoreline splash | TRP, small waves on Lake Ontario. The lapping bed is filtered and compressed, and the splash is a faded 0.73-second excerpt from the same recording. [Waves gentle med cu lake water](https://freesound.org/people/TRP/sounds/573191/) |
 | Light rain and rain over water | myLoop, two edited sections of [Rain in Munich Westpark](https://freesound.org/people/myLoop/sounds/849800/). The water mix also supplies the low-level prop wash. |
 | Rain under cover | deadrobotmusic, rain recorded inside a car. [PNW rain perfect loop 114](https://freesound.org/people/deadrobotmusic/sounds/549909/) |
 | Heavy rain | Alex_hears_things, rain during Cyclone Alfred. [Heavy Rain Downpour with Close Water](https://freesound.org/people/Alex_hears_things/sounds/812614/) |

@@ -18,7 +18,7 @@ Weather layers on top of existing solar, sky, and water lighting. Rain gradually
 
 ## Environmental audio
 
-The local camera hears the closest mapped riverbank through one reusable spatial emitter. It fades with distance and has an 80 m cutoff. Hull lapping takes priority alongside the boat, and prop wash follows thrust. The Swisha spillway remains a separate spatial source. See [asset credits](../../godot-cove/GAME%20GUIDE%20AND%20ASSET%20CREDITS.md#environmental-audio) for the field recordings.
+The local camera hears the closest mapped riverbank through one reusable spatial emitter. Quiet lapping fades with distance and has an 80 m cutoff. The existing wave sampler advances a separate freshwater splash at local crests with enough height and rise. Calm water and sheltered banks keep the quiet lapping bed. Hull lapping takes priority alongside the boat, and prop wash follows thrust. The Swisha spillway remains a separate spatial source. See [asset credits](../../godot-cove/GAME%20GUIDE%20AND%20ASSET%20CREDITS.md#environmental-audio) for the field recordings.
 
 Wind and rain levels follow the synchronized weather sample. The recorded wind bed fades to silence at calm wind levels. Heavy rain blends into a separate bed as precipitation grows. Recent host lightning events trigger one spatial thunder sound with a delay based on each camera's distance from the strike. Late-join snapshots establish the event counter without playing old strikes. Roof checks, vehicle occupancy, and houseboat cabin detection reduce and low-pass outdoor water and weather. Rain under cover uses its own quieter bed. A Master limiter caps combined peaks at -1 dBFS.
 

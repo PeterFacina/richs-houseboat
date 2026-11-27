@@ -85,6 +85,39 @@ func check_shore() -> void:
 	check(not fx.hull_waves.playing and not fx.prop_wash.playing, "Boat loops persisted away from the boat")
 
 
+func check_breaking_waves() -> void:
+	var exposed := [
+		Vector3(18700, 0, 13190),
+		Vector3(18240, 0, 13170),
+		Vector3(18170, 0, 12700),
+	]
+	var counts: Array[int] = []
+	for kind in [Weather.CLEAR, Weather.WINDY, Weather.STORM]:
+		var weather: Vector4 = Weather.CONDITIONS[kind]
+		game.river.set_water_weather(weather.w, weather.z)
+		var breaks := 0
+		for site: Vector3 in exposed:
+			fx.bank = FX.find_shore(game.river, site)
+			if fx.bank == Vector3.INF:
+				continue
+			fx.shore_sample_clock = -INF
+			for i in 480:
+				var clock := float(i) * .075
+				fx.update_shore_splash(game.river, clock, 1.0, 1.0)
+				if fx.shore_splash.playing:
+					breaks += 1
+					check(fx.shore_splash.global_position == fx.bank, "Splash originated away from the bank")
+					check(fx.shore_height < game.river.wave_height(fx.bank, clock - .075),
+						"Splash did not follow a crest at the bank")
+					fx.shore_splash.stop()
+		counts.append(breaks)
+	check(counts[0] == 0 and counts[1] > 0 and counts[2] > 0, "Mapped shoreline splash counts: %s" % [counts])
+	print("Mapped shoreline splashes across calm, windy, and stormy runs: ", counts)
+	fx.bank = Vector3.INF
+	fx.shore_search_origin = Vector3.INF
+	game.river.set_water_weather(.12, 0.0)
+
+
 func check_weather() -> void:
 	var state: Dictionary = {}
 	var minute := 630.0
@@ -200,6 +233,7 @@ func exercise() -> void:
 	if DisplayServer.get_name() == "headless":
 		fx.setup_audio()
 	check_shore()
+	check_breaking_waves()
 	check_weather()
 	if DisplayServer.get_name() != "headless":
 		await check_native_mix()

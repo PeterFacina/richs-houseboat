@@ -12,10 +12,15 @@ var rain_style: ParticleProcessMaterial
 var volumes: Array[AudioStreamPlayer] = []
 var thunder: AudioStreamPlayer3D
 var bank_waves: AudioStreamPlayer3D
+var shore_splash: AudioStreamPlayer3D
 var hull_waves: AudioStreamPlayer3D
 var prop_wash: AudioStreamPlayer3D
 var bank := Vector3.INF
 var shore_search_origin := Vector3.INF
+var shore_sample_clock := -INF
+var shore_height := 0.0
+var shore_trough := 0.0
+var shore_rising := false
 var sample := Vector4.ZERO
 var wet := 0.0
 var flash := 0.0
@@ -90,6 +95,7 @@ func setup_audio() -> void:
 	add_child(thunder)
 	var lapping := preload("res://deep_river/environment_audio/freshwater_lapping.ogg")
 	bank_waves = water_loop(lapping, 12.0, SHORE_RANGE, .94)
+	shore_splash = water_loop(preload("res://deep_river/environment_audio/shore_splash.ogg"), 12.0, SHORE_RANGE, 1.0)
 	hull_waves = water_loop(lapping, 4.0, 23.0, 1.12)
 	prop_wash = water_loop(volumes[1].stream, 4.0, 28.0, .88)
 	weather_filter = AudioServer.get_bus_effect(AudioServer.get_bus_index(&"Weather"), 0)
@@ -220,11 +226,13 @@ func update_water_audio(game: Node3D, listener: Vector3, delta: float) -> void:
 		if next_bank != Vector3.INF and (bank == Vector3.INF \
 				or listener.distance_to(next_bank) + 2.0 < listener.distance_to(bank)):
 			bank = next_bank
+			shore_sample_clock = -INF
 			bank_waves.global_position = bank
 		elif next_bank == Vector3.INF:
 			bank = Vector3.INF
 	var bank_distance := INF if bank == Vector3.INF else listener.distance_to(bank)
-	var bank_gain := (1.0 - smoothstep(7.0, SHORE_RANGE, bank_distance)) * lerpf(.16, .29, sample.w)
+	var bank_proximity := 1.0 - smoothstep(7.0, SHORE_RANGE, bank_distance)
+	var bank_mix := 1.0
 
 	var vessel: Node3D = game.vessel
 	var afloat: bool = vessel.visible and (vessel.departed or river.wet_clearance(vessel.global_position) > .35)
@@ -236,18 +244,47 @@ func update_water_audio(game: Node3D, listener: Vector3, delta: float) -> void:
 		var height: float = river.wave_height(alongside, game.clock)
 		hull_waves.global_position = Vector3(alongside.x, height, alongside.z)
 		prop_wash.global_position = vessel.motor.prop.global_position
-		hull_gain = .045 + smoothstep(.01, .19, absf(height)) * .085 + smoothstep(.4, 6.0, absf(vessel.speed)) * .065
+		hull_gain = .025 + smoothstep(.03, .19, height) * .07 + smoothstep(.4, 6.0, absf(vessel.speed)) * .065
 		wash_gain = vessel.motor.thrust * .14
 		prop_wash.pitch_scale = lerpf(.78, 1.18, vessel.motor.thrust)
 		# The bank and hull use the same loop. Give the nearby hull priority.
 		var hull_presence := 1.0 - smoothstep(2.0, 16.0, listener.distance_to(hull_waves.global_position))
-		bank_gain *= lerpf(1.0, .40, hull_presence)
+		bank_mix = lerpf(1.0, .40, hull_presence)
 	var response := 1.0 - exp(-delta * 4.0)
 	var cover_gain := lerpf(1.0, .25, shelter)
-	fade_loop(bank_waves, bank_gain * cover_gain, response)
+	fade_loop(bank_waves, .052 * bank_proximity * bank_mix * cover_gain, response)
+	update_shore_splash(river, game.clock, bank_proximity, bank_mix * cover_gain)
 	fade_loop(hull_waves, hull_gain * cover_gain, response, 7.0)
 	fade_loop(prop_wash, wash_gain * cover_gain, response, 8.0)
 	water_filter.cutoff_hz = lerpf(16000.0, 1150.0, shelter)
+
+
+func update_shore_splash(river: Node3D, clock: float, proximity: float, gain: float) -> void:
+	if proximity <= 0.0:
+		shore_sample_clock = -INF
+		return
+	var since_sample := clock - shore_sample_clock
+	if since_sample >= 0.0 and since_sample < .06:
+		return
+	var height: float = river.wave_height(bank, clock)
+	if since_sample > .20 or since_sample < 0.0:
+		shore_trough = height
+		shore_rising = false
+	elif height > shore_height:
+		shore_rising = true
+	else:
+		# A crest crosses the fixed bank point when the surface stops rising.
+		var rise := shore_height - shore_trough
+		var impact := smoothstep(.064, .115, shore_height) * smoothstep(.085, .17, rise)
+		if shore_rising and impact > 0.0 and not shore_splash.playing:
+			shore_splash.global_position = bank
+			shore_splash.volume_db = linear_to_db(.21 * impact * proximity * gain)
+			shore_splash.pitch_scale = lerpf(.92, 1.07, impact)
+			shore_splash.play()
+		shore_rising = false
+		shore_trough = height
+	shore_height = height
+	shore_sample_clock = clock
 
 
 static func find_shore(river: Node3D, origin: Vector3) -> Vector3:
