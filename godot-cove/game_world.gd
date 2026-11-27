@@ -387,6 +387,24 @@ func _ready() -> void:
 	if multiplayer_trip:
 		open_multiplayer_lobby()
 	if is_instance_valid(loading_layer):
+		if river.world_grass != null:
+			var grass = river.world_grass
+			var previous_budget: int = grass.build_budget_usec
+			grass.build_budget_usec = 50000
+			var grass_started := Time.get_ticks_msec()
+			for frame in 2400:
+				river.update_grass(eye.global_position, graphics.level)
+				if grass.ready_all() or Time.get_ticks_msec() - grass_started >= 30000:
+					break
+				if frame % 12 == 0:
+					loading_status.text = "Preparing Riverside grass  ·  %d / %d" % [
+						grass.active.size(), grass.desired.size()]
+				await get_tree().process_frame
+			grass.build_budget_usec = previous_budget
+			if grass.profile_enabled:
+				print("STARTUP_GRASS_PREWARM wall_ms=", Time.get_ticks_msec() - grass_started,
+					" ready_all=", grass.ready_all(), " active=", grass.active.size(),
+					" target=", grass.desired.size())
 		loading_layer.hide()
 		loading_layer.queue_free()
 		set_process(true)

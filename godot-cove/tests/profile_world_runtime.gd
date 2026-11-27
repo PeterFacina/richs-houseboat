@@ -13,8 +13,11 @@ func profile() -> void:
 		await process_frame
 	game.pause_menu.set_fullscreen(false, false)
 	DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED)
-	DisplayServer.window_set_size(Vector2i(1280, 720))
-	game.graphics.level = 0
+	var args := OS.get_cmdline_user_args()
+	var width := 1920 if args.has("--capture-resolution=1080") else 1280
+	var height := 1080 if width == 1920 else 720
+	DisplayServer.window_set_size(Vector2i(width, height))
+	game.graphics.level = 1 if args.has("--preset=balanced") else 0
 	game.graphics.apply(game.river, game.eye)
 	paused = false
 	game.set_process(true)
@@ -124,4 +127,4 @@ func sample(game: Node3D, label: String) -> void:
 			" upload_ms=", float(grass.profile_upload_usec) / 1000.0,
 			" rebuild_ms=", float(grass.profile_rebuild_usec) / 1000.0,
 			" completed=", grass.profile_completed, " aborted=", grass.profile_aborted,
-			" waiting=", grass.waiting.size())
+			" waiting=", grass.waiting.size(), " height_cache_hits=", grass.profile_height_cache_hits)

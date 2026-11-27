@@ -11,6 +11,10 @@ const RADII := [[18.0, 32.0, 52.0], [22.0, 42.0, 69.0], [28.0, 50.0, 115.0]]
 const BUILD_BUDGET_USEC := 1500
 const FALLBACK_LOD := 1
 const CACHE_LIMIT := 64
+const LOAD_MARGIN := 4.0
+const UNLOAD_MARGIN := 12.0
+const AHEAD_RADIUS := 24.0
+const MAX_LOOKAHEAD := 36.0
 
 var surface
 var mesh: Mesh
@@ -37,6 +41,7 @@ var profile_upload_usec := 0
 var profile_rebuild_usec := 0
 var profile_completed := 0
 var profile_aborted := 0
+var profile_height_cache_hits := 0
 
 
 func setup(eligibility) -> void:
@@ -74,10 +79,15 @@ func update_around(viewpoint: Vector3, preset: int) -> void:
 				abort_current()
 			moving_fast = fast
 			view_cell = Vector2i(-999999, -999999)
-		if delta.length_squared() > .0001 and delta.length_squared() < 4.0:
-			travel = delta.normalized() * (20.0 if moving_fast else 0.0)
-		elif delta.length_squared() >= 4.0:
+		var was_travelling := travel.length_squared() > 0.0
+		if delta.length_squared() > .0001 and delta.length_squared() < 4.0 and speed > .8:
+			travel = delta.normalized() * (minf(MAX_LOOKAHEAD, maxf(20.0, speed * 1.5)) \
+				if moving_fast else 20.0)
+		else:
 			travel = Vector2.ZERO
+		if was_travelling and travel == Vector2.ZERO:
+			# Reorder the remaining queue when the player stops moving.
+			view_cell = Vector2i(-999999, -999999)
 	last_view = position
 	last_tick = now
 	has_view = true
@@ -96,11 +106,17 @@ func update_around(viewpoint: Vector3, preset: int) -> void:
 				break
 			current = waiting.pop_front()
 			current["index"] = 0
-			current["buffer"] = PackedFloat32Array()
+			current["written"] = 0
+			var count := ceili(float(GRID) / float(LOD_STEPS[current.lod]))
+			var buffer := PackedFloat32Array()
+			buffer.resize(count * count * 12)
+			current["buffer"] = buffer
 			var block: Vector2i = current.cell
 			if not tile_cache.has(block):
-				tile_cache[block] = [{}, {}]
+				tile_cache[block] = [{}, {}, {}, [{}, {}]]
 			current["tiles"] = tile_cache[block][0 if current.lod == 0 else 1]
+			current["edge_cache"] = tile_cache[block][2]
+			current["tile_samples"] = tile_cache[block][3]
 			current["masks"] = surface.relevant_masks(Rect2(Vector2(block) * CHUNK,
 				Vector2.ONE * CHUNK).grow(Surface.CLEARANCE))
 		var cell: Vector2i = current.cell
@@ -111,11 +127,18 @@ func update_around(viewpoint: Vector3, preset: int) -> void:
 		var step: int = LOD_STEPS[current.lod]
 		var count := ceili(float(GRID) / float(step))
 		var total := count * count
+		var transforms: PackedFloat32Array = current.buffer
+		var index: int = current.index
+		var written: int = current.written
+		var tiles: Dictionary = current.tiles
+		var edge_cache: Dictionary = current.edge_cache
+		var tile_samples: Array = current.tile_samples
+		var masks: Array = current.masks
 		for task in 24:
-			if current.index >= total:
+			if index >= total:
 				break
-			var local_x: int = (current.index % count) * step
-			var local_z: int = floori(float(current.index) / float(count)) * step
+			var local_x: int = (index % count) * step
+			var local_z: int = (index / count) * step
 			var seed := hash(Vector3i(cell.x, cell.y, local_z * GRID + local_x))
 			var jitter_x := (float(seed & 1023) / 1023.0 - .5) * CHUNK / GRID * .68
 			var jitter_z := (float((seed >> 10) & 1023) / 1023.0 - .5) * CHUNK / GRID * .68
@@ -123,27 +146,49 @@ func update_around(viewpoint: Vector3, preset: int) -> void:
 				(float(cell.y) + (float(local_z) + .5) / GRID) * CHUNK + jitter_z)
 			var tile := Vector2i(floori((float(local_x) + .5) * CHUNK / GRID / TILE),
 				floori((float(local_z) + .5) * CHUNK / GRID / TILE))
-			if not current.tiles.has(tile):
+			if not tiles.has(tile):
 				var tile_started := Time.get_ticks_usec() if profile_enabled else 0
-				current.tiles[tile] = classify_tile(cell, tile, current.masks, current.lod == 0)
+				tiles[tile] = classify_tile(cell, tile, masks, current.lod == 0, tile_samples)
 				if profile_enabled:
 					profile_tile_usec += Time.get_ticks_usec() - tile_started
-			var tile_data: Dictionary = current.tiles[tile]
+			var tile_data: Dictionary = tiles[tile]
 			if tile_data.state == -1:
-				current["index"] += 1
+				index += 1
 				continue
-			var height: float = surface.grass_height(point, current.masks) if tile_data.state == 0 else \
-				tile_height(point, cell, tile, tile_data.heights)
+			var height: float
+			if tile_data.state == 0:
+				var key := local_z * GRID + local_x
+				if edge_cache.has(key):
+					height = edge_cache[key]
+					if profile_enabled:
+						profile_height_cache_hits += 1
+				else:
+					height = surface.grass_height(point, masks)
+					edge_cache[key] = height
+			else:
+				height = tile_height(point, cell, tile, tile_data.heights)
 			if is_finite(height):
 				var angle := float((seed >> 20) & 1023) / 1023.0 * TAU
 				var sine := sin(angle)
 				var cosine := cos(angle)
-				current.buffer.append_array(PackedFloat32Array([
-					cosine, 0.0, sine, point.x,
-					0.0, 1.0, 0.0, height,
-					-sine, 0.0, cosine, point.y]))
-			current["index"] += 1
-		if current.index >= total:
+				var at: int = written * 12
+				transforms[at] = cosine
+				transforms[at + 1] = 0.0
+				transforms[at + 2] = sine
+				transforms[at + 3] = point.x
+				transforms[at + 4] = 0.0
+				transforms[at + 5] = 1.0
+				transforms[at + 6] = 0.0
+				transforms[at + 7] = height
+				transforms[at + 8] = -sine
+				transforms[at + 9] = 0.0
+				transforms[at + 10] = cosine
+				transforms[at + 11] = point.y
+				written += 1
+			index += 1
+		current["index"] = index
+		current["written"] = written
+		if index >= total:
 			var upload_started := Time.get_ticks_usec() if profile_enabled else 0
 			start_upload()
 			install_current()
@@ -155,34 +200,42 @@ func update_around(viewpoint: Vector3, preset: int) -> void:
 			break
 
 
-func classify_tile(cell: Vector2i, tile: Vector2i, nearby_masks: Array, full_detail: bool) -> Dictionary:
-	var origin := Vector2(cell) * CHUNK + Vector2(tile) * TILE
+func tile_sample(cell: Vector2i, tile: Vector2i, x: int, z: int, nearby_masks: Array,
+		strict: bool, samples: Array) -> float:
+	var key := Vector2i(tile.x * 2 + x, tile.y * 2 + z)
+	var cache: Dictionary = samples[0 if strict else 1]
+	if cache.has(key):
+		return cache[key]
+	var point := Vector2(cell) * CHUNK + Vector2(tile) * TILE + Vector2(x, z) * TILE * .5
+	var height: float = surface.grass_height(point, nearby_masks, .35 if strict else 0.0)
+	cache[key] = height
+	return height
+
+
+func classify_tile(cell: Vector2i, tile: Vector2i, nearby_masks: Array, full_detail: bool,
+		samples: Array) -> Dictionary:
 	var heights := []
 	var valid := 0
 	if full_detail:
+		# Interior tiles need only the conservative pass. It returns the same
+		# terrain heights as the regular pass when every sample is eligible.
 		for z in 3:
 			for x in 3:
-				var height: float = surface.grass_height(origin + Vector2(x, z) * TILE * .5, nearby_masks)
+				var height: float = tile_sample(cell, tile, x, z, nearby_masks, true, samples)
 				heights.append(height)
 				valid += int(is_finite(height))
+		if valid == 9:
+			return {"state": 1, "heights": [heights[0], heights[2], heights[6], heights[8]]}
+		valid = 0
+		for z in 3:
+			for x in 3:
+				valid += int(is_finite(tile_sample(cell, tile, x, z, nearby_masks, false, samples)))
 		if valid == 0:
 			return {"state": -1}
-		if valid == 9:
-			var safe := true
-			for z in 3:
-				for x in 3:
-					if not is_finite(surface.grass_height(origin + Vector2(x, z) * TILE * .5,
-							nearby_masks, .35)):
-						safe = false
-						break
-				if not safe:
-					break
-			if safe:
-				return {"state": 1, "heights": [heights[0], heights[2], heights[6], heights[8]]}
 		return {"state": 0}
-	for offset: Vector2 in [Vector2.ZERO, Vector2(TILE, 0.0), Vector2(0.0, TILE),
-			Vector2(TILE, TILE), Vector2(TILE * .5, TILE * .5)]:
-		var height: float = surface.grass_height(origin + offset, nearby_masks, .35)
+	for offset: Vector2i in [Vector2i.ZERO, Vector2i(2, 0), Vector2i(0, 2),
+			Vector2i(2, 2), Vector2i.ONE]:
+		var height: float = tile_sample(cell, tile, offset.x, offset.y, nearby_masks, true, samples)
 		heights.append(height)
 		valid += int(is_finite(height))
 	if valid == 0:
@@ -204,7 +257,9 @@ func rebuild_targets(center: Vector2) -> void:
 	if moving_fast:
 		radii = radii.duplicate()
 		radii[0] = 12.0
-	var reach := ceili(float(radii[2]) / CHUNK) + 1
+	var load_radius := float(radii[2]) + LOAD_MARGIN
+	var unload_radius := load_radius + UNLOAD_MARGIN
+	var reach := ceili(unload_radius / CHUNK) + 1
 	desired.clear()
 	var pending := []
 	for z in range(view_cell.y - reach, view_cell.y + reach + 1):
@@ -212,9 +267,17 @@ func rebuild_targets(center: Vector2) -> void:
 			var cell := Vector2i(x, z)
 			var middle := (Vector2(cell) + Vector2.ONE * .5) * CHUNK
 			var distance := center.distance_to(middle)
-			if distance > float(radii[2]) + CHUNK * .7:
+			if distance > load_radius + CHUNK * .7:
+				# Keep prepared chunks through a short boundary excursion. Their
+				# visibility range still culls them outside the visual radius.
+				if active.has(cell) and distance <= unload_radius + CHUNK * .7:
+					desired[cell] = active[cell].lod
 				continue
 			var lod := 0 if distance < float(radii[0]) else (1 if distance < float(radii[1]) else 2)
+			var ahead := (middle - (center + travel)).length()
+			var approaching := moving_fast and travel.dot(middle - center) > 0.0 and ahead < AHEAD_RADIUS
+			if approaching:
+				lod = mini(lod, 1)
 			desired[cell] = lod
 			if not active.has(cell) and cached.has(cell):
 				var restored: Dictionary = cached[cell]
@@ -228,9 +291,12 @@ func rebuild_targets(center: Vector2) -> void:
 				build_lod = FALLBACK_LOD
 			if not active.has(cell) or active[cell].lod > build_lod:
 				if current.is_empty() or current.cell != cell or current.lod != build_lod:
-					var ahead := (middle - (center + travel)).length() + 8.0
-					var priority := 0 if lod == 0 and not active.has(cell) else (1 if not active.has(cell) else lod + 2)
-					pending.append({"cell": cell, "lod": build_lod, "distance": minf(distance, ahead),
+					var priority := 0 if lod == 0 and not active.has(cell) else \
+						(1 if approaching and not active.has(cell) else \
+						(1 if lod == 0 and travel == Vector2.ZERO else \
+						(2 if not active.has(cell) else lod + 3)))
+					pending.append({"cell": cell, "lod": build_lod,
+						"distance": ahead if approaching else distance,
 						"priority": priority})
 	for cell: Vector2i in active.keys():
 		if not desired.has(cell):
@@ -264,12 +330,13 @@ func rebuild_targets(center: Vector2) -> void:
 
 
 func start_upload() -> void:
-	if current.buffer.is_empty():
+	if current.written == 0:
 		return
+	current.buffer.resize(current.written * 12)
 	var group := MultiMesh.new()
 	group.transform_format = MultiMesh.TRANSFORM_3D
 	group.mesh = mesh
-	group.instance_count = current.buffer.size() / 12
+	group.instance_count = current.written
 	group.buffer = current.buffer
 	var batch := MultiMeshInstance3D.new()
 	batch.multimesh = group
@@ -297,8 +364,17 @@ func install_current() -> void:
 		Graphics.batch(batch, "riverside_grass")
 		active[cell] = {"lod": current.lod, "batch": batch}
 	if desired.has(cell) and current.lod > desired[cell] and not moving_fast:
-		waiting.append({"cell": cell, "lod": desired[cell], "distance": 0.0,
-			"priority": desired[cell] + 2})
+		var upgrade := {"cell": cell, "lod": desired[cell], "distance": 0.0,
+			"priority": 1 if desired[cell] == 0 and travel == Vector2.ZERO \
+				else desired[cell] + 2}
+		if travel != Vector2.ZERO:
+			# During travel, fill missing patches before replacing fallback detail.
+			waiting.append(upgrade)
+		else:
+			var insert_at := 0
+			while insert_at < waiting.size() and waiting[insert_at].priority < upgrade.priority:
+				insert_at += 1
+			waiting.insert(insert_at, upgrade)
 	current.clear()
 
 
@@ -317,6 +393,7 @@ func reset_profile() -> void:
 	profile_rebuild_usec = 0
 	profile_completed = 0
 	profile_aborted = 0
+	profile_height_cache_hits = 0
 
 
 func ready_near() -> bool:
