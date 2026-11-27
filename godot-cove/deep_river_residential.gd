@@ -26,6 +26,7 @@ var building: Dictionary
 var height := 0.0
 var compact := false
 var front := -1
+var pedestrian_entries: Array[Dictionary] = []
 var trim := Color.WHITE
 var door := Color.WHITE
 var handed := 1.0
@@ -252,7 +253,13 @@ func entry_face(face: Transform3D, width: float, course: float, threshold: float
 	if width > 9.8:
 		var second := width * (.81 if handed > 0.0 else .19)
 		window(face, second, threshold + .72, minf(1.56, width * .17), minf(1.24, course * .42), false, false)
-	build_stoop(face, entry_x, threshold, opening, width)
+	var approach := build_stoop(face, entry_x, threshold, opening, width)
+	var landing := face * Vector3(entry_x, threshold, .43)
+	var foot := face * Vector3(entry_x, 0, approach)
+	foot.y = ground.call(foot.x, foot.z) + .045
+	if absf(landing.y - foot.y) <= 1.23:
+		pedestrian_entries.append({"id": str(building.id), "door": landing, "foot": foot,
+			"out": face.basis.z})
 	entry_details(face, entry_x, opening, threshold, width)
 	foundation_planting(face, entry_x, width)
 
@@ -361,12 +368,12 @@ func shrub(face: Transform3D, at: Vector3, size: Vector3, paint: Color) -> void:
 				frames.add_vertex(face * (at + p * size))
 
 
-func build_stoop(face: Transform3D, x: float, threshold: float, opening: float, width: float) -> void:
+func build_stoop(face: Transform3D, x: float, threshold: float, opening: float, width: float) -> float:
 	var point := face * Vector3(x, 0, 1.50)
 	var terrain: float = ground.call(point.x, point.z) - face.origin.y
 	var lift := threshold - terrain
 	if lift < .07 or lift > 1.12:
-		return
+		return .85
 	var porch := seed % 5 <= 1 and width > 5.4 and opening > 1.8
 	var cover_width := 2.30 if porch else 1.39
 	var depth := .82 if porch else .46
@@ -379,7 +386,7 @@ func build_stoop(face: Transform3D, x: float, threshold: float, opening: float, 
 			Vector3(cover_width, top - terrain + .12, reach - inner), STONE if not porch else Color("#a09784"))
 	front_path(face, x, depth + count * .25)
 	if not porch:
-		return
+		return depth + count * .25
 	var roof_y := threshold + opening + .24
 	if seed % 3 == 0:
 		for side in [-1.0, 1.0]:
@@ -394,6 +401,7 @@ func build_stoop(face: Transform3D, x: float, threshold: float, opening: float, 
 		block(frames, face, Vector3(post, threshold + .68, .42), Vector3(.065, .078, .72), trim)
 		for i in 2:
 			block(frames, face, Vector3(post, threshold + .32, .24 + .24 * i), Vector3(.047, .64, .046), trim)
+	return depth + count * .25
 
 
 func front_path(face: Transform3D, x: float, reach: float) -> void:

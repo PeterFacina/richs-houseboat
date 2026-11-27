@@ -40,6 +40,7 @@ const Pines = preload("res://lamure_pines.gd")
 var bounds := Rect2()
 var layout: Dictionary
 var trails: Array[PackedVector2Array] = []
+var pedestrian_edges := PackedVector3Array()
 var groves: Array[PackedVector2Array] = []
 var lookout := PackedVector2Array()
 var ground: Callable
@@ -167,6 +168,11 @@ func build(parent: Node3D, survey: PackedFloat32Array, marina: Marina, pines: Pi
 		seat.name = "RiverbankBench%d" % (index + 1)
 		seat.rotation.y = -.66 if index < 4 else -.16
 	build_river_walk(park, stone_scan, parent.concrete_scan)
+	# Keep the promenade and lookout routes on the finished park paths.
+	for index in [0, 1, 2, 3]:
+		record_walk(trails[index], .041)
+	record_walk(survey_points([Vector2(17, 17.25), Vector2(22, 16.75), Vector2(26, 14.8),
+		Vector2(26, 13.2), Vector2(39, 13.2), Vector2(52, 13.5), Vector2(65, 13.1)]), .059)
 	build_waterfront_parking(park)
 	build_terraces(park, stone)
 	build_waterfront_stones(park, stone, clearance)
@@ -241,6 +247,17 @@ func build_river_walk(park: Node3D, grit: Texture2D, concrete: Texture2D) -> voi
 	var walk := Kit.mesh_at(park, path_mesh.commit(), Vector3.ZERO, finish)
 	walk.name = "GazeboRiverWalk"
 	walk.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+
+
+func record_walk(path: PackedVector2Array, lift: float) -> void:
+	for i in range(1, path.size()):
+		var divisions := maxi(1, ceili(path[i - 1].distance_to(path[i]) / 2.0))
+		var from := on_land(path[i - 1]) + Vector3.UP * lift
+		for j in range(1, divisions + 1):
+			var to := on_land(path[i - 1].lerp(path[i], float(j) / divisions)) + Vector3.UP * lift
+			pedestrian_edges.append(from)
+			pedestrian_edges.append(to)
+			from = to
 
 
 func build_lookout_paving(surface: SurfaceTool) -> void:

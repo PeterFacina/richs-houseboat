@@ -14,6 +14,8 @@ The campaign save records one Dab pen. The host checks pickup and drop requests 
 
 The host advances the saved calendar at the existing rate and includes it with regular ship updates. Guests use the host's calendar for the sky, water, exterior lighting and clock display. The host can use N to advance to the next 19:00 or 08:00. Pine Reach's Go at dusk trip advances to the next 19:00. These advances also pass time for calendar-driven activities.
 
+The host simulates Deep River residents. The existing ship stream carries resident positions, headings and walking velocities. The reliable initial ship state seeds late joiners. Guests render the received positions and leave route decisions to the host. See [Deep River residents](GAMEPLAY-POLISH.md#deep-river-residents).
+
 ## Compatibility across the file rename
 
 The world scene retains the root name `OttawaRiverFishing`, and the campaign sets its existing `RiverCampaign` and `Crew` node paths during setup. Godot RPC routing depends on matching scene-tree paths. Method names and RPC annotations, state payloads, profiles and reward contracts keep their existing identifiers. The `game_world` filename describes the source role independently of those paths.

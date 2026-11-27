@@ -18,6 +18,8 @@ var lawns: Dictionary
 var tree_grid: Dictionary
 var walk_cuts: Dictionary
 var landing_cuts: Dictionary
+# Centre lines of the surfaces actually emitted, including trimmed corners.
+var pedestrian_edges := PackedVector3Array()
 
 
 static func edges_for(road: int) -> Array:
@@ -133,6 +135,8 @@ func emit_section(span, section: Array, start: float, finish: float) -> void:
 			add_row(curbs, cell, previous_curb, curb_row, previous_station, station, side, Color.BLACK)
 		var middle := (previous_station + station) * .5
 		if not previous_walk.is_empty() and not walk_row.is_empty() and not is_cut(cuts, middle):
+			pedestrian_edges.append(previous_walk[1])
+			pedestrian_edges.append(walk_row[1])
 			add_row(walks, cell, previous_walk, walk_row, previous_station, station, side,
 				Color(0.0, 1.0, 0.0) if asphalt else Color.BLACK)
 		var grass := Color("#45583e")
@@ -257,6 +261,8 @@ func connect_corner(a, b, left: Array, right: Array, junction: Vector2) -> bool:
 		remember_tree_clearance(Vector2(row[1].x, row[1].z))
 		var finish := float(i) * .31
 		var asphalt: bool = (left[5] if i <= 6 else right[5]) == "asphalt"
+		pedestrian_edges.append(previous[1])
+		pedestrian_edges.append(row[1])
 		add_row(corner_walks, cell, previous, row, finish - .31, finish, side,
 			Color(0.0, float(asphalt), float(fresh)))
 	return true

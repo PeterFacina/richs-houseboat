@@ -34,6 +34,8 @@ const GRAVEL_NORMAL = preload("res://deep_river/materials/gravel_road_nor_gl_1k.
 const TILE := 44
 const PLAZA_PORTICO_TREE := Vector2(18000.5215, 13239.9229)
 var town_walkways: RoadNetwork.Walkways
+var pedestrian_entries: Array[Dictionary] = []
+var waterfront_walk := PackedVector3Array()
 
 class TerrainPatch:
 	var area: Rect2
@@ -329,6 +331,7 @@ func build(checkpoint := Callable()) -> void:
 	if meta.has("riverbank"):
 		var grass_excluded := Callable(world_grass_surface, "road_or_walk") if world_grass_surface != null else Callable()
 		park.build(self, town_canopy, waterfront, pines, ground_height, wet_clearance, riverbed, grass_excluded)
+		waterfront_walk = park.pedestrian_edges
 	if meta.has("brockhouse"):
 		BrockhouseWay.new().build(self, meta.brockhouse, ground_height, waterfront, pines)
 	pines.build(self)
@@ -881,6 +884,7 @@ func build_town(paving_texture: Texture2D, terrain: Material, brick: Texture2D,
 		world_grass_surface.index_buildings(meta)
 		world_grass_surface.driveways = buildings.driveways
 	town_walkways = roads.build_walkways(buildings.driveways, concrete_scan, asphalt_scan, terrain)
+	pedestrian_entries = buildings.residential.pedestrian_entries
 	windows = buildings.windows
 	bind_day_sky(windows)
 	add_child(town_hall)

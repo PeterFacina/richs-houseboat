@@ -55,10 +55,15 @@ var line_material: StandardMaterial3D
 var line_position := Vector3.ZERO
 var no_line := true
 var tool_grip := Transform3D.IDENTITY
+var ambient := false
+var appearance_scale := 1.0
 
 
-func setup(display_name: String, color_index: int) -> void:
-	var canvas := Kit.paint(Color("#425250"), .94)
+func setup(display_name: String, color_index: int, outfit := Color.TRANSPARENT, pedestrian := false) -> void:
+	ambient = pedestrian
+	if ambient:
+		appearance_scale = [.92, 1.01, .96, 1.07, 1.0, 1.04, .94][color_index % 7]
+	var canvas := Kit.paint(outfit if outfit.a > 0.0 else Color("#425250"), .94)
 	var seam := Kit.paint(Color("#303c3a"), .86)
 	var jacket := Kit.paint([Color("#b3683e"), Color("#91834d"), Color("#517f83"), Color("#a0564f")][color_index % 4], .83)
 	var edge := Kit.paint(Color("#d1c19a"), .71)
@@ -67,7 +72,7 @@ func setup(display_name: String, color_index: int) -> void:
 	var boot_paint := Kit.paint(Color("#262c28"), .78)
 	var glove := Kit.paint(Color("#333b34"), .93)
 	var skin := Kit.paint([Color("#c39777"), Color("#986d53"), Color("#bc8768")][color_index % 3], .86)
-	var cap := Kit.paint(Color("#52635c"), .88)
+	var cap := Kit.paint(outfit.darkened(.22) if outfit.a > 0.0 else Color("#52635c"), .88)
 	body = Node3D.new()
 	add_child(body)
 	body.position.y = .88
@@ -93,10 +98,14 @@ func setup(display_name: String, color_index: int) -> void:
 	for side in [-1.0, 1.0]:
 		Tools.shell(head, Vector3(side * .110, .066, -.005), Vector3(.043, .069, .039), skin)
 		Tools.shell(head, Vector3(side * .045, .085, -.101), Vector3(.031, .015, .012), boot_paint)
-	Tools.shell(head, Vector3(0, .159, .010), Vector3(.229, .136, .249), cap)
-	var brim := Tools.shell(head, Vector3(0, .128, -.123), Vector3(.192, .029, .227), cap)
-	brim.rotation.x = .14
-	Kit.box_at(head, Vector3(0, .164, -.105), Vector3(.056, .033, .01), edge)
+	if ambient and color_index % 3 == 1:
+		var hair := Kit.paint([Color("#432e26"), Color("#746252"), Color("#aaa19b")][floori(color_index / 3.0) % 3], .91)
+		Tools.shell(head, Vector3(0, .16, .023), Vector3(.216, .10, .205), hair)
+	else:
+		Tools.shell(head, Vector3(0, .159, .010), Vector3(.229, .136, .249), cap)
+		var brim := Tools.shell(head, Vector3(0, .128, -.123), Vector3(.192, .029, .227), cap)
+		brim.rotation.x = .14
+		Kit.box_at(head, Vector3(0, .164, -.105), Vector3(.056, .033, .01), edge)
 	for side in [-1.0, 1.0]:
 		arms.append(limb(.072, .059, canvas))
 		arms.append(limb(.052, .029, canvas))
@@ -109,6 +118,9 @@ func setup(display_name: String, color_index: int) -> void:
 		legs.append(limb(.085, .061, denim))
 		boots.append(Tools.shell(self, Vector3.ZERO, Vector3(.136, .131, .236), boot_paint))
 	palms = free_palms
+	build_label(display_name)
+	if ambient:
+		return
 	for kind in Props.NAMES.size():
 		var prop := Props.make(self, kind, Vector3.ZERO)
 		prop.hide()
@@ -121,15 +133,6 @@ func setup(display_name: String, color_index: int) -> void:
 	rod = rod_rig.rod
 	rod_guides = rod_rig.guide_rings
 	rod.hide()
-	label = Label3D.new()
-	label.text = display_name
-	label.position.y = 1.93
-	label.modulate = Color("#edf0e2")
-	label.pixel_size = .0045
-	label.font_size = 31
-	label.outline_size = 5
-	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	add_child(label)
 	float_model = Node3D.new()
 	add_child(float_model)
 	float_model.top_level = true
@@ -145,6 +148,18 @@ func setup(display_name: String, color_index: int) -> void:
 	line.global_transform = Transform3D.IDENTITY
 	line.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	line.hide()
+
+
+func build_label(display_name: String) -> void:
+	label = Label3D.new()
+	label.text = display_name
+	label.position.y = 1.93
+	label.modulate = Color("#edf0e2")
+	label.pixel_size = .0045
+	label.font_size = 31
+	label.outline_size = 5
+	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	add_child(label)
 
 
 func limb(top: float, bottom: float, paint: Material) -> MeshInstance3D:
@@ -187,7 +202,7 @@ func apply_sample(sample: Dictionary, vessel: Node3D, delta: float, clock: float
 	riding = sample.onboard
 	established = true
 	global_position = vessel.to_global(relative) if riding else relative
-	var base := Basis(Vector3.UP, turn)
+	var base := Basis(Vector3.UP, turn).scaled(Vector3.ONE * appearance_scale)
 	global_basis = vessel.global_basis * base if riding else base
 	var animation: Dictionary = sample.get("animation", {})
 	if animation.get("seat", "") == "bed":
@@ -241,8 +256,9 @@ func apply_sample(sample: Dictionary, vessel: Node3D, delta: float, clock: float
 	body.rotation += Idle.torso(idle_state, idle_weight)
 	head.rotation = Vector3(pointing * .54, 0, 0) + Idle.head(idle_state, idle_weight)
 	update_limbs(animation, vessel, stage, clock)
-	update_shared_actions(animation, delta)
-	update_angling(animation, delta, clock, camera)
+	if not ambient:
+		update_shared_actions(animation, delta)
+		update_angling(animation, delta, clock, camera)
 
 
 func update_limbs(animation: Dictionary, vessel: Node3D, stage: int, clock: float) -> void:
@@ -261,9 +277,10 @@ func update_limbs(animation: Dictionary, vessel: Node3D, stage: int, clock: floa
 	var grab: float = animation.get("reach", 0.0)
 	var lift: float = animation.get("scoop", 0.0)
 	var hold := Basis.from_euler(Vector3(.30 + pointing * .42 + cast + bend * .62, -.08, -.11))
-	if not animation.has("rod_pose"):
-		rod.transform = Transform3D(hold, Vector3(.164, 1.094, -.35) + Vector3(0, bend * .084, 0))
-	rod.visible = show_rod
+	if not ambient:
+		if not animation.has("rod_pose"):
+			rod.transform = Transform3D(hold, Vector3(.164, 1.094, -.35) + Vector3(0, bend * .084, 0))
+		rod.visible = show_rod
 	for index in rod_guides.size():
 		rod_guides[index].rotation.x = -bend * (.036 + .028 * index) - absf(cast) * .021
 	for index in 2:
@@ -305,6 +322,10 @@ func update_limbs(animation: Dictionary, vessel: Node3D, stage: int, clock: floa
 		elif action == "lamp":
 			hand = Vector3(side * .14, 1.14, -.40)
 		hand += Vector3(.04 * side, .065, -.13) * grab
+		if ambient:
+			hand += Idle.hand(idle_state, side, idle_weight)
+			palms[index].transform = Transform3D(Basis(Vector3.RIGHT, -PI * .5), hand)
+			hand = palms[index].transform * Hands.wrist(palms[index])
 		var upper := elbow(shoulder, hand, Vector3(side * .76, -.68, .19), .292, .274)
 		bind_segment(arms[index * 2], shoulder, upper)
 		bind_segment(arms[index * 2 + 1], upper, hand)
