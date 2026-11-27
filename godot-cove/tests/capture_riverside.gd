@@ -33,6 +33,12 @@ func capture() -> void:
 		DisplayServer.window_set_size(Vector2i(1280, 720))
 		for frame in 4:
 			await process_frame
+	elif OS.get_cmdline_user_args().has("--capture-resolution=1080"):
+		game.pause_menu.set_fullscreen(false, false)
+		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED)
+		DisplayServer.window_set_size(Vector2i(1920, 1080))
+		for frame in 4:
+			await process_frame
 	game.graphics.level = 0 if OS.get_cmdline_user_args().has("--preset=performance") else (2 if OS.get_cmdline_user_args().has("--preset=scenic") else 1)
 	game.graphics.apply(game.river, game.eye)
 	if OS.get_cmdline_user_args().has("--riverside-grass-prototype") or OS.get_cmdline_user_args().has("--capture-clear-weather"):
@@ -98,9 +104,12 @@ func capture() -> void:
 		game.river.update_water(view[1], 120.0)
 		if game.river.world_grass != null:
 			game.river.world_grass.build_budget_usec = 20000
+			var first_near := -1
 			for frame in 3600:
 				game.river.update_grass(view[1], game.graphics.level)
 				await process_frame
+				if first_near == -1 and game.river.world_grass.ready_near():
+					first_near = frame + 1
 				if game.river.world_grass.ready_all():
 					break
 				if frame > 0 and frame % 600 == 0:
@@ -110,7 +119,8 @@ func capture() -> void:
 			game.river.world_grass.build_budget_usec = game.river.world_grass.BUILD_BUDGET_USEC
 			print("WORLD_GRASS_CAPTURE ", view[0], " chunks=", game.river.world_grass.active.size(),
 				" near_ready=", game.river.world_grass.ready_near(),
-				" all_ready=", game.river.world_grass.ready_all())
+				" all_ready=", game.river.world_grass.ready_all(),
+				" first_near_frame=", first_near)
 			verify_instanced_grass(game, view[0])
 		for frame in 8:
 			await process_frame
@@ -216,13 +226,20 @@ func verify_instanced_grass(game: Node3D, label: String) -> void:
 
 func benchmark_streaming(game: Node3D, view: Array, output: String) -> void:
 	var direction := Vector2(view[2].x - view[1].x, view[2].z - view[1].z).normalized()
-	for pace in [2.0, 15.0]:
+	var extended := OS.get_cmdline_user_args().has("--phase2-extended")
+	for pace in ([2.0, 5.0, 15.0, 25.0, -25.0] if extended else [2.0, 15.0]):
+		var speed: float = absf(pace)
 		var start := Vector2(view[1].x, view[1].z)
-		var course := road_course(game.river.world_grass_surface, start) if pace == 15.0 else {}
+		var course := road_course(game.river.world_grass_surface, start) if speed >= 15.0 and view[0] != "from_boat" else {}
 		if not course.is_empty():
 			start = course.start
 			direction = course.direction
-		if pace == 15.0:
+		if view[0] == "from_boat":
+			direction = Vector2(1.0, 0.0)
+		if pace < 0.0:
+			start += direction * speed * 5.0
+			direction = -direction
+		if speed >= 15.0:
 			print("WORLD_GRASS_COURSE ", view[0], " road_span=", not course.is_empty(),
 				" start=", start, " direction=", direction)
 		var update_ms: Array[float] = []
@@ -230,7 +247,7 @@ func benchmark_streaming(game: Node3D, view: Array, output: String) -> void:
 		var fast_frames := 0
 		var previous := Time.get_ticks_usec()
 		for sample in 300:
-			var at: Vector2 = start + direction * pace * float(sample) / 60.0
+			var at: Vector2 = start + direction * speed * float(sample) / 60.0
 			var pose := Vector3(at.x, game.river.ground_height(at.x, at.y) + 2.0, at.y)
 			game.eye.global_position = pose
 			game.eye.look_at(pose + Vector3(direction.x * 20.0, -.7, direction.y * 20.0), Vector3.UP)
@@ -258,6 +275,9 @@ func benchmark_streaming(game: Node3D, view: Array, output: String) -> void:
 			" update_median_ms=", update_ms[150], " update_p95_ms=", update_ms[285],
 			" frame_median_ms=", frame_ms[150], " frame_p95_ms=", frame_ms[285],
 			" chunks=", game.river.world_grass.active.size(),
+			" cached=", game.river.world_grass.cached.size(),
+			" ram_mb=", Performance.get_monitor(Performance.MEMORY_STATIC) / 1048576.0,
+			" vram_mb=", Performance.get_monitor(Performance.RENDER_VIDEO_MEM_USED) / 1048576.0,
 			" near_ready=", game.river.world_grass.ready_near(),
 			" near_missing=", near_missing, "/", near_total,
 			" near_fallback=", near_fallback,
@@ -272,12 +292,29 @@ func benchmark_streaming(game: Node3D, view: Array, output: String) -> void:
 			" current=", game.river.world_grass.current.get("cell", Vector2i.ZERO),
 			" current_lod=", game.river.world_grass.current.get("lod", -1),
 			" current_index=", game.river.world_grass.current.get("index", -1))
-		if pace == 15.0:
+		if pace == 15.0 or (extended and pace == 25.0):
 			if OS.get_cmdline_user_args().has("--verify-all-grass"):
 				verify_instanced_grass(game, view[0] + "_drive_end")
-			var path := ProjectSettings.globalize_path(output.path_join(view[0] + "_drive_end.png"))
+			var suffix := "_highspeed_end.png" if pace == 25.0 else "_drive_end.png"
+			var path := ProjectSettings.globalize_path(output.path_join(view[0] + suffix))
 			var frame := root.get_viewport().get_texture().get_image()
 			print("CAPTURE ", path, " ", frame.get_width(), "x", frame.get_height(), " ", frame.save_png(path))
+	if extended:
+		var teleported := Vector2(18240.0, 13170.0)
+		var first_near := -1
+		var started := Time.get_ticks_usec()
+		for frame in 120:
+			var pose := Vector3(teleported.x, game.river.ground_height(teleported.x, teleported.y) + 2.0,
+				teleported.y)
+			game.eye.global_position = pose
+			game.river.update_grass(pose, game.graphics.level)
+			await process_frame
+			if first_near == -1 and game.river.world_grass.ready_near():
+				first_near = frame + 1
+		print("WORLD_GRASS_TELEPORT ", view[0], " near_ready_frame=", first_near,
+			" chunks=", game.river.world_grass.active.size(),
+			" cached=", game.river.world_grass.cached.size(),
+			" wall_ms=", float(Time.get_ticks_usec() - started) / 1000.0)
 
 
 func road_course(surface, near: Vector2) -> Dictionary:

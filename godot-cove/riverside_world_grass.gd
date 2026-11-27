@@ -11,6 +11,10 @@ const RADII := [[18.0, 32.0, 52.0], [22.0, 42.0, 69.0], [28.0, 50.0, 115.0]]
 const BUILD_BUDGET_USEC := 1500
 const FALLBACK_LOD := 1
 const CACHE_LIMIT := 64
+const LOAD_MARGIN := 4.0
+const UNLOAD_MARGIN := 12.0
+const AHEAD_RADIUS := 24.0
+const MAX_LOOKAHEAD := 36.0
 
 var surface
 var mesh: Mesh
@@ -37,6 +41,7 @@ var profile_upload_usec := 0
 var profile_rebuild_usec := 0
 var profile_completed := 0
 var profile_aborted := 0
+var profile_height_cache_hits := 0
 
 
 func setup(eligibility) -> void:
@@ -75,7 +80,7 @@ func update_around(viewpoint: Vector3, preset: int) -> void:
 			moving_fast = fast
 			view_cell = Vector2i(-999999, -999999)
 		if delta.length_squared() > .0001 and delta.length_squared() < 4.0:
-			travel = delta.normalized() * (20.0 if moving_fast else 0.0)
+			travel = delta.normalized() * (minf(MAX_LOOKAHEAD, maxf(20.0, speed * 1.5)) if moving_fast else 0.0)
 		elif delta.length_squared() >= 4.0:
 			travel = Vector2.ZERO
 	last_view = position
@@ -96,11 +101,16 @@ func update_around(viewpoint: Vector3, preset: int) -> void:
 				break
 			current = waiting.pop_front()
 			current["index"] = 0
-			current["buffer"] = PackedFloat32Array()
+			current["written"] = 0
+			var count := ceili(float(GRID) / float(LOD_STEPS[current.lod]))
+			var buffer := PackedFloat32Array()
+			buffer.resize(count * count * 12)
+			current["buffer"] = buffer
 			var block: Vector2i = current.cell
 			if not tile_cache.has(block):
-				tile_cache[block] = [{}, {}]
+				tile_cache[block] = [{}, {}, {}]
 			current["tiles"] = tile_cache[block][0 if current.lod == 0 else 1]
+			current["edge_cache"] = tile_cache[block][2]
 			current["masks"] = surface.relevant_masks(Rect2(Vector2(block) * CHUNK,
 				Vector2.ONE * CHUNK).grow(Surface.CLEARANCE))
 		var cell: Vector2i = current.cell
@@ -132,16 +142,36 @@ func update_around(viewpoint: Vector3, preset: int) -> void:
 			if tile_data.state == -1:
 				current["index"] += 1
 				continue
-			var height: float = surface.grass_height(point, current.masks) if tile_data.state == 0 else \
-				tile_height(point, cell, tile, tile_data.heights)
+			var height: float
+			if tile_data.state == 0:
+				var key := local_z * GRID + local_x
+				if current.edge_cache.has(key):
+					height = current.edge_cache[key]
+					if profile_enabled:
+						profile_height_cache_hits += 1
+				else:
+					height = surface.grass_height(point, current.masks)
+					current.edge_cache[key] = height
+			else:
+				height = tile_height(point, cell, tile, tile_data.heights)
 			if is_finite(height):
 				var angle := float((seed >> 20) & 1023) / 1023.0 * TAU
 				var sine := sin(angle)
 				var cosine := cos(angle)
-				current.buffer.append_array(PackedFloat32Array([
-					cosine, 0.0, sine, point.x,
-					0.0, 1.0, 0.0, height,
-					-sine, 0.0, cosine, point.y]))
+				var at: int = current.written * 12
+				current.buffer[at] = cosine
+				current.buffer[at + 1] = 0.0
+				current.buffer[at + 2] = sine
+				current.buffer[at + 3] = point.x
+				current.buffer[at + 4] = 0.0
+				current.buffer[at + 5] = 1.0
+				current.buffer[at + 6] = 0.0
+				current.buffer[at + 7] = height
+				current.buffer[at + 8] = -sine
+				current.buffer[at + 9] = 0.0
+				current.buffer[at + 10] = cosine
+				current.buffer[at + 11] = point.y
+				current["written"] += 1
 			current["index"] += 1
 		if current.index >= total:
 			var upload_started := Time.get_ticks_usec() if profile_enabled else 0
@@ -204,7 +234,9 @@ func rebuild_targets(center: Vector2) -> void:
 	if moving_fast:
 		radii = radii.duplicate()
 		radii[0] = 12.0
-	var reach := ceili(float(radii[2]) / CHUNK) + 1
+	var load_radius := float(radii[2]) + LOAD_MARGIN
+	var unload_radius := load_radius + UNLOAD_MARGIN
+	var reach := ceili(unload_radius / CHUNK) + 1
 	desired.clear()
 	var pending := []
 	for z in range(view_cell.y - reach, view_cell.y + reach + 1):
@@ -212,9 +244,17 @@ func rebuild_targets(center: Vector2) -> void:
 			var cell := Vector2i(x, z)
 			var middle := (Vector2(cell) + Vector2.ONE * .5) * CHUNK
 			var distance := center.distance_to(middle)
-			if distance > float(radii[2]) + CHUNK * .7:
+			if distance > load_radius + CHUNK * .7:
+				# Keep prepared chunks through a short boundary excursion. Their
+				# visibility range still culls them outside the visual radius.
+				if active.has(cell) and distance <= unload_radius + CHUNK * .7:
+					desired[cell] = active[cell].lod
 				continue
 			var lod := 0 if distance < float(radii[0]) else (1 if distance < float(radii[1]) else 2)
+			var ahead := (middle - (center + travel)).length()
+			var approaching := moving_fast and travel.dot(middle - center) > 0.0 and ahead < AHEAD_RADIUS
+			if approaching:
+				lod = mini(lod, 1)
 			desired[cell] = lod
 			if not active.has(cell) and cached.has(cell):
 				var restored: Dictionary = cached[cell]
@@ -228,9 +268,10 @@ func rebuild_targets(center: Vector2) -> void:
 				build_lod = FALLBACK_LOD
 			if not active.has(cell) or active[cell].lod > build_lod:
 				if current.is_empty() or current.cell != cell or current.lod != build_lod:
-					var ahead := (middle - (center + travel)).length() + 8.0
-					var priority := 0 if lod == 0 and not active.has(cell) else (1 if not active.has(cell) else lod + 2)
-					pending.append({"cell": cell, "lod": build_lod, "distance": minf(distance, ahead),
+					var priority := 0 if lod == 0 and not active.has(cell) else \
+						(1 if approaching and not active.has(cell) else (2 if not active.has(cell) else lod + 3))
+					pending.append({"cell": cell, "lod": build_lod,
+						"distance": ahead if approaching else distance,
 						"priority": priority})
 	for cell: Vector2i in active.keys():
 		if not desired.has(cell):
@@ -264,12 +305,13 @@ func rebuild_targets(center: Vector2) -> void:
 
 
 func start_upload() -> void:
-	if current.buffer.is_empty():
+	if current.written == 0:
 		return
+	current.buffer.resize(current.written * 12)
 	var group := MultiMesh.new()
 	group.transform_format = MultiMesh.TRANSFORM_3D
 	group.mesh = mesh
-	group.instance_count = current.buffer.size() / 12
+	group.instance_count = current.written
 	group.buffer = current.buffer
 	var batch := MultiMeshInstance3D.new()
 	batch.multimesh = group
@@ -317,6 +359,7 @@ func reset_profile() -> void:
 	profile_rebuild_usec = 0
 	profile_completed = 0
 	profile_aborted = 0
+	profile_height_cache_hits = 0
 
 
 func ready_near() -> bool:
