@@ -38,6 +38,10 @@ func profile() -> void:
 	root.content_scale_size = benchmark_size
 	game.graphics.level = 0
 	game.graphics.apply(game.river, game.eye)
+	for argument in OS.get_cmdline_user_args():
+		if argument.begins_with("--camera-far="):
+			game.eye.far = float(argument.trim_prefix("--camera-far="))
+			print("PROFILE_CONTROL camera_far=", game.eye.far)
 	if OS.get_cmdline_user_args().has("--static-sky"):
 		game.river.landscape_environment.sky.process_mode = Sky.PROCESS_MODE_QUALITY
 		print("PROFILE_CONTROL static_sky=true")
@@ -49,6 +53,12 @@ func profile() -> void:
 				light.shadow_enabled = false
 				disabled_lights += 1
 		print("PROFILE_CONTROL shadows=false lights=", disabled_lights)
+	if OS.get_cmdline_user_args().has("--no-water"):
+		var hidden_water := hide_water_geometry(game)
+		print("PROFILE_CONTROL water=false geometry=", hidden_water)
+	if OS.get_cmdline_user_args().has("--simple-materials"):
+		var overridden_geometry := override_geometry_materials(game)
+		print("PROFILE_CONTROL simple_materials=true geometry=", overridden_geometry)
 	if OS.get_cmdline_user_args().has("--physics-step-cap-one"):
 		Engine.max_physics_steps_per_frame = 1
 	paused = false
@@ -70,6 +80,8 @@ func profile() -> void:
 		print_architecture_inventory(game)
 	for frame in 120:
 		await process_frame
+	if OS.get_cmdline_user_args().has("--mesh-inventory"):
+		print_mesh_inventory(game)
 	for argument in OS.get_cmdline_user_args():
 		if argument.begins_with("--capture="):
 			var capture_path := argument.trim_prefix("--capture=")
@@ -134,6 +146,84 @@ func profile() -> void:
 			await process_frame
 		await sample(game, variant + "_grass_off")
 	quit()
+
+
+func hide_water_geometry(game: Node3D) -> int:
+	var water_materials: Array[Material] = [game.river.near_water, game.river.far_water,
+		game.river.headpond_water]
+	var hidden := 0
+	for node in game.find_children("*", "GeometryInstance3D", true, false):
+		var geometry := node as GeometryInstance3D
+		if geometry_uses_material(geometry, water_materials):
+			geometry.hide()
+			hidden += 1
+	return hidden
+
+
+func geometry_uses_material(geometry: GeometryInstance3D, materials: Array[Material]) -> bool:
+	if geometry.material_override in materials:
+		return true
+	var mesh: Mesh = null
+	if geometry is MeshInstance3D:
+		mesh = (geometry as MeshInstance3D).mesh
+	elif geometry is MultiMeshInstance3D and (geometry as MultiMeshInstance3D).multimesh != null:
+		mesh = (geometry as MultiMeshInstance3D).multimesh.mesh
+	if mesh == null:
+		return false
+	for surface in mesh.get_surface_count():
+		if mesh.surface_get_material(surface) in materials:
+			return true
+	return false
+
+
+func override_geometry_materials(game: Node3D) -> int:
+	var simple := StandardMaterial3D.new()
+	simple.albedo_color = Color(0.55, 0.58, 0.52)
+	simple.roughness = 1.0
+	var overridden := 0
+	for node in game.find_children("*", "GeometryInstance3D", true, false):
+		var geometry := node as GeometryInstance3D
+		if not geometry.visible:
+			continue
+		geometry.material_override = simple
+		overridden += 1
+	return overridden
+
+
+func print_mesh_inventory(game: Node3D) -> void:
+	var mesh_use := {}
+	var enabled_geometry := 0
+	var enabled_mesh_instances := 0
+	var enabled_multimeshes := 0
+	var estimated_triangles := 0
+	for node in game.find_children("*", "GeometryInstance3D", true, false):
+		var geometry := node as GeometryInstance3D
+		if not geometry.visible or not geometry.is_visible_in_tree():
+			continue
+		enabled_geometry += 1
+		var mesh: Mesh = null
+		var multiplier := 1
+		if geometry is MeshInstance3D:
+			mesh = (geometry as MeshInstance3D).mesh
+			enabled_mesh_instances += 1
+		elif geometry is MultiMeshInstance3D and (geometry as MultiMeshInstance3D).multimesh != null:
+			var multimesh := (geometry as MultiMeshInstance3D).multimesh
+			mesh = multimesh.mesh
+			multiplier = multimesh.visible_instance_count if multimesh.visible_instance_count >= 0 else multimesh.instance_count
+			enabled_multimeshes += 1
+		if mesh == null:
+			continue
+		var rid := mesh.get_rid()
+		mesh_use[rid] = int(mesh_use.get(rid, 0)) + 1
+		estimated_triangles += mesh.get_faces().size() / 3 * multiplier
+	var single_use_meshes := 0
+	for uses in mesh_use.values():
+		if uses == 1:
+			single_use_meshes += 1
+	print("PROFILE_MESH_INVENTORY enabled_geometry=", enabled_geometry,
+		" mesh_instances=", enabled_mesh_instances, " multimeshes=", enabled_multimeshes,
+		" unique_mesh_resources=", mesh_use.size(), " single_use_mesh_resources=", single_use_meshes,
+		" estimated_triangles=", estimated_triangles)
 
 
 func focused_performance(game: Node3D, variant: String) -> void:

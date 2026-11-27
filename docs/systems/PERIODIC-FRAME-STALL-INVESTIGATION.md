@@ -75,3 +75,29 @@ Fresh-process full-world controls also reject two likely periodic systems:
 - all shadow-casting lights disabled: 14.63/52.60/82.89/120.53 ms.
 
 Both retain the clustered cadence. The next bisection should isolate water/ground shaders, texture/resource diversity and top-level world visibility. Renderer switching, static sky and shadow removal are not production fixes.
+
+## Mesh-resource reproduction
+
+The initiating render stall can now be reproduced without the game. The decisive variable is mesh/buffer resource diversity, not renderer selection or any single visual effect.
+
+The controlled scene holds object count (2,600), geometry (816 triangles per object, approximately 2.12 million submitted triangles), material, camera and disabled shadows constant. The only difference is whether all objects reference one mesh resource or each object owns an equivalent mesh resource:
+
+| Compatibility condition | Runs | Median range | p99 range | Worst range | >33 ms stalls per 720 frames |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| One shared mesh | 3 | 3.43–3.51 ms | 15.17–18.77 ms | 23.82–26.21 ms | 0 / 0 / 0 |
+| 2,600 unique meshes | 3 | 7.72–7.82 ms | 27.80–31.57 ms | 43.91–56.17 ms | 5 / 4 / 1 |
+
+The unique-mesh stalls occur inside `frame_pre_draw` to `frame_post_draw`, not in the post-present interval. This is a minimal reproduction of the initiating renderer stall without gameplay, physics, water, sky, shadows, texture diversity or heterogeneous materials.
+
+Vulkan Mobile reduces the same unique-mesh control to 4.73 ms median, 16.28 ms p99 and 29.32 ms worst. Its equivalent heavy shared-mesh control was 2.34/11.42/15.71 ms. Mobile therefore reduces the cost but does not remove the resource-diversity tail, consistent with the manual playtest.
+
+Full-world controls support the same diagnosis:
+
+- hiding all three water surfaces leaves 16.30/57.04/96.13/125.60 ms median/p95/p99/worst;
+- overriding 20,103 enabled geometry instances with one untextured material leaves 14.42/56.61/92.55/98.57 ms;
+- reducing the camera far plane from 2.4 km to 300 m reduces draw calls from about 2,620 to 1,222 and p99 to 63.98 ms, but preserves the cadence;
+- the heavy shared-mesh control exceeds the real view's approximately 1.8 million primitives without reproducing a stall.
+
+The root cause class is excessive independently allocated/submitted mesh buffers in the procedural world. Their render-server/driver processing periodically blocks frame submission; the subsequent physics catch-up turns the initiating render wait into a longer visible cluster. The evidence does not yet distinguish an engine render-server traversal/command-generation limit from a graphics-driver buffer-management/queue synchronization limit. Windows Performance Recorder exposes GPU and Desktop Composition profiles on this machine, but starting the GPU profile requires the unavailable system-performance tracing privilege (`0xc5585011`), so no ETW GPU queue trace is claimed.
+
+Production work should now inventory the procedural builders that emit single-use meshes, then test spatially bounded reuse or combination on the largest contributors. Any candidate must retain geographic accuracy and culling granularity, and must be compared in three fresh-process full-world runs. No production mesh merge is included in this diagnostic commit.
