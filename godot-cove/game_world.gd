@@ -164,6 +164,10 @@ var pen_drop_pressed := false
 var pen_use_pressed := false
 var tennis_previous_gear := Backpack.NONE
 var ignition_hold := -1.0
+var performance_probe_enabled := OS.get_cmdline_user_args().has("--gameplay-profile")
+var performance_probe_totals := {}
+var performance_probe_maxima := {}
+var performance_probe_ticks := 0
 var ignition_prompt: Label
 var ignition_ring: IgnitionRing
 var mower := LawnMower.new()
@@ -747,7 +751,28 @@ func camera_mode() -> String:
 	return "foot"
 
 
+func reset_performance_probe() -> void:
+	performance_probe_totals.clear()
+	performance_probe_maxima.clear()
+	performance_probe_ticks = 0
+
+
+func performance_probe_mark(section: String, elapsed: int) -> void:
+	performance_probe_totals[section] = int(performance_probe_totals.get(section, 0)) + elapsed
+	performance_probe_maxima[section] = maxi(int(performance_probe_maxima.get(section, 0)), elapsed)
+
+
+func print_performance_probe(label: String) -> void:
+	var parts: Array[String] = []
+	for section in performance_probe_totals:
+		parts.append("%s_total_ms=%.3f %s_max_ms=%.3f" % [section,
+			float(performance_probe_totals[section]) / 1000.0, section,
+			float(performance_probe_maxima[section]) / 1000.0])
+	print("PROFILE_GAMEPLAY label=", label, " ticks=", performance_probe_ticks, " ", " ".join(parts))
+
+
 func _physics_process(delta: float) -> void:
+	var probe := Time.get_ticks_usec() if performance_probe_enabled else 0
 	camera_motion.restore(eye)
 	clock += delta
 	var wants_flight := campaign.crew.mode == "solo" and cheats.flight.button_pressed and not in_aircraft()
@@ -829,6 +854,10 @@ func _physics_process(delta: float) -> void:
 			campaign.helm()
 	interact_pressed = false
 	has_input = play_input()
+	if performance_probe_enabled:
+		var now := Time.get_ticks_usec()
+		performance_probe_mark("interaction", now - probe)
+		probe = now
 	walk_multiplier = cabin.walk_scale() * campaign.crewplay.movement_scale()
 	helicopter.tick(delta, has_input and get_window().has_focus() and not cabin.busy())
 	grounded_motion = false
@@ -864,6 +893,10 @@ func _physics_process(delta: float) -> void:
 		or marina_cars.active >= 0 or mower.rider != null or campaign.amenities.seated() or campaign.dive.active)
 	marina_cars.step(delta, axis(KEY_W, KEY_S), axis(KEY_D, KEY_A), Input.is_physical_key_pressed(KEY_SPACE),
 		has_input and not cabin.busy())
+	if performance_probe_enabled:
+		var now := Time.get_ticks_usec()
+		performance_probe_mark("locomotion", now - probe)
+		probe = now
 	var viewpoint: Vector3 = vessel.center if aboard() else player.global_position
 	if vessel.visible and vessel.departed:
 		var behind := vessel.global_basis.z.slide(Vector3.UP).normalized()
@@ -883,6 +916,10 @@ func _physics_process(delta: float) -> void:
 		effects.break_surface(effects.on_water(roll, clock), .94, "splash")
 		notify_angling("A big fish rolled by the slick. Cast near the ripples.", 7.1)
 	stock.update(viewpoint)
+	if performance_probe_enabled:
+		var now := Time.get_ticks_usec()
+		performance_probe_mark("environment", now - probe)
+		probe = now
 	update_fish_finder(delta)
 	var free_hands := has_input and hands_available()
 	if rod_pressed:
@@ -896,12 +933,24 @@ func _physics_process(delta: float) -> void:
 		and rig.punch_elapsed >= rig.PUNCH_DURATION and (ground_motion if grounded_motion else player.velocity).length_squared() < .035 \
 		and not Input.is_action_pressed(&"interact") and not Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT)
 	standing_idle.tick(delta, stationary, hands_available() and backpack.equipped == Backpack.NONE and not driving)
+	if performance_probe_enabled:
+		var now := Time.get_ticks_usec()
+		performance_probe_mark("gameplay", now - probe)
+		probe = now
 	campaign.tick(delta, has_input)
 	marina_cars.hide_drivers()
 	campaign.story.tick_transport(delta, has_input and not cabin.busy())
 	shannon_job.tick(delta, play_input() and can_talk_to_shannon())
+	if performance_probe_enabled:
+		var now := Time.get_ticks_usec()
+		performance_probe_mark("campaign", now - probe)
+		probe = now
 	if not multiplayer_trip or campaign.crew.started:
 		tick_residents(delta)
+	if performance_probe_enabled:
+		var now := Time.get_ticks_usec()
+		performance_probe_mark("residents", now - probe)
+		probe = now
 	update_tennis(delta, has_input and get_window().has_focus())
 	camera_motion.update(eye, player, delta, camera_mode(),
 		ground_motion.length() if grounded_motion else 0.0, sprint_blend, crouch_camera_blend)
@@ -910,6 +959,9 @@ func _physics_process(delta: float) -> void:
 		campaign.mark_world()
 	regions.tick(delta)
 	safety.tick(delta)
+	if performance_probe_enabled:
+		performance_probe_mark("presentation", Time.get_ticks_usec() - probe)
+		performance_probe_ticks += 1
 
 
 func tick_residents(delta: float) -> void:

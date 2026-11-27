@@ -50,6 +50,44 @@ var ground: Callable
 var park_edges := PackedVector3Array()
 var town_edges := PackedVector3Array()
 var moving_bodies: Array[RID] = []
+var profile_enabled := OS.get_cmdline_user_args().has("--resident-profile")
+var profile_ticks := 0
+var profile_prepare_usec := 0
+var profile_simulate_usec := 0
+var profile_display_usec := 0
+var profile_tick_max_usec := 0
+var profile_simulate_max_usec := 0
+var profile_near_simulations := 0
+var profile_far_simulations := 0
+var profile_planning_slots := 0
+
+
+func reset_profile() -> void:
+	profile_ticks = 0
+	profile_prepare_usec = 0
+	profile_simulate_usec = 0
+	profile_display_usec = 0
+	profile_tick_max_usec = 0
+	profile_simulate_max_usec = 0
+	profile_near_simulations = 0
+	profile_far_simulations = 0
+	profile_planning_slots = 0
+	routes.reset_profile()
+
+
+func print_profile(label: String) -> void:
+	print("PROFILE_RESIDENT label=", label, " ticks=", profile_ticks,
+		" tick_total_ms=", float(profile_prepare_usec + profile_simulate_usec + profile_display_usec) / 1000.0,
+		" tick_max_ms=", float(profile_tick_max_usec) / 1000.0,
+		" prepare_ms=", float(profile_prepare_usec) / 1000.0,
+		" simulate_ms=", float(profile_simulate_usec) / 1000.0,
+		" simulate_max_ms=", float(profile_simulate_max_usec) / 1000.0,
+		" display_ms=", float(profile_display_usec) / 1000.0,
+		" near_simulations=", profile_near_simulations, " far_simulations=", profile_far_simulations,
+		" planning_slots=", profile_planning_slots, " clear_calls=", routes.profile_clear_calls,
+		" clear_ms=", float(routes.profile_clear_usec) / 1000.0,
+		" recheck_calls=", routes.profile_recheck_calls,
+		" recheck_ms=", float(routes.profile_recheck_usec) / 1000.0)
 
 
 func setup(edges: PackedVector3Array, waterfront: PackedVector3Array, homes: Array[Dictionary],
@@ -125,10 +163,14 @@ func prepare(spatial: PhysicsDirectSpaceState3D) -> void:
 
 func tick(delta: float, work_minutes: float, camera: Camera3D, clock: float, peers: Array[Dictionary],
 		authoritative: bool, incoming: PackedVector3Array) -> void:
+	var tick_started := Time.get_ticks_usec() if profile_enabled else 0
 	if authoritative:
 		var space := get_world_3d().direct_space_state
 		if not initialized:
+			var prepare_started := Time.get_ticks_usec() if profile_enabled else 0
 			prepare(space)
+			if profile_enabled:
+				profile_prepare_usec += Time.get_ticks_usec() - prepare_started
 		if initialized:
 			routes.recheck_blocked_links(delta, space)
 			frame = (frame + 1) % 4
@@ -137,8 +179,22 @@ func tick(delta: float, work_minutes: float, camera: Camera3D, clock: float, pee
 				var near_player := is_near_player(resident.feet, camera.global_position, peers)
 				var can_plan := frame == i % 4
 				if near_player or can_plan:
+					var simulate_started := Time.get_ticks_usec() if profile_enabled else 0
 					simulate(resident, delta if near_player else delta * 4.0, work_minutes, camera, peers, space, can_plan)
+					if profile_enabled:
+						var elapsed := Time.get_ticks_usec() - simulate_started
+						profile_simulate_usec += elapsed
+						profile_simulate_max_usec = maxi(profile_simulate_max_usec, elapsed)
+						profile_near_simulations += int(near_player)
+						profile_far_simulations += int(not near_player)
+						profile_planning_slots += int(can_plan)
+				var display_started := Time.get_ticks_usec() if profile_enabled else 0
 				display(i, resident.feet, resident.movement, resident.yaw, camera.global_position, delta, clock)
+				if profile_enabled:
+					profile_display_usec += Time.get_ticks_usec() - display_started
+		if profile_enabled:
+			profile_ticks += 1
+			profile_tick_max_usec = maxi(profile_tick_max_usec, Time.get_ticks_usec() - tick_started)
 		return
 
 	for i in residents.size():

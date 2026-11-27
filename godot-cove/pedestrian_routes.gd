@@ -15,6 +15,18 @@ var query := PhysicsShapeQueryParameters3D.new()
 var crossing_count := 0
 var blocked_edges: Dictionary[Vector2i, float] = {}
 var block_clock := 0.0
+var profile_enabled := OS.get_cmdline_user_args().has("--resident-profile")
+var profile_clear_calls := 0
+var profile_clear_usec := 0
+var profile_recheck_calls := 0
+var profile_recheck_usec := 0
+
+
+func reset_profile() -> void:
+	profile_clear_calls = 0
+	profile_clear_usec = 0
+	profile_recheck_calls = 0
+	profile_recheck_usec = 0
 
 
 func build(edges: PackedVector3Array, waterfront: PackedVector3Array) -> void:
@@ -173,12 +185,17 @@ func safe_grade(from: Vector3, to: Vector3, ground: Callable) -> bool:
 
 
 func clear(space: PhysicsDirectSpaceState3D, from: Vector3, to: Vector3, height := .88) -> bool:
+	var started := Time.get_ticks_usec() if profile_enabled else 0
 	query.transform.origin = from + Vector3.UP * height
 	query.motion = to - from
 	var travel := space.cast_motion(query)
 	query.transform.origin = to + Vector3.UP * height
 	query.motion = Vector3.ZERO
-	return travel[0] >= 1.0 and space.intersect_shape(query, 1).is_empty()
+	var result := travel[0] >= 1.0 and space.intersect_shape(query, 1).is_empty()
+	if profile_enabled:
+		profile_clear_calls += 1
+		profile_clear_usec += Time.get_ticks_usec() - started
+	return result
 
 
 func block_link(a: int, b: int) -> void:
@@ -188,6 +205,7 @@ func block_link(a: int, b: int) -> void:
 
 
 func recheck_blocked_links(delta: float, space: PhysicsDirectSpaceState3D) -> void:
+	var started := Time.get_ticks_usec() if profile_enabled else 0
 	block_clock += delta
 	# Probe at most one due link per physics tick.
 	var due := Vector2i(-1, -1)
@@ -196,6 +214,9 @@ func recheck_blocked_links(delta: float, space: PhysicsDirectSpaceState3D) -> vo
 			due = edge
 			break
 	if due.x < 0:
+		if profile_enabled:
+			profile_recheck_calls += 1
+			profile_recheck_usec += Time.get_ticks_usec() - started
 		return
 	var a := points[due.x]
 	var b := points[due.y]
@@ -204,3 +225,6 @@ func recheck_blocked_links(delta: float, space: PhysicsDirectSpaceState3D) -> vo
 		blocked_edges.erase(due)
 	else:
 		blocked_edges[due] = block_clock + BLOCK_RECHECK
+	if profile_enabled:
+		profile_recheck_calls += 1
+		profile_recheck_usec += Time.get_ticks_usec() - started
