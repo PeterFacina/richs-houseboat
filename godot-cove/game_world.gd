@@ -386,6 +386,22 @@ func _ready() -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	if multiplayer_trip:
 		open_multiplayer_lobby()
+	if is_instance_valid(loading_layer) and river.world_grass != null:
+		await advance_loading("Preparing nearby grass")
+		var grass = river.world_grass
+		var original_budget: int = grass.build_budget_usec
+		grass.build_budget_usec = 50000
+		var grass_started := Time.get_ticks_msec()
+		for frame in 1800:
+			river.update_grass(eye.global_position, graphics.level)
+			if grass.ready_near() or Time.get_ticks_msec() - grass_started >= 30000:
+				break
+			await get_tree().process_frame
+		grass.build_budget_usec = original_budget
+		if OS.get_cmdline_user_args().has("--profile-grass"):
+			print("ARCH_PRELOAD elapsed_ms=", Time.get_ticks_msec() - grass_started,
+				" near_ready=", grass.ready_near(), " active=", grass.active.size(),
+				" waiting=", grass.waiting.size(), " cache_loaded=", grass.profile_cache_loaded)
 	if is_instance_valid(loading_layer):
 		loading_layer.hide()
 		loading_layer.queue_free()
