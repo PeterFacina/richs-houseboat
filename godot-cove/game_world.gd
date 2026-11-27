@@ -386,6 +386,32 @@ func _ready() -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	if multiplayer_trip:
 		open_multiplayer_lobby()
+	if is_instance_valid(loading_layer) and river.world_grass != null:
+		await advance_loading("Preparing all marina grass")
+		var grass = river.world_grass
+		var original_budget: int = grass.build_budget_usec
+		grass.build_budget_usec = 100000
+		var grass_started := Time.get_ticks_msec()
+		while not grass.ready_all():
+			river.update_grass(eye.global_position, graphics.level)
+			await get_tree().process_frame
+		grass.build_budget_usec = original_budget
+		if OS.get_cmdline_user_args().has("--profile-grass"):
+			print("MARINA_GRASS_PRELOAD elapsed_ms=", Time.get_ticks_msec() - grass_started,
+				" ready_all=", grass.ready_all(), " active=", grass.active.size(),
+				" desired=", grass.desired.size(), " cache_loaded=", grass.profile_cache_loaded,
+				" ready_loaded=", grass.profile_ready_loaded, " compact_loaded=",
+				grass.profile_compact_loaded, " bundled_loaded=", grass.profile_bundled_loaded,
+				" disk_ms=", float(grass.profile_disk_usec) / 1000.0,
+				" decompress_ms=", float(grass.profile_decompress_usec) / 1000.0,
+				" reconstruct_ms=", float(grass.profile_reconstruct_usec) / 1000.0,
+				" queue_ms=", float(grass.profile_queue_usec) / 1000.0,
+				" queue_max_ms=", float(grass.profile_queue_max_usec) / 1000.0,
+				" result_wait_ms=", float(grass.profile_result_wait_usec) / 1000.0,
+				" result_wait_max_ms=", float(grass.profile_result_wait_max_usec) / 1000.0,
+				" upload_ms=", float(grass.profile_upload_usec) / 1000.0,
+				" activation_ms=", float(grass.profile_activation_usec) / 1000.0,
+				" generation_ms=", float(grass.profile_generate_usec) / 1000.0)
 	if is_instance_valid(loading_layer):
 		loading_layer.hide()
 		loading_layer.queue_free()
