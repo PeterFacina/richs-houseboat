@@ -8,6 +8,8 @@ uniform sampler2D town_ground : source_color, filter_linear_mipmap_anisotropic, 
 uniform sampler2D riverbank : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
 uniform sampler2D grass_scan : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
 uniform sampler2D grass_normal : filter_linear_mipmap_anisotropic, repeat_enable;
+uniform bool riverside_profile = false;
+uniform vec2 riverside_center = vec2(0.0);
 uniform sampler2D lamure_litter : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
 uniform vec4 town_bounds = vec4(0.0);
 uniform sampler2D town_paving : filter_linear, repeat_disable;
@@ -144,6 +146,24 @@ void fragment() {
 		}
 	}
 	float detail = grass * (1.0 - smoothstep(42.0, 110.0, length(VERTEX)));
+	if (riverside_profile) {
+		float local = 1.0 - smoothstep(155.0, 195.0, distance(p, riverside_center));
+		vec3 photographed = texture(grass_scan, region / 2.4).rgb;
+		float blades_light = material_luminance(photographed);
+		float broad = patch(p * .065 + 18.7);
+		float fine = patch(p * 1.17 + 5.2);
+		vec3 meadow = mix(vec3(.255, .34, .16), vec3(.46, .49, .25),
+			clamp(broad * .57 + blades_light * .33 + fine * .10, 0.0, 1.0));
+		meadow *= .74 + blades_light * .55;
+		meadow += (photographed - vec3(blades_light)) * .28;
+		float soil_grain = smoothstep(.58, .77, fine * .72 + blades_light * .28);
+		meadow = mix(meadow, soil * .68, soil_grain * .21);
+		meadow = mix(meadow, photographed * vec3(.78, 1.10, .70), .46);
+		meadow *= .79 + broad * .38;
+		float autumn = smoothstep(.62, .84, broad * .65 + fine * .35);
+		meadow = mix(meadow, vec3(.42, .395, .19), autumn * .19);
+		ALBEDO = mix(ALBEDO, meadow, smoothstep(.09, .74, grass) * local * .97);
+	}
 	if (detail > .005) {
 		vec2 relief = texture(grass_normal, region / 1.85).rg * 2.0 - 1.0;
 		vec3 tangent = normalize(VIEW_MATRIX[0].xyz - NORMAL * dot(VIEW_MATRIX[0].xyz, NORMAL));
