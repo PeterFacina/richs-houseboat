@@ -30,6 +30,7 @@ var session_id := ""
 
 func setup(owner_game: Node3D) -> void:
 	game = owner_game
+	apply_requested_vsync()
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	layer = 100
 	output_directory = requested_output_directory()
@@ -57,6 +58,7 @@ func setup(owner_game: Node3D) -> void:
 	previous_resource_count = Performance.get_monitor(Performance.OBJECT_RESOURCE_COUNT)
 	write_session_metadata()
 	print("LIVE_RECORDER ready key=F9 output=", output_directory)
+	print("LIVE_RECORDER display vsync=", DisplayServer.window_get_vsync_mode(), " max_fps=", Engine.max_fps)
 
 
 func _input(event: InputEvent) -> void:
@@ -200,6 +202,14 @@ func requested_output_directory() -> String:
 	return ProjectSettings.globalize_path("user://performance-incidents")
 
 
+func apply_requested_vsync() -> void:
+	for argument in OS.get_cmdline_user_args():
+		if argument == "--performance-vsync=enabled":
+			DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_ENABLED)
+		elif argument == "--performance-vsync=disabled":
+			DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
+
+
 func write_session_metadata() -> void:
 	var path := output_directory.path_join("session-%s.json" % session_id)
 	var metadata := {
@@ -210,6 +220,8 @@ func write_session_metadata() -> void:
 		"rendering_device": RenderingServer.get_video_adapter_name(),
 		"os": OS.get_name(),
 		"command_line": OS.get_cmdline_args(),
+		"effective_vsync_mode": DisplayServer.window_get_vsync_mode(),
+		"effective_max_fps": Engine.max_fps,
 		"pre_frames": PRE_FRAMES,
 		"post_frames": POST_FRAMES,
 		"marker_key": "F9",

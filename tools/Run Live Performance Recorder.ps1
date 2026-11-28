@@ -1,6 +1,12 @@
 param(
     [ValidateSet('compatibility', 'mobile')]
-    [string]$Renderer = 'compatibility'
+    [string]$Renderer = 'compatibility',
+
+    [ValidateSet('saved', 'enabled', 'disabled')]
+    [string]$VSync = 'saved',
+
+    [ValidateSet(0, 60, 90, 120)]
+    [int]$MaxFps = 0
 )
 
 $taskRoot = Split-Path -Parent $PSScriptRoot
@@ -23,8 +29,12 @@ $rendererArguments = if ($Renderer -eq 'mobile') {
 } else {
     @('--rendering-method', 'gl_compatibility')
 }
-$arguments = @('--path', $projectPath) + $rendererArguments + @(
-    '--', '--live-performance-recorder', "--performance-output=$output"
+$displayArguments = @('--max-fps', [string]$MaxFps)
+if ($VSync -eq 'disabled') {
+    $displayArguments += '--disable-vsync'
+}
+$arguments = @('--path', $projectPath) + $rendererArguments + $displayArguments + @(
+    '--', '--live-performance-recorder', "--performance-output=$output", "--performance-vsync=$VSync"
 )
 $game = Start-Process -FilePath $engine -ArgumentList (($arguments | ForEach-Object {
     if ($_ -match '\s') { '"' + $_ + '"' } else { $_ }

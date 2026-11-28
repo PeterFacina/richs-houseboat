@@ -162,3 +162,45 @@ Resource count is unchanged on the initiating frames and static-memory changes a
 Two frames must be excluded from gameplay diagnosis. Frames 10233 and 10763 immediately follow completion of incident-file serialization and each records an approximately 120 ms pause plus an approximately 2.72 MB static-memory decrease. These are recorder-induced file-write/cleanup artifacts, not instances of the original game stall.
 
 This session identifies the initiating subsystem boundary but not the exact lower-level operation. The live incidents support a render-server/driver/presentation synchronization wait followed by physics catch-up; they do not yet distinguish render-server command generation, driver queue/buffer management, or presentation synchronization. A production optimization remains unjustified. The smallest next diagnostic step is lower-level timing at that boundary (ETW/PresentMon or an instrumented engine build where tracing privilege is available), not another content optimization.
+
+## Elevated rendering-boundary trace
+
+Windows includes WPR and exposes `CPU`, `GPU`, and `DesktopComposition` profiles on this computer. WPA, GPUView and PresentMon are not currently on `PATH`. A non-elevated `wpr -start GPU -filemode` reproduces error `0xc5585011` (`Failed to enable the policy to profile system performance`). Do not change the game or install another Godot build to address this; run the trace controller elevated.
+
+1. Start the live recorder normally with `tools\Run Live Performance Recorder.cmd`. Use `-Renderer mobile` in PowerShell only when intentionally tracing Mobile.
+2. Double-click `tools\Capture Render Boundary Trace.cmd` and approve the Windows administrator prompt. Its exact WPR start command is `wpr -start CPU -start GPU -start DesktopComposition -filemode`.
+3. Keep the trace shorter than 60 seconds. Play until a stutter, press F9 in the game, return to the elevated window and press Enter. This emits `wpr -marker RH_STUTTER_N` and records the wall-clock correlation. Repeat if useful, then type `STOP`.
+4. The exact stop command is `wpr -stop <output>\render-boundary.etl "Richs Houseboat rendering-boundary gameplay stalls"`. The script writes the ETL and `markers.csv` under a timestamped `benchmark-results/etl-*` directory.
+
+Equivalent manual elevated PowerShell commands are:
+
+```powershell
+whoami /priv | findstr /i SeSystemProfilePrivilege
+wpr -start CPU -start GPU -start DesktopComposition -filemode
+wpr -marker RH_STUTTER_1
+wpr -stop "C:\Temp\richs-houseboat-render.etl" "Richs Houseboat rendering-boundary gameplay stalls"
+```
+
+If the elevated start still returns `0xc5585011`, open `secpol.msc`, go to **Local Policies → User Rights Assignment → Profile system performance**, add the local **Administrators** group, then sign out and back in before retrying. Do not leave a failed or abandoned session active: `wpr -cancel` stops it without saving.
+
+Open the ETL in Windows Performance Analyzer and align `RH_STUTTER_N` with the F9 JSON Unix timestamp. Inspect, in order: CPU Usage (Precise) by process/thread and wait reason; D3D/Graphics queue packet submission and execution; GPU hardware queue occupancy; Present history and displayed duration; DWM/compositor activity; and disk/page-fault activity. The decisive interpretations are:
+
+- a busy Godot render thread before submission with an idle GPU indicates command generation/submission cost;
+- a sleeping Godot thread with a saturated or long-running GPU queue indicates GPU back-pressure;
+- completed GPU work followed by a blocked Present and DWM/VSync delay indicates presentation/composition;
+- a render wait first, followed by multiple physics ticks, confirms physics as catch-up rather than initiation.
+
+GPUView is optional if WPA exposes the required queues. If it is required, install only the **Windows Performance Toolkit** feature from the matching Windows ADK, then run its `Log.cmd` from an administrator command prompt immediately before the reproduction and run it again within 30–60 seconds to create `Merged.etl`. PresentMon is also optional; when available, target the actual Godot process and record QPC time so its per-present CPU busy/wait, GPU time and display latency can be aligned with ETW.
+
+### VSync and frame-cap controls
+
+The recorder launcher accepts isolated diagnostic controls and records their effective values in session metadata. It does not change project defaults:
+
+```powershell
+& '.\tools\Run Live Performance Recorder.ps1' -Renderer compatibility -VSync disabled -MaxFps 0
+& '.\tools\Run Live Performance Recorder.ps1' -Renderer compatibility -VSync disabled -MaxFps 60
+& '.\tools\Run Live Performance Recorder.ps1' -Renderer compatibility -VSync enabled  -MaxFps 0
+& '.\tools\Run Live Performance Recorder.ps1' -Renderer compatibility -VSync enabled  -MaxFps 60
+```
+
+Use at least three fresh-process matched runs per promising condition, with the same camera, resolution and play path. Compare stall frequency and p95/p99, not only median FPS. The uncapped/VSync-off condition tests queue pressure; the 60 FPS cap tests whether pacing before Present prevents queue saturation; VSync-on distinguishes compositor/display blocking. These controls are diagnostic only and must not be treated as a production fix without ETW evidence.
