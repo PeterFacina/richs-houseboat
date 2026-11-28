@@ -144,3 +144,21 @@ Run `tools\Run Live Performance Recorder.cmd` for Compatibility or add `-Rendere
 Each frame records wall time, render pre/post synchronization duration, post-render wait, physics-step count, Godot process/physics monitors, gameplay section deltas, draw/object/primitive counters, resource and node counts, static/video memory, player and camera movement, game mode, simulation clock, and recorder overhead. A companion CSV samples process CPU/memory/I/O plus total physical-disk throughput on the same Unix-millisecond timeline.
 
 Godot 4.7.2 does not expose per-frame GPU execution duration, driver queue wait reasons, pipeline compilation events, named resource allocation/free events, or per-frame disk attribution in this renderer. Session metadata records these as unavailable. Analysis must identify the first long frame in each incident and treat later multi-step physics frames as catch-up unless their script section cost independently precedes the render wait.
+
+### First marked gameplay session
+
+The first manual session captured three F9 incidents in normal `foot` gameplay. The marker is necessarily after the perceived event, so analysis correlated each marker with the nearest preceding contiguous slow-frame cluster rather than assuming the marked frame itself stalled:
+
+| Incident | Initiating cluster | Marker lag | First abnormal frame | Peak frame | State |
+| --- | --- | ---: | --- | --- | --- |
+| 1 | frames 9846–9848 | 86 frames | 60.43 ms: 28.40 ms render sync, 31.61 ms post-render wait, 2 physics steps | 222.84 ms: 144.13 ms render sync, 75.35 ms post-render wait, 8 steps | stationary player and camera |
+| 2 | frames 10452–10456 | 7–11 frames | 54.61 ms: 27.45 ms render sync, 24.52 ms post-render wait, 2 steps | 91.15 ms: 34.30 ms render sync, 55.03 ms post-render wait, 4 steps | walking |
+| 3 | frames 10739–10744 | 74–79 frames | 43.04 ms: 21.23 ms render sync, 19.94 ms post-render wait, 2 steps | 79.58 ms: 42.64 ms render sync, 34.07 ms post-render wait, 5 steps | walking |
+
+The common initiating signature is time spent across the rendering/presentation boundary while only two physics steps occur. Physics then expands to 4–8 catch-up steps on later frames. No resident, gameplay, interaction, locomotion, campaign, environment or presentation script section consistently precedes the first wait; resident processing remains small. Movement and camera input are not required because incident 1 begins while both are stationary.
+
+Resource count is unchanged on the initiating frames and static-memory changes are small. One unrelated slow frame added two resources, but that is not shared by the marked incidents. Periodic resource construction/destruction therefore has no positive live correlation yet. The available external sampler also finds no common disk signature: samples nearest the three markers reported respectively 0, 26.4 and 0.06 MB/s total disk throughput, with no process-read growth. Its approximately 1.6-second sampling interval is too coarse to rule out a very short external event, but it rules out sustained game-process reads as the common cause.
+
+Two frames must be excluded from gameplay diagnosis. Frames 10233 and 10763 immediately follow completion of incident-file serialization and each records an approximately 120 ms pause plus an approximately 2.72 MB static-memory decrease. These are recorder-induced file-write/cleanup artifacts, not instances of the original game stall.
+
+This session identifies the initiating subsystem boundary but not the exact lower-level operation. The live incidents support a render-server/driver/presentation synchronization wait followed by physics catch-up; they do not yet distinguish render-server command generation, driver queue/buffer management, or presentation synchronization. A production optimization remains unjustified. The smallest next diagnostic step is lower-level timing at that boundary (ETW/PresentMon or an instrumented engine build where tracing privilege is available), not another content optimization.
