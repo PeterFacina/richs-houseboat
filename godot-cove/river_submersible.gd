@@ -140,5 +140,4 @@ func status_text() -> String:
 	var floor_depth := river.depth_at(at)
 	return "Depth %.1f m   •   %.1f m above bottom   •   Tether %.1f / %.0f m\n%s" % [
 		-at.y, maxf(0.0, floor_depth + at.y), at.distance_to(tether_anchor), TETHER,
-		"Recorder secured. V to return to the boat." if retrieved else
-		"Recorder %.1f m away   •   WASD steer   Space / Ctrl depth   E collect   V return" % at.distance_to(destination)]
+		"Recorder secured" if retrieved else "Recorder %.1f m away" % at.distance_to(destination)]

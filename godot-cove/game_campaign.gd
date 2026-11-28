@@ -23,6 +23,8 @@ const Amenities = preload("res://boat_amenities.gd")
 
 var game: Node3D
 const XP = preload("res://progression.gd")
+const ReaperQuest = preload("res://roach_reaper_quest.gd")
+const DayCycle = preload("res://river_day_cycle.gd")
 
 var ledger := Ledger.new()
 var landings := Landings.new()
@@ -82,6 +84,7 @@ var route_map_version := ""
 var rich_underway := false
 var rich_high_bilge := false
 var rich_chat_requests := {}
+var reaper := ReaperQuest.new()
 
 
 func load_trip(game_world: Node3D) -> bool:
@@ -107,6 +110,7 @@ func setup(game_world: Node3D, new_game: bool) -> void:
 	crew.requested.connect(remote_request)
 	crew.state_received.connect(sync_guest)
 	crew.ship_received.connect(receive_ship)
+	crew.weather_received.connect(receive_weather)
 	crew.command_received.connect(receive_helm)
 	crew.result_received.connect(receive_result)
 	crew.member_left.connect(member_left)
@@ -131,6 +135,8 @@ func setup(game_world: Node3D, new_game: bool) -> void:
 	story.setup(self, new_game)
 	if houseboat.restoration_model != null:
 		houseboat.restoration_model.sync_gates(ledger.state.get("boat_gates", {}))
+	add_child(reaper)
+	reaper.setup(game, self)
 	add_child(dive)
 	dive.setup(game.river, game.eye)
 	var page := CanvasLayer.new()
@@ -269,7 +275,7 @@ func handle_modal(event: InputEventKey, key: Key) -> bool:
 	if dive.active:
 		if key == KEY_V or key == KEY_ESCAPE:
 			requested_dive = true
-		elif key == KEY_E:
+		elif event.is_action_pressed(&"interact"):
 			if not dive.take():
 				game.notify_angling("Bring the sub within 1.5 m of the recorder.", 3.2)
 		return true
@@ -369,17 +375,10 @@ func local_interact() -> bool:
 		if door != null:
 			request("door", door.get_meta("door_id"))
 			return true
-		var site := local_site()
-		if site >= 0:
-			var shop := ledger.building(site, "workshop")
-			if not shop.is_empty():
-				var orientation := landings.read_pose(shop)
-				if aiming(orientation * Vector3(0, 1.2, -1.36), 2.8, .83):
-					open_board("Workshop")
-					return true
-			if aiming(landings.sites[site].sign, 3.1, .78):
-				open_board("Jobs")
-				return true
+		var board_target := aimed_landing_board()
+		if not board_target.is_empty():
+			open_board(board_target)
+			return true
 		return false
 	if not game.driving:
 		var engine_at := deck.pump.to_global(Vector3(.13, .23, 0))
@@ -396,6 +395,16 @@ func local_interact() -> bool:
 				request("work", null)
 			return true
 	return false
+
+
+func aimed_landing_board() -> String:
+	var site := local_site()
+	if site < 0:
+		return ""
+	var shop := ledger.building(site, "workshop")
+	if not shop.is_empty() and aiming(landings.read_pose(shop) * Vector3(0, 1.2, -1.36), 2.8, .83):
+		return "Workshop"
+	return "Jobs" if aiming(landings.sites[site].sign, 3.1, .78) else ""
 
 
 func mooring_focus() -> Array:
@@ -432,10 +441,11 @@ func climb_dock_ladder() -> bool:
 	return true
 
 
-func aiming(point: Vector3, radius: float, cone: float) -> bool:
+func aiming(point: Vector3, radius: float, cone: float, target: CollisionObject3D = null) -> bool:
 	var eye: Camera3D = game.eye
 	var ray := point - eye.global_position
-	return ray.length_squared() <= radius * radius and ray.normalized().dot(-eye.global_basis.z) > cone
+	return ray.length_squared() <= radius * radius and ray.normalized().dot(-eye.global_basis.z) > cone \
+		and preload("res://interaction_sight.gd").clear(eye, point, target)
 
 
 func launch_interaction() -> String:
@@ -636,7 +646,8 @@ func tick_rich(delta: float) -> void:
 					on_deck.append(rich.hull.to_local(person.at))
 		if game.vessel == princecraft:
 			tick_princecraft_dialogue(delta, on_deck)
-	rich.tick(delta, game.clock, game.eye, see_subtitles, author and rich_aboard, on_deck)
+	rich.tick(delta, game.clock, game.eye, see_subtitles, author and rich_aboard, on_deck, author,
+		game.weather_fx.sample.y * game.weather.gameplay_strength)
 
 
 func begin_preview(id: String) -> void:
@@ -736,6 +747,8 @@ func move_person(site: int, onto_boat: bool) -> void:
 
 
 func keep_player_on_deck(boat: Boat, relative: Vector3) -> void:
+	if game.player.global_position.distance_squared_to(boat.to_global(relative)) > 9.0:
+		game.camera_motion.previous_feet = Vector3.INF
 	game.player.global_position = boat.to_global(relative)
 	game.player.reset_physics_interpolation()
 	game.player.velocity = Vector3.ZERO
@@ -762,8 +775,8 @@ func prepare_compact_boat(boat: Boat, index: int) -> void:
 	boat.center = landings.sites[index].berth
 	boat.water_check = shallow_route
 	boat.marina_check = game.river.marina_hull_clear
-	boat.water_flow = game.river.downstream
-	boat.wave_sampler = game.river.wave_height
+	boat.water_flow = game.river.boat_flow
+	boat.wave_sampler = game.river.wave_height.bind(boat.get_instance_id())
 	boat.river_engine = true
 	boat.collision_layer = 0
 	boat.hide()
@@ -907,7 +920,7 @@ func consume_power(delta: float) -> void:
 		var companion_use := 1.0 - Story.FUEL_SAVING if story.companion_aboard() else 1.0
 		state.fuel = maxf(0.0, state.fuel - delta * load * .040 * companion_use * (1.0 - skill_effect(captain, "fuel_conservation") / 100.0))
 		state.charge = minf(capacity(), state.charge + delta * load * .0035)
-	if vessel == houseboat and Story.Parts.upgrade_installed(story.state(), "solar") and game.river.last_evening < .5:
+	if vessel == houseboat and Story.Parts.upgrade_installed(story.state(), "solar") and game.river.solar_energy > .2:
 		state.charge = minf(capacity(), state.charge + delta * .0028)
 	if load > .2:
 		var motion := absf(vessel.wave_pose.y) + absf(vessel.wave_pose.z)
@@ -970,6 +983,7 @@ func tick(delta: float, has_input: bool) -> void:
 	crewplay.tick(delta)
 	amenities.tick(delta)
 	tick_rich(delta)
+	reaper.tick(delta)
 	if not crew.is_guest() and dock >= 0:
 		save_elapsed += delta
 		if save_elapsed >= 30.0:
@@ -996,7 +1010,7 @@ func remote_request(peer: int, action: String, value: Variant) -> void:
 			crew.result.rpc_id(peer, "Welcome to Deep River Marina. B opens the notebook.", STORY_ARRIVAL - story.use_guest_slot(peer), false)
 		else:
 			crew.result.rpc_id(peer, "Welcome aboard. B opens the notebook.", dock, actor_site(actor(1)) < 0)
-		crew.enter_river.rpc_id(peer, ship_packet())
+		crew.enter_river.rpc_id(peer, initial_ship_packet())
 		return
 	if crew.started:
 		perform(peer, action, value)
@@ -1065,8 +1079,14 @@ func changed(persist := true) -> void:
 	refresh_board()
 
 
+func profile_key(peer: int) -> String:
+	if peer == crew.my_id():
+		return crew.progression_secret.sha256_text()
+	return str(crew.progression_keys.get(peer, ""))
+
+
 func progression_for(peer: int) -> Dictionary:
-	var id: String = "self" if crew.is_guest() else (crew.progression_secret.sha256_text() if peer == crew.my_id() else str(crew.progression_keys.get(peer, "")))
+	var id := "self" if crew.is_guest() else profile_key(peer)
 	if id.is_empty():
 		return {}
 	if crew.is_guest():
@@ -1106,6 +1126,7 @@ func travel_progress(peer: int, kind: String, distance: float, maximum: float) -
 func snapshot_for(peer: int) -> Dictionary:
 	var snapshot := ledger.state.duplicate(false)
 	snapshot.erase("player_position")
+	snapshot.dab_pen = game.dab_pen.snapshot_for(peer)
 	var personal := progression_for(peer).duplicate(false)
 	personal.erase("events")
 	snapshot.progression = {"self": personal}
@@ -1190,6 +1211,12 @@ func perform(peer: int, action: String, value: Variant) -> void:
 		return
 	if action == Story.ACTION:
 		story.perform(peer, value, person)
+		return
+	if action == game.dab_pen.ACTION:
+		game.dab_pen.perform(peer, value, person)
+		return
+	if action == ReaperQuest.ID:
+		reaper.perform(peer, value)
 		return
 	if action.begins_with("crew_"):
 		crewplay.act(peer, action, value, person)
@@ -1829,6 +1856,7 @@ func begin_dive() -> void:
 
 
 func member_left(peer: int) -> void:
+	reaper.inside.erase(peer)
 	story.guest_slots.erase(peer)
 	story.work.erase(peer)
 	story.equipped_tools.erase(peer)
@@ -1872,15 +1900,59 @@ func receive_helm(throttle: float, rudder: float, center_wheel := false) -> void
 	remote_age = 0.0
 
 
+func advance_to_minute(minute: float) -> void:
+	if crew.is_guest():
+		return
+	var current := float(ledger.state.work_minutes)
+	var elapsed := fposmod(minute - current, DayCycle.DAY_MINUTES)
+	ledger.state.work_minutes = current + elapsed
+	game.weather.advance(ledger.state.weather, ledger.state.work_minutes, elapsed, game.player.global_position)
+	game.river.update_day_cycle(ledger.state.work_minutes)
+	changed()
+	if crew.on_server():
+		send_ship()
+		send_weather()
+
+
 func ship_packet() -> Dictionary:
 	var boat: Boat = game.vessel
 	return {"center": boat.center, "pose": boat.global_transform, "speed": boat.speed, "heading": boat.heading,
 		"throttle": boat.throttle, "throttle_cap": boat.throttle_cap, "foil": boat.foil_lift, "clock": game.clock,
 		"revision": revision, "lift": lift_amount, "bilge": ledger.state.bilge,
+		"work_minutes": ledger.state.work_minutes,
 		"charge": ledger.state.charge, "fuel": ledger.state.fuel, "deck": crewplay.moving_parts(),
 		"wallet": ledger.wallet_cents(), "pumps": marina_fuel.packet(),
 		"rich": rich.patrol_packet(), "ignition": boat.ignition, "wheel": boat.wheel_angle,
-		"mooring": boat.mooring.packet(), "departed": boat.departed}
+		"mooring": boat.mooring.packet(), "departed": boat.departed,
+		"wakes": game.river.wakes.encode(false),
+		"pedestrians": game.town_residents.snapshot() if is_instance_valid(game.town_residents)
+			else PackedVector3Array()}
+
+
+func initial_ship_packet() -> Dictionary:
+	var packet := ship_packet()
+	packet.weather = ledger.state.get("weather", {})
+	packet.wakes = game.river.wakes.encode(true)
+	return packet
+
+
+var remote_weather: Dictionary = {}
+var remote_weather_minute := -1.0
+var weather_send_in := 0.0
+var weather_sent_epoch := Vector2.INF
+
+
+func receive_weather(record: Dictionary, minute: float) -> void:
+	if crew.is_guest() and minute >= remote_weather_minute:
+		remote_weather = record
+		remote_weather_minute = minute
+
+
+func send_weather() -> void:
+	if crew.on_server() and crew.started and crew.people.size() > 1:
+		crew.share_weather.rpc(ledger.state.weather, float(ledger.state.work_minutes))
+		weather_send_in = 1.0
+		weather_sent_epoch = Vector2(ledger.state.weather.get("start", 0.0), ledger.state.weather.get("lightning", 0))
 
 
 func send_ship() -> void:
@@ -1889,6 +1961,7 @@ func send_ship() -> void:
 
 func receive_ship(packet: Dictionary) -> void:
 	if crew.mode == "guest" and int(packet.revision) >= last_guest_revision:
+		game.river.wakes.receive(packet.get("wakes", PackedVector4Array()), float(packet.clock))
 		marina_fuel.receive(packet.get("pumps", []), not remote_ship.has("pumps"))
 		remote_ship = packet
 		crewplay.update_moving_parts(packet.get("deck", {}))
@@ -1904,6 +1977,12 @@ func sync_guest(data: Dictionary, new_dock: int, new_captain: int, change: int) 
 	var was_aboard: bool = game.aboard()
 	var was_local := not first and old_dock >= 0 and local_site() == old_dock
 	var previous: Boat = game.vessel
+	if not first:
+		data.work_minutes = maxf(float(data.work_minutes), float(ledger.state.work_minutes))
+	if not data.has("weather"):
+		data.weather = {}
+	if not data.has("dab_pen"):
+		data.dab_pen = {}
 	ledger.state = data
 	story.normalize()
 	select_craft(data.craft, maxi(new_dock, 0))
@@ -1929,6 +2008,7 @@ func sync_guest(data: Dictionary, new_dock: int, new_captain: int, change: int) 
 			game.vessel.clear_helm()
 		game.driving = false
 	guest_captain = captain
+	game.dab_pen.refresh()
 	changed(false)
 
 
@@ -2235,6 +2315,9 @@ func action_hint() -> String:
 			return "E  Climb onto the swim float"
 		if landings.aimed_door(game.eye) != null:
 			return "E  Open or close the door"
+		var board_target := aimed_landing_board()
+		if not board_target.is_empty():
+			return "E  Open " + board_target
 		var place := local_site()
 		if at_plot(actor(crew.my_id()), place):
 			return "B  Build here   •   L  Board from the landing"

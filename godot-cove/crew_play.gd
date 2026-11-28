@@ -32,7 +32,6 @@ var lamp_on := false
 var brightness := 0.0
 var lamp_target := Vector2(0, -.21)
 var lamp_set := Vector2(0, -.21)
-var dusk := false
 var evening := 0.0
 var loose_speed := Vector2.ZERO
 var last_speed := 0.0
@@ -384,8 +383,7 @@ func prompt() -> String:
 func act(peer: int, action: String, argument: Variant, person: Dictionary) -> void:
 	if action == "crew_evening_trip":
 		if campaign.travel(peer, PINE_REACH, campaign.actor_site(person), true):
-			dusk = true
-			publish()
+			campaign.advance_to_minute(campaign.DayCycle.SUNSET)
 			campaign.tell(peer, "Evening at Pine Reach. Keep a fish with H, then cook it at the shore camp.")
 		return
 	if action in ["crew_take_fish", "crew_store_fish", "crew_place_fish"]:
@@ -403,9 +401,11 @@ func act(peer: int, action: String, argument: Variant, person: Dictionary) -> vo
 			keep_catch(peer, argument)
 		return
 	if action == "crew_dusk":
-		dusk = not dusk
-		publish()
-		campaign.tell(peer, "Evening on the river." if dusk else "Daylight on the river.")
+		if peer == campaign.crew.my_id():
+			var minute := fposmod(float(campaign.ledger.state.work_minutes), campaign.DayCycle.DAY_MINUTES)
+			var next: float = campaign.DayCycle.SUNSET if minute < campaign.DayCycle.SUNSET else campaign.DayCycle.MORNING
+			campaign.advance_to_minute(next)
+			campaign.tell(peer, "Advanced to sunset." if next == campaign.DayCycle.SUNSET else "Advanced to morning.")
 		return
 	if person.is_empty() or campaign.captain == peer or not held_fish(peer).is_empty() or game.clock < float(transfer_until.get(peer, 0)):
 		return
@@ -603,19 +603,18 @@ func activity(kind: String) -> void:
 
 func publish() -> void:
 	if campaign.crew.on_server() and campaign.crew.people.size() > 1:
-		gear_changed.rpc(gear, lamp_on, lamp_operator, dusk, camp.pack(), carried_fish)
+		gear_changed.rpc(gear, lamp_on, lamp_operator, game.river.last_evening > .5, camp.pack(), carried_fish)
 
 
 func welcome(peer: int) -> void:
-	gear_changed.rpc_id(peer, gear, lamp_on, lamp_operator, dusk, camp.pack(), carried_fish)
+	gear_changed.rpc_id(peer, gear, lamp_on, lamp_operator, game.river.last_evening > .5, camp.pack(), carried_fish)
 
 
 @rpc("authority", "call_remote", "reliable")
-func gear_changed(items: Dictionary, lit: bool, operator: int, evening_enabled: bool, grill: Dictionary, fish_in_hands: Dictionary) -> void:
+func gear_changed(items: Dictionary, lit: bool, operator: int, _evening_enabled: bool, grill: Dictionary, fish_in_hands: Dictionary) -> void:
 	gear = items
 	lamp_on = lit and lamp != null
 	lamp_operator = operator if lamp != null else 0
-	dusk = evening_enabled
 	camp.unpack(grill)
 	carried_fish = fish_in_hands
 
@@ -643,8 +642,7 @@ func tick(delta: float) -> void:
 			campaign.request("crew_scoop", [fish.peer, fish.hook_id])
 	if not campaign.crew.is_guest():
 		animate_gear(delta)
-	evening = move_toward(evening, 1.0 if dusk else 0.0, delta * .76)
-	game.river.set_evening(evening)
+	evening = game.river.last_evening
 	camp.animate(game.clock, evening)
 	if lamp != null:
 		lamp_set = lamp_set.lerp(lamp_target, 1.0 - exp(-delta * 15.0))
@@ -983,7 +981,7 @@ func update_fish_visuals(delta: float) -> void:
 func hand_packet() -> Dictionary:
 	var hands: Array = []
 	var tool_mode := true
-	if game.cabin.active >= 0 and game.cabin.holding.visible:
+	if (game.cabin.active >= 0 or game.cabin.pen_in_hand) and game.cabin.holding.visible:
 		hands = [game.cabin.left_hand, game.cabin.right_hand]
 	elif game.driving:
 		hands = wheel_grips

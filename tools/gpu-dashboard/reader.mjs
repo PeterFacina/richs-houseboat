@@ -4,6 +4,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { indexedKnowledge, projectProfile, recentScan } from '../game_prompt_studio/lib/index.mjs';
 import { pinnedFunctions } from '../discord-issue-pilot/multistage/code-index.mjs';
 import { inboxLessons, lessonStatus } from '../discord-issue-pilot/learning/lessons.mjs';
+import { publicJob } from '../discord-issue-pilot/generation-jobs.mjs';
 import { date, flag, model, number, oneOf, pageSize, positive, retrievalModes, revision, sourcePath, text } from './contract.mjs';
 import { briefStats, gitHubOutcomeCounts, latestKnowledgeCheck, learningStats, outcomePage, publishedBriefs, publishedLinks, retrievalResult,
   reviewedIssueOutcomes } from './training-read.mjs';
@@ -122,6 +123,12 @@ function curatedLessons(root, db, snapshot) {
   })) };
 }
 
+function jobStatuses(db) {
+  if (!db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='generation_jobs'").get()) return new Map();
+  return new Map(db.prepare('SELECT issue,data FROM generation_jobs ORDER BY rowid').all()
+    .flatMap(row => { try { const job = publicJob(JSON.parse(row.data)); return job ? [[row.issue, job]] : []; } catch { return []; } }));
+}
+
 export function createReader({ storage, inbox, githubIssues, lessons = JSON.parse(readFileSync(lessonFile, 'utf8')), now = Date.now }) {
   const source = read => readStore(join(storage, 'studio.sqlite'), read);
   const training = read => readStore(inbox, read);
@@ -136,12 +143,12 @@ export function createReader({ storage, inbox, githubIssues, lessons = JSON.pars
       const trainingData = training(db => ({
         briefs: briefStats(db, role === 'reviewer'),
         knowledgeCheck: latestKnowledgeCheck(db),
-        ...(role === 'reviewer' ? { learning: learningStats(db) } : {}),
+        ...(role === 'reviewer' ? { learning: learningStats(db), jobs: [...jobStatuses(db)].map(([issue, job]) => ({ issue, ...job })) } : {}),
       }));
       const value = { knowledge: source(knowledgeOverview), worker,
         knowledgeCheck: worker?.knowledge ?? trainingData?.knowledgeCheck ?? null,
         briefs: trainingData?.briefs ?? null,
-        ...(role === 'reviewer' ? { learning: trainingData?.learning ?? null,
+        ...(role === 'reviewer' ? { learning: trainingData?.learning ?? null, jobs: trainingData?.jobs ?? [],
           training: trainingStatus(join(dirname(inbox), 'training-status.json')) } : {}),
       };
       cache.set(role, { at: time, value });
@@ -152,9 +159,9 @@ export function createReader({ storage, inbox, githubIssues, lessons = JSON.pars
       if (!githubIssues) return null;
       const snapshot = await githubIssues();
       const local = training(db => ({ links: publishedLinks(db), outcomes: reviewedIssueOutcomes(db),
-        github: gitHubOutcomeCounts(db) }));
+        github: gitHubOutcomeCounts(db), jobs: jobStatuses(db) }));
       const rows = snapshot.rows.slice(page * pageSize, (page + 1) * pageSize)
-        .map(row => ({ ...row, localCapture: row.brief && local ? local.links.has(row.brief) : null,
+        .map(row => ({ ...row, job: local?.jobs.get(row.issue) ?? row.job ?? null, localCapture: row.brief && local ? local.links.has(row.brief) : null,
           outcome: local?.outcomes.get(row.issue) ?? null, githubOutcome: local?.github.get(row.issue) ?? null }));
       return { checkedAt: snapshot.checkedAt, stale: snapshot.stale ?? false, rows, page,
         more: snapshot.rows.length > (page + 1) * pageSize, total: snapshot.rows.length,

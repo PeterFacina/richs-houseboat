@@ -7,6 +7,7 @@ const HEAD_HEIGHT := .239
 
 var torso: Node3D
 var head: Node3D
+var idle_phone: MeshInstance3D
 var hips: MeshInstance3D
 var upper_arms: Array[Node3D] = []
 var elbows: Array[Node3D] = []
@@ -96,6 +97,9 @@ func build_arm(side: float, shirt: Material, cuff: Material, skin: StandardMater
 	upper_arms.append(upper)
 	elbows.append(elbow)
 	wrists.append(hand)
+	if side > 0.0:
+		idle_phone = Kit.box_at(hand, Vector3(.014, -.095, .047), Vector3(.067, .122, .012), Kit.paint(Color("#24333e"), .48))
+		idle_phone.hide()
 
 
 func build_beer(wrist: Node3D) -> void:
@@ -251,7 +255,10 @@ static func add_bill_strip(mesh: SurfaceTool, a: Vector3, b: Vector3, c: Vector3
 
 func pose(delta: float, clock: float, look_yaw: float, look_up: float, gesture: String,
 		age: float, mouth: float, distance := 0.0, speed := 0.0, activity := "", task_age := 0.0,
-		seated := false) -> void:
+		seated := false, idle_state := Vector3.ZERO) -> void:
+	var idle := preload("res://character_idle.gd")
+	var idle_weight := idle.weight(idle_state) * (1.0 - speed) if gesture.is_empty() and activity.is_empty() else 0.0
+	idle_phone.visible = int(idle_state.x) == idle.PHONE and idle_weight > .62
 	var weight := smoothstep(.12, .67, age)
 	var settle := 1.0 - exp(-delta * 8.0)
 	var rhythm := (.68 + .32 * sin(age * 4.4)) * weight
@@ -263,12 +270,17 @@ func pose(delta: float, clock: float, look_yaw: float, look_up: float, gesture: 
 	torso.rotation = Vector3(.020 + cos(clock * 1.66) * .012, head_turn * .24, .017 + sin(clock * .79) * .018)
 	torso.rotation.x += .13 * check_display + .069 * pace + (.047 if activity == "rail" else 0.0)
 	torso.rotation.z += sin(stride) * pace * .024
+	torso.rotation += idle.torso(idle_state, idle_weight)
 	torso.position.y = .784 + (1.0 - cos(stride * 2.0)) * pace * .006
 	hips.position.y = -.304 if seated else 0.0
 	torso.position.y += hips.position.y
 	head.rotation.y = head_turn * .76
 	head.rotation.x = lerpf(head.rotation.x, clampf(-look_up, -.24, .23) + mouth * .053 - inspect_wrench * .20, settle)
 	head.rotation.z = .027 + sin(clock * 1.2) * .024 - mouth * .031
+	var idle_head: Vector3 = idle.head(idle_state, idle_weight)
+	head.rotation.x += idle_head.x * settle
+	head.rotation.y += idle_head.y
+	head.rotation.z += idle_head.z
 	jaw = lerpf(jaw, mouth, 1.0 - exp(-delta * 24.0))
 	face.set_shader_parameter("jaw_open", jaw)
 	var rest_scale := Basis.from_scale(head.scale)
@@ -284,6 +296,9 @@ func pose(delta: float, clock: float, look_yaw: float, look_up: float, gesture: 
 		arm.x += step * .14 * pace
 		var bend := -.235 + .034 * cos(clock * 1.72 + side)
 		var wrist := Vector3(.033, .07 * side, .063 * side)
+		var idle_hand: Vector3 = idle.hand(idle_state, side, idle_weight)
+		arm += Vector3(-idle_hand.y * 1.35, 0, idle_hand.x * 2.0)
+		bend -= idle_hand.y * 1.85
 		var trousers := shorts_legs[i]
 		var shin: MeshInstance3D = legs[i].get_node("BareLeg")
 		if seated:

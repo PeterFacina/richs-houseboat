@@ -58,6 +58,7 @@ var towel: MeshInstance3D
 var active := -1
 var action_age := 0.0
 var action_serial := 0
+var pen_in_hand := false
 var rig_model: Rig
 var reach := Vector3.ZERO
 var high_from := -100.0
@@ -280,6 +281,8 @@ func update_focus(ready: bool) -> void:
 			focused_spill = spill
 			focus = SPILL
 	for index in supplies.size():
+		if index == Props.Item.PEN:
+			continue
 		if index >= Props.Item.MOLSON and absf(fridge_door.rotation.y) < 1.13:
 			continue
 		var at := supplies[index].global_position
@@ -297,7 +300,10 @@ func sight(at: Vector3, radius: float, range_m: float) -> float:
 	var along := offset.dot(-eye.global_basis.z)
 	if along < .12 or offset.length_squared() > range_m * range_m:
 		return INF
-	return (offset + eye.global_basis.z * along).length() / radius + along * .041
+	var score := (offset + eye.global_basis.z * along).length() / radius + along * .041
+	if score < 1.0 and not preload("res://interaction_sight.gd").clear(eye, at):
+		return INF
+	return score
 
 
 func use_focus() -> bool:
@@ -320,10 +326,36 @@ func use_focus() -> bool:
 	return true
 
 
+func use_pen() -> void:
+	if hands_in_use() or not pen_in_hand:
+		return
+	active = Props.Item.PEN
+	action_serial += 1
+	action_age = 0.0
+	reach = Actions.prop_pose(active, .52, Vector3.ZERO).origin
+	emit_signal("occupied")
+
+
+func update_idle_pen() -> void:
+	var pen := hand_items[Props.Item.PEN]
+	pen.visible = pen_in_hand
+	holding.visible = pen_in_hand
+	if not pen_in_hand:
+		return
+	pen.transform = Actions.prop_pose(Props.Item.PEN, .52, Vector3.ZERO)
+	pen.get_node("Indicator").hide()
+	right_hand.show()
+	left_hand.hide()
+	lighter.hide()
+	bud.hide()
+	towel.hide()
+	Actions.attach_smoking_grip(right_hand, pen.transform, Actions.right_grip(Props.Item.PEN), "pinch", 1.0)
+
+
 func update_action(delta: float) -> void:
 	if active < 0:
 		if clean_target == null:
-			holding.hide()
+			update_idle_pen()
 		return
 	var previous := action_age
 	action_age += delta
@@ -339,8 +371,9 @@ func update_action(delta: float) -> void:
 	item.position = base
 	item.rotation = Vector3(-.12, -.16, -.085)
 	holding.visible = blackout_until <= clock
-	item.visible = action_age >= .30
-	supplies[active].visible = action_age < .30
+	item.visible = active == Props.Item.PEN or action_age >= .30
+	if active != Props.Item.PEN:
+		supplies[active].visible = action_age < .30
 	right_hand.show()
 	left_hand.hide()
 	bud.hide()
@@ -424,7 +457,8 @@ func crossed(previous: float, point: float) -> bool:
 
 func finish_use() -> void:
 	var item := active
-	supplies[item].show()
+	if item != Props.Item.PEN:
+		supplies[item].show()
 	hand_items[item].hide()
 	holding.hide()
 	active = -1
@@ -508,8 +542,6 @@ func update_feedback(on_deck: bool) -> void:
 				hint.text = "Hold E  Wipe up the spill" if clean_time <= .0 else "Wiping  %d%%" % roundi(100 * clean_time / CLEAN_SECONDS)
 			Props.Item.BONG:
 				hint.text = "E  Use the bong"
-			Props.Item.PEN:
-				hint.text = "E  Use the dab pen"
 			Props.Item.MOLSON, Props.Item.MILLER:
 				hint.text = "E  Grab a %s" % Props.NAMES[focus]
 	var effects_text := PackedStringArray()
@@ -753,8 +785,11 @@ func _process(_delta: float) -> void:
 
 
 func visual_packet() -> Dictionary:
-	if active < 0 or not holding.visible:
+	if not holding.visible:
 		return {"use_item": -1}
+	if active < 0:
+		return {"use_item": Props.Item.PEN, "use_age": -1.0, "use_prop": hand_items[Props.Item.PEN].transform} \
+			if pen_in_hand else {"use_item": -1}
 	var prop_pose := hand_items[active].transform
 	var lighter_pose := lighter.transform
 	var offset := Actions.world_offset(active, action_age)

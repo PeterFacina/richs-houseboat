@@ -6,11 +6,24 @@ const GameRelease = preload("res://game_release.gd")
 const MIST := MenuTheme.MUTED
 const TEAL := MenuTheme.BLUE
 const Graphics = preload("res://river_graphics.gd")
+const AUDIO_BUSES := {
+	"water_volume": &"Water",
+	"weather_volume": &"Weather",
+	"ambience_volume": &"Ambience",
+	"vehicle_volume": &"Vehicles",
+	"footstep_volume": &"Footsteps",
+	"npc_volume": &"NPC voices",
+	"music_volume": &"Music",
+	"ui_volume": &"UI",
+}
 var game: Node3D
 var graphics: Graphics
 var preferences := {"volume": .8, "sensitivity": 1.0, "fov": 78.0,
+	"water_volume": 1.0, "weather_volume": 1.0, "ambience_volume": 1.0, "vehicle_volume": 1.0,
+	"footstep_volume": 1.0, "npc_volume": 1.0, "music_volume": 1.0, "ui_volume": 1.0,
 	"fullscreen": false, "vsync": true, "fps": false, "hand_motion": .65,
-	"toggle_crouch": false, "aircraft_invert_pitch": false}
+	"camera_smoothing": .55, "head_bob": .35, "weather_quality": 1.0, "particle_quality": .7,
+	"reflection_quality": .75, "fog_quality": 1.0, "water_detail": .5, "toggle_crouch": false, "aircraft_invert_pitch": false}
 var name_field: LineEdit
 var status: Label
 var quit_dialog: ConfirmationDialog
@@ -19,10 +32,11 @@ var graphics_option: OptionButton
 var sliders: Dictionary = {}
 var fullscreen_button: CheckButton
 var aircraft_invert_pitch: CheckButton
+var vehicle_controls_scroll: ScrollContainer
 var windowed_mode := DisplayServer.WINDOW_MODE_WINDOWED
 var title: Label
 var main_page: VBoxContainer
-var settings_page: VBoxContainer
+var settings_page: ScrollContainer
 var vehicle_page: VBoxContainer
 var crew_page: VBoxContainer
 var back: Button
@@ -82,10 +96,17 @@ func setup(scene: Node3D = null) -> void:
 	back = button(header, "Back", func(): close() if game == null else show_main(), &"QuietAction", "back", 36)
 	back.size_flags_horizontal = Control.SIZE_SHRINK_END
 	back.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	settings_page = VBoxContainer.new()
-	settings_page.add_theme_constant_override("separation", 12)
+	settings_page = ScrollContainer.new()
+	settings_page.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	settings_page.follow_focus = true
 	column.add_child(settings_page)
-	build_settings(settings_page)
+	var settings_rows := VBoxContainer.new()
+	settings_rows.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	settings_rows.add_theme_constant_override("separation", 12)
+	settings_page.add_child(settings_rows)
+	build_settings(settings_rows)
+	get_viewport().size_changed.connect(resize_settings)
+	resize_settings()
 	if game == null:
 		back.tooltip_text = "Back · Esc"
 	else:
@@ -115,7 +136,7 @@ func build_pause_pages(column: VBoxContainer) -> void:
 	grid.add_theme_constant_override("v_separation", MenuTheme.GAP)
 	main_page.add_child(grid)
 	settings_button = button(grid, "Settings", func(): show_page(settings_page, "Settings", sliders["volume"]), &"Button", "settings")
-	vehicle_button = button(grid, "Vehicle Controls", func(): show_page(vehicle_page, "Vehicle Controls", aircraft_invert_pitch), &"Button", "tools")
+	vehicle_button = button(grid, "Vehicle Controls", func(): show_page(vehicle_page, "Vehicle Controls", vehicle_controls_scroll), &"Button", "tools")
 	button(grid, "Save", save_world, &"Button", "save")
 	button(grid, "Backpack", func(): navigate("pack"), &"Button", "pack").tooltip_text = "Backpack · I"
 	button(grid, "River Chart", func(): navigate("chart"), &"Button", "chart").tooltip_text = "River Chart · Tab / M"
@@ -169,13 +190,15 @@ func confirm_exit() -> void:
 	quit_dialog.get_cancel_button().grab_focus()
 
 
-func show_page(page: VBoxContainer, caption: String, first: Control) -> void:
+func show_page(page: Control, caption: String, first: Control) -> void:
 	main_page.visible = page == main_page
 	settings_page.visible = page == settings_page
 	vehicle_page.visible = page == vehicle_page
 	crew_page.visible = page == crew_page
 	back.visible = page != main_page
 	title.text = caption
+	if page == vehicle_page:
+		vehicle_controls_scroll.scroll_vertical = 0
 	if visible:
 		first.grab_focus()
 
@@ -189,19 +212,37 @@ func build_vehicle_controls(column: VBoxContainer) -> void:
 	vehicle_page = VBoxContainer.new()
 	vehicle_page.add_theme_constant_override("separation", 12)
 	column.add_child(vehicle_page)
-	text(vehicle_page, "Helicopter", 22, MenuTheme.NAVY)
+	vehicle_controls_scroll = ScrollContainer.new()
+	vehicle_controls_scroll.custom_minimum_size.y = 300
+	vehicle_controls_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	vehicle_controls_scroll.focus_mode = Control.FOCUS_ALL
+	vehicle_controls_scroll.follow_focus = true
+	vehicle_page.add_child(vehicle_controls_scroll)
+	var controls := VBoxContainer.new()
+	controls.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	controls.add_theme_constant_override("separation", 10)
+	vehicle_controls_scroll.add_child(controls)
+	text(controls, "Cars and trucks", 22, MenuTheme.NAVY)
+	text(controls, "W accelerate, S brake or reverse, A / D steer, Space handbrake. C switches camera, H switches headlights, E exits when stopped.", 16, MIST)
+	text(controls, "Boat helm", 22, MenuTheme.NAVY)
+	text(controls, "W / S adjust throttle, R / F fine-tune, Space shifts to neutral, A / D steer, G toggles anchor. E takes or leaves the helm. Aim at the ignition key and hold E to start or tap E to stop.", 16, MIST)
+	text(controls, "Lawn mower", 22, MenuTheme.NAVY)
+	text(controls, "W / S drive, A / D turn, Q / R adjust throttle, X toggles blades, C switches camera, E dismounts.", 16, MIST)
+	text(controls, "Survey submersible", 22, MenuTheme.NAVY)
+	text(controls, "WASD steer, Space / Ctrl change depth, E collects the recorder within range, V or Esc returns to the boat.", 16, MIST)
+	text(controls, "Helicopter", 22, MenuTheme.NAVY)
 	var bindings := GridContainer.new()
 	bindings.columns = 2
 	bindings.add_theme_constant_override("h_separation", 18)
 	bindings.add_theme_constant_override("v_separation", 6)
-	vehicle_page.add_child(bindings)
+	controls.add_child(bindings)
 	for binding: Array in [["Mouse", "Pitch and yaw"], ["A / D", "Bank left or right. Release to hold."],
 			["Space / Ctrl", "Climb or descend"], ["H", "Level the craft and hover"]]:
 		text(bindings, binding[0], 16, TEAL)
 		text(bindings, binding[1], 16, MIST)
-	vehicle_page.add_child(HSeparator.new())
-	text(vehicle_page, "Aim at a door handle and press E to board or exit when the helicopter is landed and stopped.", 16, MIST)
-	text(vehicle_page, "Aim at the dash key and hold E to start. Lift is ready at 100% RPM. After landing, aim at the key and tap E to shut down.", 16, MIST)
+	controls.add_child(HSeparator.new())
+	text(controls, "Aim at a door handle and press E to board or exit when the helicopter is landed and stopped.", 16, MIST)
+	text(controls, "Aim at the dash key and hold E to start. Lift is ready at 100% RPM. After landing, aim at the key and tap E to shut down.", 16, MIST)
 	aircraft_invert_pitch = CheckButton.new()
 	aircraft_invert_pitch.text = "Invert Pitch"
 	aircraft_invert_pitch.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
@@ -210,14 +251,28 @@ func build_vehicle_controls(column: VBoxContainer) -> void:
 		preferences.aircraft_invert_pitch = enabled
 		apply_settings()
 		persist())
-	vehicle_page.add_child(aircraft_invert_pitch)
+	controls.add_child(aircraft_invert_pitch)
+	text(controls, "F4 cycles draw distance in the world.", 16, MIST)
+
+
+func resize_settings() -> void:
+	settings_page.custom_minimum_size.y = clampf(get_viewport_rect().size.y - 218.0, 300.0, 570.0)
 
 
 func build_settings(settings: VBoxContainer) -> void:
 	slider(settings, "Master volume", "volume", 0, 1, .01)
+	for key: String in AUDIO_BUSES:
+		slider(settings, AUDIO_BUSES[key], key, 0, 1, .01)
 	slider(settings, "Mouse sensitivity", "sensitivity", .25, 2.5, .05)
 	slider(settings, "Field of view", "fov", 60, 100, 1)
 	slider(settings, "Hand motion", "hand_motion", 0, 1, .05)
+	slider(settings, "Camera smoothing", "camera_smoothing", 0, 1, .05)
+	slider(settings, "Head bob", "head_bob", 0, 1, .05)
+	slider(settings, "Weather effects", "weather_quality", 0, 1, .25)
+	slider(settings, "Rain particles", "particle_quality", 0, 1, .25)
+	slider(settings, "Weather reflections", "reflection_quality", 0, 1, .25)
+	slider(settings, "Weather fog", "fog_quality", 0, 1, .25)
+	slider(settings, "Water detail", "water_detail", 0, 1, .25)
 	var movement := HBoxContainer.new()
 	settings.add_child(movement)
 	text(movement, "Crouch mode", 16, MIST).size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -310,16 +365,32 @@ func apply_settings() -> void:
 	preferences.sensitivity = clampf(float(preferences.sensitivity), .25, 2.5)
 	preferences.fov = clampf(float(preferences.fov), 60, 100)
 	preferences.hand_motion = clampf(float(preferences.hand_motion), 0, 1)
-	AudioServer.set_bus_volume_db(0, linear_to_db(maxf(.0001, preferences.volume)))
-	AudioServer.set_bus_mute(0, preferences.volume <= 0)
+	set_audio_volume(0, preferences.volume)
+	for key: String in AUDIO_BUSES:
+		preferences[key] = clampf(float(preferences[key]), 0, 1)
+		set_audio_volume(AudioServer.get_bus_index(AUDIO_BUSES[key]), preferences[key])
 	if game != null:
 		game.aircraft_steering.invert_pitch = preferences.aircraft_invert_pitch
 		game.mouse_sensitivity = .0022 * preferences.sensitivity
 		game.eye.fov = preferences.fov
 		game.rig.motion_amount = preferences.hand_motion
+		game.camera_motion.smoothing = clampf(preferences.camera_smoothing, 0, 1)
+		game.camera_motion.bob_amount = clampf(preferences.head_bob, 0, 1)
+		game.weather_fx.weather_quality = clampf(preferences.weather_quality, 0, 1)
+		game.weather_fx.particle_quality = clampf(preferences.particle_quality, 0, 1)
+		game.weather_fx.reflection_quality = clampf(preferences.reflection_quality, 0, 1)
+		game.weather_fx.fog_quality = clampf(preferences.fog_quality, 0, 1)
+		var water_detail := clampf(preferences.water_detail, 0, 1)
+		game.river.set_water_detail(water_detail)
+		game.effects.water_detail = water_detail
 		game.fps.visible = preferences.fps
 	if DisplayServer.get_name() != "headless":
 		DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_ENABLED if preferences.vsync else DisplayServer.VSYNC_DISABLED)
+
+
+static func set_audio_volume(bus: int, gain: float) -> void:
+	AudioServer.set_bus_volume_db(bus, linear_to_db(maxf(.0001, gain)))
+	AudioServer.set_bus_mute(bus, gain <= 0.0)
 
 
 func persist() -> void:

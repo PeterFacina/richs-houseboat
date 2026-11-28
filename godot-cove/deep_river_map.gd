@@ -16,9 +16,15 @@ const TownHall = preload("res://deep_river_town_hall.gd")
 const EssoPlaza = preload("res://deep_river_esso_plaza.gd")
 const PropertySites = preload("res://deep_river_properties.gd")
 const RoadNetwork = preload("res://deep_river_roads.gd")
+const RiversideGrassSurface = preload("res://riverside_grass_surface.gd")
+const RiversideWorldGrass = preload("res://riverside_world_grass.gd")
 const PontoonWorkshop = preload("res://pontoon_workshop.gd")
 const PublicWorks = preload("res://public_works.gd")
 const Waves = preload("res://swell.gd")
+const Wakes = preload("res://river_wakes.gd")
+# Centre and radii of the sheltered water inside the surveyed marina breakwall.
+const MARINA_SHELTER := Vector4(18053.0, 12729.0, 41.0, 82.0)
+const WATER_TILE_SIZE := 230.0
 const Landings = preload("res://game_campaign_data.gd")
 const BASE := "res://deep_river/"
 const ROAD_SCAN = preload("res://deep_river/materials/road_asphalt033_color.jpg")
@@ -28,6 +34,8 @@ const GRAVEL_NORMAL = preload("res://deep_river/materials/gravel_road_nor_gl_1k.
 const TILE := 44
 const PLAZA_PORTICO_TREE := Vector2(18000.5215, 13239.9229)
 var town_walkways: RoadNetwork.Walkways
+var pedestrian_entries: Array[Dictionary] = []
+var waterfront_walk := PackedVector3Array()
 
 class TerrainPatch:
 	var area: Rect2
@@ -89,7 +97,12 @@ var sun_direction: Vector3
 var landscape_light: DirectionalLight3D
 var landscape_environment: Environment
 var sky_paint: ShaderMaterial
-var last_evening := -1.0
+const DayCycle = preload("res://river_day_cycle.gd")
+var last_evening := 0.0
+var last_solar_minute := -1.0
+var sky_fog_density := .00010
+var solar_energy := .82
+var moon_light: DirectionalLight3D
 var fog_scale := 1.0
 var marina_patch: TerrainPatch
 var lamure_patch: TerrainPatch
@@ -104,13 +117,22 @@ var asphalt_scan: ImageTexture
 var concrete_scan: ImageTexture
 var wood_scan: ImageTexture
 var windows: ShaderMaterial
+var esso_plaza: EssoPlaza
 var canopy_area := Rect2()
 var waterfront := Marina.new()
+var riverside_enabled := OS.get_cmdline_user_args().has("--riverside-poc")
+var world_grass_surface
+var world_grass
+var riverside_near := false
+var riverside_minutes := 660.0
+var riverside_cloud_step := -1
 var lamure := LamureBeach.new()
 
 
-func build() -> void:
+func build(checkpoint := Callable()) -> void:
 	meta = JSON.parse_string(FileAccess.get_file_as_string(BASE + "river.json"))
+	if riverside_enabled and not OS.get_cmdline_user_args().has("--riverside-grass-prototype"):
+		world_grass_surface = RiversideGrassSurface.new()
 	for index: int in RoadNetwork.HIGHWAY:
 		var line: Array = meta.streets[index]
 		for i in range(1, line.size()):
@@ -152,6 +174,7 @@ func build() -> void:
 	var world: WorldEnvironment = get_child(0)
 	sky_paint = ShaderMaterial.new()
 	sky_paint.shader = preload("res://river_sky.gdshader")
+	sky_paint.set_shader_parameter("use_day_cycle", true)
 	day_sky = scanned_surface("day_sky")
 	bind_day_sky(sky_paint)
 	world.environment.sky.sky_material = sky_paint
@@ -169,9 +192,23 @@ func build() -> void:
 	sun.light_energy = .82
 	sun.rotation_degrees = Vector3(-48.0, -42.0, 0)
 	sun.directional_shadow_max_distance = 230
+	sun.sky_mode = DirectionalLight3D.SKY_MODE_LIGHT_ONLY
 	sun_direction = sun.global_basis.z
+	moon_light = DirectionalLight3D.new()
+	moon_light.name = "Moonlight"
+	moon_light.sky_mode = DirectionalLight3D.SKY_MODE_LIGHT_ONLY
+	moon_light.light_color = Color("#b4c9ff")
+	moon_light.light_energy = 0.0
+	moon_light.shadow_enabled = true
+	moon_light.directional_shadow_max_distance = 80.0
+	add_child(moon_light)
+	world.environment.sky.process_mode = Sky.PROCESS_MODE_REALTIME
+	world.environment.sky.radiance_size = Sky.RADIANCE_SIZE_32
 	var ground := ShaderMaterial.new()
 	ground.shader = preload("res://ground.gdshader")
+	if riverside_enabled:
+		ground.set_shader_parameter("riverside_profile", true)
+		ground.set_shader_parameter("riverside_center", Vector2(meta.marina.pavilion[0], meta.marina.pavilion[1]))
 	var gravel := Image.load_from_file(BASE + "riverbed_cobbles.png")
 	gravel.generate_mipmaps()
 	riverbed = ImageTexture.create_from_image(gravel)
@@ -210,7 +247,10 @@ func build() -> void:
 		ground.set_shader_parameter("brockhouse_bounds", Vector4(span[0], span[1], span[2], span[3]))
 	var apron := BASE + "marina_paving.png"
 	if FileAccess.file_exists(apron):
-		marina_paving = ImageTexture.create_from_image(Image.load_from_file(apron))
+		var apron_image := Image.load_from_file(apron)
+		marina_paving = ImageTexture.create_from_image(apron_image)
+		if riverside_enabled:
+			waterfront.riverside_masks["apron"] = [apron_image, patch_bounds(marina_patch)]
 		bind_marina_paving(ground)
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 7268
@@ -228,29 +268,47 @@ func build() -> void:
 	var bark := Kit.paint(Color("#674d3a"))
 	for row in range(0, rows - 1, TILE):
 		for col in range(0, columns - 1, TILE):
+			if checkpoint.is_valid():
+				await checkpoint.call("Building terrain and collisions")
 			tile(col, row, ground)
 			trees_for_tile(col, row, rng, tree, trunk, needles, bark)
 	for detail in detail_patches:
 		for row in range(0, detail.grid.y - 1, TILE):
 			for col in range(0, detail.grid.x - 1, TILE):
+				if checkpoint.is_valid():
+					await checkpoint.call("Building terrain and collisions")
 				tile(col, row, ground, detail)
 	build_water()
-	var residential_driveways := build_town(paving_texture, ground)
-	property_sites = PropertySites.build(self, ground_height, concrete_scan, scanned_surface("brick"), wood_scan)
+	var brick := scanned_surface("brick")
+	var residential_driveways := await build_town(paving_texture, ground, brick, checkpoint)
+	if checkpoint.is_valid():
+		await checkpoint.call("Building properties and waterfront")
+	property_sites = PropertySites.build(self, ground_height, concrete_scan, brick, wood_scan)
 	build_landmarks()
 	if meta.has("riverbank"):
 		var surface := Image.load_from_file(BASE + "riverbank_surface.png")
 		park.clear_old_path_paint(surface)
+		if riverside_enabled:
+			waterfront.riverside_masks["path"] = [surface, Vector4(
+				park.bounds.position.x, park.bounds.position.y, park.bounds.size.x, park.bounds.size.y)]
 		surface.generate_mipmaps()
 		ground.set_shader_parameter("riverbank_path_mask", ImageTexture.create_from_image(surface))
 		ground.set_shader_parameter("riverbank_path_bounds", Vector4(
 			park.bounds.position.x, park.bounds.position.y, park.bounds.size.x, park.bounds.size.y))
+	waterfront.riverside_enabled = riverside_enabled
+	if riverside_enabled:
+		var road := PackedVector2Array()
+		for pair: Array in meta.streets[RoadNetwork.MARINA_APPROACH]:
+			road.append(Vector2(pair[0], pair[1]))
+		waterfront.riverside_masks["approach"] = road
 	waterfront.build(self, meta.marina, ground_height, wet_clearance, wood_scan, concrete_scan, riverbed,
 		park.near_trail, meta.get("riverbank", {}).get("pier_approach", []))
 	for material: ShaderMaterial in [near_water, far_water]:
 		waterfront.wharf.launch.bind_water(material, concrete_scan)
 	if lamure_patch != null:
 		build_lamure(ground)
+	if checkpoint.is_valid():
+		await checkpoint.call("Building vegetation")
 	var pines := LamurePines.new()
 	var champlain: Array = meta.streets[RoadNetwork.CHAMPLAIN]
 	var street_start := Vector2(champlain[0][0], champlain[0][1])
@@ -271,11 +329,19 @@ func build() -> void:
 				or point.distance_squared_to(RiverbankPark.GAZEBO_SITE) < 36.0 \
 				or (lamure_patch != null and pines.place_from_survey(foot, height)))
 	if meta.has("riverbank"):
-		park.build(self, town_canopy, waterfront, pines, ground_height, wet_clearance, riverbed)
+		var grass_excluded := Callable(world_grass_surface, "road_or_walk") if world_grass_surface != null else Callable()
+		park.build(self, town_canopy, waterfront, pines, ground_height, wet_clearance, riverbed, grass_excluded)
+		waterfront_walk = park.pedestrian_edges
 	if meta.has("brockhouse"):
 		BrockhouseWay.new().build(self, meta.brockhouse, ground_height, waterfront, pines)
 	pines.build(self)
 	plant_pine_reach(waterfront)
+	if world_grass_surface != null:
+		world_grass_surface.finish(self, park)
+		if world_grass_surface.ready:
+			world_grass = RiversideWorldGrass.new()
+			add_child(world_grass)
+			world_grass.setup(world_grass_surface)
 
 
 func build_lamure(ground: ShaderMaterial) -> void:
@@ -348,8 +414,22 @@ func downstream(point: Vector3, time: float) -> Vector3:
 	return Vector3(.84, 0, .543) * stream + Vector3(cos(point.z * .017 + time * .52), 0, sin(time * .41)) * .047
 
 
-func wave_height(point: Vector3, time: float) -> float:
-	return Waves.river_height(point.x, point.z, time) * lerpf(.24, 1.0, smoothstep(0.0, 57.0, wet_clearance(point)))
+func wave_height(point: Vector3, time: float, excluded_wake := 0) -> float:
+	var p := Vector2(point.x, point.z)
+	var swell := Waves.river_height(p, time, wave_amplitudes)
+	return (swell + wakes.height(p, time, excluded_wake)) * wave_exposure(point)
+
+
+func wave_exposure(point: Vector3) -> float:
+	var cove := Vector2((point.x - MARINA_SHELTER.x) / MARINA_SHELTER.z,
+		(point.z - MARINA_SHELTER.y) / MARINA_SHELTER.w)
+	var shelter := lerpf(.53, 1.0, smoothstep(.70, 1.0, cove.length()))
+	return shelter * Waves.shore_exposure(wet_clearance(point))
+
+
+func boat_flow(point: Vector3, time: float) -> Vector3:
+	var wind := wave_wind * .18 * wave_exposure(point)
+	return downstream(point, time) + Vector3(.84, 0, .543) * wind
 
 
 func can_sail(world: Vector3, minimum_depth := .88) -> bool:
@@ -555,7 +635,7 @@ func build_water() -> void:
 	var distant := Kit.mesh_at(self, ocean, Vector3(extent.x / 2, -0.03, extent.y / 2), far_water)
 	distant.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	var surface := PlaneMesh.new()
-	surface.size = Vector2(230, 230)
+	surface.size = Vector2.ONE * WATER_TILE_SIZE
 	surface.subdivide_width = 180
 	surface.subdivide_depth = 180
 	near_surface = Kit.mesh_at(self, surface, Vector3.ZERO, near_water)
@@ -579,6 +659,9 @@ func make_water(texture: Texture2D, local_shore: Texture2D, distant: bool) -> Sh
 	bind_day_sky(shader)
 	shader.set_shader_parameter("mapped", true)
 	shader.set_shader_parameter("distant", distant)
+	shader.set_shader_parameter("river_waves", PackedVector4Array(Waves.RIVER_WAVES))
+	shader.set_shader_parameter("river_amplitudes", wave_amplitudes)
+	shader.set_shader_parameter("marina_shelter", MARINA_SHELTER)
 	shader.set_shader_parameter("sun_direction", sun_direction)
 	shader.set_shader_parameter("map_size", extent)
 	shader.set_shader_parameter("riverbed", riverbed)
@@ -588,6 +671,8 @@ func make_water(texture: Texture2D, local_shore: Texture2D, distant: bool) -> Sh
 	shader.set_shader_parameter("swisha_shoals", station_water)
 	shader.set_shader_parameter("marina_bounds", patch_bounds(marina_patch))
 	shader.set_shader_parameter("swisha_bounds", patch_bounds(swisha_patch))
+	if riverside_enabled:
+		shader.set_shader_parameter("riverside_center", Vector2(meta.marina.pavilion[0], meta.marina.pavilion[1]))
 	shader.set_shader_parameter("shore_units", Vector3(shore_unit, marina_patch.shore_unit, swisha_patch.shore_unit))
 	var ends: Array = meta.swisha.powerhouse
 	var a := Vector2(ends[0][0], ends[0][1])
@@ -608,47 +693,148 @@ func set_water_grid(subdivisions: int) -> void:
 	var surface := near_surface.mesh as PlaneMesh
 	surface.subdivide_width = subdivisions
 	surface.subdivide_depth = subdivisions
+	water_vertex_step = WATER_TILE_SIZE / (subdivisions + 1)
 
 
 func update_water(center: Vector3, clock: float) -> void:
 	var p := Vector2(center.x, center.z)
-	near_surface.position = Vector3(center.x, 0, center.z)
+	if riverside_enabled:
+		var active := p.distance_squared_to(Vector2(meta.marina.pavilion[0], meta.marina.pavilion[1])) < 240.0 * 240.0
+		if active != riverside_near:
+			riverside_near = active
+			for material: ShaderMaterial in [sky_paint, near_water, far_water]:
+				material.set_shader_parameter("riverside_profile", active)
+			last_solar_minute = -1.0
+			update_day_cycle(riverside_minutes)
+		var phase := floori(clock / 5.0)
+		if phase != riverside_cloud_step:
+			riverside_cloud_step = phase
+			for material: ShaderMaterial in [sky_paint, near_water, far_water]:
+				material.set_shader_parameter("riverside_cloud_phase", float(phase) * .018)
+	# Keep vertices on a fixed world lattice while the fade radius follows the camera.
+	var grid := p.snapped(Vector2.ONE * water_vertex_step)
+	near_surface.position = Vector3(grid.x, 0, grid.y)
 	for mat in [near_water, far_water, headpond_water]:
 		mat.set_shader_parameter("clock", clock)
 		mat.set_shader_parameter("center", p)
+	wakes.advance(clock)
+	if not wakes.packets.is_empty() or wake_visible:
+		wakes.upload(near_water, p, clock)
+		wake_visible = not wakes.packets.is_empty()
 	waterfront.wharf.update_light(clock, last_evening)
 	waterfront.fleet.update(center, clock, wave_height)
 	lamure.update_float(center, clock, wave_height)
 
 
-func set_wake(stern: Vector3, behind: Vector3, speed: float, thrust: float, prop_heading: Vector3,
-		spread: float, peak_speed: float) -> void:
-	var wash := thrust * smoothstep(.25, 1.2, speed)
-	near_water.set_shader_parameter("boat_wake", Vector4(stern.x, stern.z, speed, wash))
-	near_water.set_shader_parameter("wake_spread", spread)
-	near_water.set_shader_parameter("wake_peak_speed", peak_speed)
-	near_water.set_shader_parameter("wake_heading", Vector2(behind.x, behind.z))
-	near_water.set_shader_parameter("prop_heading", Vector2(prop_heading.x, prop_heading.z))
-
-
-func set_evening(amount: float) -> void:
-	if is_equal_approx(amount, last_evening):
+func record_wake(source: int, stern: Vector3, behind: Vector3, speed: float, thrust: float,
+		spread: float, peak_speed: float, clock: float) -> void:
+	if wet_clearance(stern) < .24:
 		return
-	last_evening = amount
-	landscape_light.rotation_degrees = Vector3(lerpf(-48.0, -7.5, amount), lerpf(-42.0, -34.0, amount), 0)
-	landscape_light.light_color = Color("#fff6ed").lerp(Color("#ffbe87"), amount)
-	landscape_light.light_energy = lerpf(.82, .52, amount)
-	landscape_environment.ambient_light_color = Color("#d1dce0").lerp(Color("#a6b3d0"), amount)
-	landscape_environment.ambient_light_energy = lerpf(.29, .36, amount)
-	landscape_environment.fog_light_color = Color("#b7bdb4").lerp(Color("#8190a4"), amount)
-	landscape_environment.fog_density = lerpf(.00010, .00038, amount) * fog_scale
-	sun_direction = landscape_light.global_basis.z
-	sky_paint.set_shader_parameter("evening", amount)
-	windows.set_shader_parameter("evening", amount)
-	town_hall.set_evening(amount)
+	var flow := downstream(stern, clock)
+	wakes.emit(source, Vector2(stern.x, stern.z), Vector2(behind.x, behind.z), Vector2(flow.x, flow.z),
+		speed, thrust, spread, peak_speed, clock)
+
+
+func set_prop_wash(at: Vector3, heading: Vector3, strength: float) -> void:
+	near_water.set_shader_parameter("active_prop", Vector3(at.x, at.z, strength))
+	near_water.set_shader_parameter("prop_heading", Vector2(heading.x, heading.z))
+
+
+var weather_sample := Vector4.ZERO
+var wave_wind := .12
+var wave_amplitudes := Waves.river_amplitudes(wave_wind)
+var water_vertex_step := WATER_TILE_SIZE / 181.0
+var wakes := Wakes.new()
+var wake_visible := false
+var weather_flash := 0.0
+var weather_fog_quality := 1.0
+var last_weather := Vector4.INF
+
+
+func set_water_weather(wind: float, fog: float) -> void:
+	if not is_equal_approx(wind, wave_wind):
+		wave_wind = wind
+		wave_amplitudes = Waves.river_amplitudes(wind)
 	for material: ShaderMaterial in [near_water, far_water, headpond_water]:
-		material.set_shader_parameter("evening", amount)
+		material.set_shader_parameter("river_amplitudes", wave_amplitudes)
+		material.set_shader_parameter("wave_wind", wind)
+		material.set_shader_parameter("water_fog", fog)
+		material.set_shader_parameter("use_weather", 1.0)
+
+
+func set_water_detail(detail: float) -> void:
+	for material: ShaderMaterial in [near_water, far_water, headpond_water]:
+		material.set_shader_parameter("water_detail", detail)
+
+
+func update_day_cycle(work_minutes: float) -> void:
+	riverside_minutes = work_minutes
+	var minute := snappedf(work_minutes, DayCycle.UPDATE_MINUTES)
+	var weather_key := Vector4(snappedf(weather_sample.x, .012), snappedf(weather_sample.z, .006), snappedf(weather_flash, .04), weather_fog_quality)
+	if minute == last_solar_minute and weather_key.is_equal_approx(last_weather):
+		return
+	last_solar_minute = minute
+	last_weather = weather_key
+	var light := DayCycle.sample(minute)
+	if riverside_near and light.night < .8:
+		var amber := smoothstep(900.0, 1110.0, fposmod(minute, 1440.0))
+		var daylight: float = 1.0 - light.night
+		light.zenith = light.zenith.lerp(Color("#688da7").lerp(Color("#65758e"), amber), daylight * .48)
+		light.horizon = light.horizon.lerp(Color("#bed1ca").lerp(Color("#e5a685"), amber), daylight * .70)
+		light.glow = light.glow.lerp(Color("#f5ddac").lerp(Color("#e89468"), amber), daylight * .70)
+		light.direct = light.direct.lerp(Color("#f4e0b4").lerp(Color("#f7cc82"), amber), daylight * .54)
+		light.ambient = light.ambient.lerp(Color("#a5c1ba").lerp(Color("#849da6"), amber), daylight * .40)
+		light.fog = light.fog.lerp(Color("#9bb8b5").lerp(Color("#a99096"), amber), daylight * .58)
+		light.fog_density += .00009 * daylight
+		light.photo = 0.0
+	var cloud := clampf(weather_key.x, 0.0, 1.0)
+	var mist := clampf(weather_key.y, 0.0, 1.0)
+	var grey := Color("#606e7f").lerp(Color("#22293a"), light.night)
+	light.zenith = light.zenith.lerp(grey, cloud * .85).lightened(weather_flash * .28)
+	light.horizon = light.horizon.lerp(grey.lightened(.21 * (1.0 - light.night)), cloud * .75).lightened(weather_flash * .22)
+	light.glow = light.glow.lerp(grey, cloud * .82)
+	light.direct = light.direct.lerp(Color("#c3cdd6"), cloud * .82)
+	light.sun_energy *= lerpf(1.0, .24, cloud)
+	light.moon_energy *= lerpf(1.0, .29, cloud)
+	light.ambient_energy = light.ambient_energy * lerpf(1.0, .82, cloud) + weather_flash * .24
+	light.ambient = light.ambient.lerp(Color("#b8c7d4"), cloud * .35)
+	light.fog = light.fog.lerp(light.horizon, maxf(cloud * .32, mist * .77))
+	light.fog_density += pow(mist, 1.7) * .014 * weather_fog_quality
+	light.photo *= lerpf(1.0, .12, cloud)
+	sun_direction = light.sun
+	solar_energy = light.sun_energy
+	last_evening = light.lights
+	landscape_light.basis = Basis.looking_at(-sun_direction)
+	landscape_light.light_color = light.direct
+	landscape_light.light_energy = solar_energy
+	landscape_light.visible = solar_energy > 0.0
+	moon_light.basis = Basis.looking_at(sun_direction)
+	moon_light.light_energy = light.moon_energy
+	moon_light.visible = light.moon_energy > 0.0
+	landscape_environment.ambient_light_color = light.ambient
+	landscape_environment.ambient_light_energy = light.ambient_energy
+	landscape_environment.fog_light_color = light.fog
+	sky_fog_density = light.fog_density
+	landscape_environment.fog_density = sky_fog_density * fog_scale
+	landscape_environment.tonemap_exposure = light.exposure
+	windows.set_shader_parameter("evening", last_evening)
+	town_hall.set_evening(last_evening)
+	esso_plaza.glazing.set_shader_parameter("evening", last_evening)
+	for material: ShaderMaterial in [sky_paint, near_water, far_water, headpond_water, windows,
+			town_hall.glass, town_hall.glass_alt, esso_plaza.glazing]:
 		material.set_shader_parameter("sun_direction", sun_direction)
+		material.set_shader_parameter("sky_zenith", light.zenith)
+		material.set_shader_parameter("sky_horizon", light.horizon)
+		material.set_shader_parameter("sky_glow", light.glow)
+		material.set_shader_parameter("sun_color", light.direct)
+		material.set_shader_parameter("sun_strength", solar_energy)
+		material.set_shader_parameter("moon_strength", light.moon_energy)
+		material.set_shader_parameter("night_weight", light.night)
+		material.set_shader_parameter("photo_weight", light.photo)
+		material.set_shader_parameter("cloud_coverage", cloud)
+	# Keep the existing solar update cadence for sky and cubemap changes.
+	if cloud > .10:
+		sky_paint.set_shader_parameter("weather_cloud_drift", Vector2(.005, .0025) * minute)
 
 
 func set_bow_light(at: Vector3, direction: Vector3, strength: float) -> void:
@@ -669,7 +855,8 @@ func set_surface_slick(data: Vector4) -> void:
 	near_water.set_shader_parameter("surface_slick", data)
 
 
-func build_town(paving_texture: Texture2D, terrain: Material) -> BuildingsDriveways:
+func build_town(paving_texture: Texture2D, terrain: Material, brick: Texture2D,
+		checkpoint: Callable) -> BuildingsDriveways:
 	var tile_image := Image.load_from_file(BASE + "deep_river_roofs.png")
 	tile_image.generate_mipmaps()
 	var textures := ImageTexture.create_from_image(tile_image)
@@ -687,23 +874,33 @@ func build_town(paving_texture: Texture2D, terrain: Material) -> BuildingsDrivew
 	if lamure_patch != null:
 		detail_areas.append(lamure_patch.area)
 	var roads := RoadNetwork.new()
-	roads.build(self, meta, ground_height, marina_paving, detail_areas,
-		ROAD_SCAN, ROAD_NORMAL, concrete_scan, asphalt_scan, GRAVEL_SCAN, GRAVEL_NORMAL, paving_texture)
-	var brick := scanned_surface("brick")
-	buildings.build(self, footprints, textures, ground_height, meta.distance_scale,
+	await roads.build(self, meta, ground_height, marina_paving, detail_areas,
+		ROAD_SCAN, ROAD_NORMAL, concrete_scan, asphalt_scan, GRAVEL_SCAN, GRAVEL_NORMAL, paving_texture, checkpoint)
+	await buildings.build(self, footprints, textures, ground_height, meta.distance_scale,
 		brick, asphalt_scan, wood_scan, roads.paved, meta.streets,
-		regional_streets, meta.buildings, concrete_scan)
+		regional_streets, meta.buildings, concrete_scan, checkpoint)
+	if world_grass_surface != null:
+		world_grass_surface.index_roads(roads.spans)
+		world_grass_surface.index_buildings(meta)
+		world_grass_surface.driveways = buildings.driveways
 	town_walkways = roads.build_walkways(buildings.driveways, concrete_scan, asphalt_scan, terrain)
+	pedestrian_entries = buildings.residential.pedestrian_entries
 	windows = buildings.windows
 	bind_day_sky(windows)
 	add_child(town_hall)
 	town_hall.build(ground_height, concrete_scan, waterfront.render_trees)
 	bind_day_sky(town_hall.glass)
 	bind_day_sky(town_hall.glass_alt)
-	var esso := EssoPlaza.new()
-	add_child(esso)
-	esso.build(ground_height, asphalt_scan, concrete_scan, brick)
+	esso_plaza = EssoPlaza.new()
+	add_child(esso_plaza)
+	esso_plaza.build(ground_height, asphalt_scan, concrete_scan, brick)
+	bind_day_sky(esso_plaza.glazing)
 	return buildings.driveways
+
+
+func update_grass(viewpoint: Vector3, preset: int) -> void:
+	if world_grass != null:
+		world_grass.update_around(viewpoint, preset)
 
 
 static func highway_has_tree_conflict(point: Vector2, spans: Array) -> bool:

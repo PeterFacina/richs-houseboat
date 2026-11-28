@@ -34,7 +34,8 @@ var glass_alt: ShaderMaterial
 var concrete: Material
 var steel: Material
 var white: Material
-var lamp_glass: Material
+var lamp_glass: StandardMaterial3D
+var exterior_lights: Array[OmniLight3D] = []
 var monument: Material
 var rng := RandomNumberGenerator.new()
 var crowns: Array[Transform3D] = []
@@ -94,7 +95,7 @@ func make_materials(concrete_scan: Texture2D) -> void:
 	lamp_glass = Kit.paint(Color("#fff2cc"), .32)
 	lamp_glass.emission_enabled = true
 	lamp_glass.emission = Color("#f5d294")
-	lamp_glass.emission_energy_multiplier = .46
+	lamp_glass.emission_energy_multiplier = 0.0
 	glass = ShaderMaterial.new()
 	glass.shader = preload("res://deep_river_town_hall_glass.gdshader")
 	glass_alt = glass.duplicate()
@@ -104,6 +105,10 @@ func make_materials(concrete_scan: Texture2D) -> void:
 func set_evening(amount: float) -> void:
 	for material in [glass, glass_alt]:
 		material.set_shader_parameter("evening", amount)
+	lamp_glass.emission_energy_multiplier = .66 * amount
+	for lamp in exterior_lights:
+		lamp.visible = amount > .005
+		lamp.light_energy = 1.15 * amount
 
 
 func brick(tint: Color, mortar: Color) -> ShaderMaterial:
@@ -266,6 +271,7 @@ func louver(frame: Transform3D, x: float, y: float, width: float, height: float)
 func wall_light(frame: Transform3D, x: float, y: float) -> void:
 	box(Vector3(x, y + .055, .18), Vector3(.30, .23, .33), mullion, frame)
 	box(Vector3(x, y - .058, .23), Vector3(.22, .035, .18), lamp_glass, frame)
+	add_exterior_light(frame * Vector3(x, y - .15, .30), 4.5)
 
 
 func downspout(frame: Transform3D, x: float, height: float) -> void:
@@ -457,6 +463,7 @@ func build_plaza_canopy() -> void:
 			box(Vector3(x, base + .08, z), Vector3(.33, .16, .33), footing)
 	for offset: float in [-13.5, -8.1, -2.7, 2.7, 8.1, 13.5]:
 		box(at + Vector3(offset, -.312, -.07), Vector3(.86, .065, .21), lamp_glass)
+		add_exterior_light(at + Vector3(offset, -.43, -.07), 5.0)
 
 
 func civic_memorial() -> void:
@@ -536,6 +543,20 @@ func street_lamp(at: Vector2) -> void:
 		previous = next
 	cylinder(previous - Vector3.UP * .12, .065, .25, .26, dark)
 	cylinder(previous - Vector3.UP * .263, .195, .17, .08, lamp_glass)
+	add_exterior_light(previous - Vector3.UP * .38, 8.0)
+
+
+func add_exterior_light(at: Vector3, reach: float) -> void:
+	var lamp := OmniLight3D.new()
+	lamp.light_color = Color("#ffdbac")
+	lamp.omni_range = reach
+	lamp.distance_fade_enabled = true
+	lamp.distance_fade_begin = 85.0
+	lamp.distance_fade_length = 35.0
+	lamp.hide()
+	add_child(lamp)
+	lamp.position = at
+	exterior_lights.append(lamp)
 
 
 func flagpole(x: float, z: float, ontario: bool) -> void:

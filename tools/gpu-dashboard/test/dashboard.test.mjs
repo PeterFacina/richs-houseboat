@@ -22,6 +22,25 @@ const users = { 'viewer@example.invalid': 'viewer', 'reviewer@example.invalid': 
 const reviewer = { 'Tailscale-User-Login': 'reviewer@example.invalid' };
 const viewer = { 'Tailscale-User-Login': 'viewer@example.invalid' };
 
+test('persistent job budgets are visible to reviewers with sanitized reasons and without exposing report content', async t => {
+  const f = fixture();
+  t.after(() => rmSync(f.root, { recursive: true, force: true }));
+  const inbox = openTrainingInbox(f.inbox);
+  const job = inbox.jobs.ensure(123, 'PRIVATE_REPORT_SENTINEL');
+  const attempt = inbox.jobs.reserve(job);
+  inbox.jobs.fail(attempt, Object.assign(new Error('SECRET_TOKEN_SENTINEL'), { code: 'GUARD_REVIEW_REQUIRED' }));
+  inbox.close();
+  const reader = createReader({ storage: f.root, inbox: f.inbox, lessons: f.lessons });
+  const overview = reader.overview('reviewer');
+  assert.equal(overview.jobs[0].issue, 123);
+  assert.equal(overview.jobs[0].state, 'held');
+  assert.equal(overview.jobs[0].reason, 'guard');
+  assert.equal(overview.jobs[0].attempts, 1);
+  assert.equal(overview.jobs[0].limit, 3);
+  assert.doesNotMatch(JSON.stringify(overview.jobs), /PRIVATE_REPORT_SENTINEL|SECRET_TOKEN_SENTINEL/);
+  assert.equal(reader.overview('viewer').jobs, undefined);
+});
+
 async function listening(server, t) {
   const ready = once(server, 'listening');
   server.listen(0, '127.0.0.1');

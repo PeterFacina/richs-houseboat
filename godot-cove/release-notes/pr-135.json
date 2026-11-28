@@ -1,0 +1,9 @@
+{
+  "pr": 135,
+  "player_facing": true,
+  "bullets": [
+    "Try the experimental Riverside look at Deep River Marina with the --riverside-poc launch option. The regular look remains the default.",
+    "The approved grass now streams across eligible ground throughout the playable map while roads, paths, paved areas, sand, water, buildings and steep rock stay clear. Mowing still cuts and regrows the grass.",
+    "Grass loading uses smaller time slices and keeps prepared patches available when you return."
+  ]
+}

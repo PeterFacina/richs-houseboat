@@ -16,9 +16,12 @@ This is a short navigation map, not a complete specification. Source in the curr
 | Boat movement, waves, thrust, helm | [Boat and water](systems/BOAT-WATER.md) |
 | Host/guest, shared controls, replicated poses | [Multiplayer](systems/MULTIPLAYER.md) |
 | Fishing, on-foot input, tools | [Fishing and player](systems/FISHING-PLAYER.md) |
+| Camera, contextual interaction, idle poses, dynamic weather | [Gameplay polish](systems/GAMEPLAY-POLISH.md) |
 | XP, jobs, economy and saves | [Progression and economy](systems/PROGRESSION-ECONOMY.md) |
 | Town, roads and vehicles | `deep_river_*.gd`, `marina_car*.gd`, `vehicle_driver.gd` (search actual callers) |
+| Residents and pedestrian routes | [Gameplay polish](systems/GAMEPLAY-POLISH.md#deep-river-residents) |
 | Mowing | `lawn_mower.gd`, `shannon_job.gd`, `mowing_routes.gd` |
+| Opt-in Riverside visuals and world grass streaming | [Riverside proof of concept](systems/RIVERSIDE-POC.md); `riverside_grass_surface.gd`, `riverside_world_grass.gd` |
 | Big Rich, Shannon Lapping, shared quest state | [Quests and character stories](systems/QUESTS.md) |
 | AI and Discord workflow | [AI workflow status](AI-WORKFLOW.md), [team workflow](TEAM-WORKFLOW.md) |
 | Tests and CI | [Build checks](BUILD-CHECKS.md), [universal XP verification](UNIVERSAL-XP.md) |

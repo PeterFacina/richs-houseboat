@@ -6,6 +6,9 @@ const DRAW_DISTANCE := [2400.0, 4200.0, 8700.0]
 const SHADOW_DISTANCE := [72.0, 125.0, 230.0]
 const WATER_GRID := [72, 112, 180]
 const RANGES := {
+	"riverside_grass": [55.0, 72.0, 118.0],
+	"riverside_leaves": [55.0, 82.0, 120.0],
+	"riverside_tree": [105.0, 175.0, 240.0],
 	"tree_detail": [135.0, 235.0, 360.0],
 	"tree_silhouette": [1220.0, 2150.0, 4150.0],
 	"tree_stem": [420.0, 680.0, 1150.0],
@@ -43,13 +46,20 @@ func apply(river: Node3D, view: Camera3D) -> void:
 	river.landscape_light.directional_shadow_max_distance = SHADOW_DISTANCE[level]
 	river.set_water_grid(WATER_GRID[level])
 	river.fog_scale = pow(DRAW_DISTANCE[2] / DRAW_DISTANCE[level], .82)
-	river.landscape_environment.fog_density = lerpf(.00010, .00038, maxf(0.0, river.last_evening)) * river.fog_scale
+	river.landscape_environment.fog_density = river.sky_fog_density * river.fog_scale
 	for kind: String in RANGES:
 		for item: GeometryInstance3D in river.get_tree().get_nodes_in_group("river_graphics_" + kind):
 			if not river.is_ancestor_of(item):
 				continue
 			item.visibility_range_end = RANGES[kind][level]
 			item.visibility_range_end_margin = 14.0
+			if kind == "riverside_grass" and item is MultiMeshInstance3D:
+				var grass_batch := item as MultiMeshInstance3D
+				grass_batch.multimesh.visible_instance_count = -1
+				if grass_batch.material_override is ShaderMaterial:
+					var material := grass_batch.material_override as ShaderMaterial
+					material.set_shader_parameter("fade_start", RANGES[kind][level] - 24.0)
+					material.set_shader_parameter("fade_end", RANGES[kind][level] - 4.0)
 			if kind == "tree_silhouette":
 				item.visibility_range_begin = RANGES["tree_detail"][level]
 				item.visibility_range_begin_margin = 14.0

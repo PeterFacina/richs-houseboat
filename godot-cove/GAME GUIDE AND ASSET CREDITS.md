@@ -25,7 +25,7 @@ For a crew of up to four, choose **Multiplayer** on the title screen. One player
 
 Choose **B → River → Evening at Pine Reach** to start at the shore camp. On the boat, aim at the landing net or ice chest and press **E** to pick it up. Look at a crewmate and press **E** to hand it over. **Q** sets it down, and **E** at its rack secures it. With the net in your hands, aim at a crewmate's fish when it surfaces within reach and left-click to scoop it.
 
-Press **E** at the bow spotlight switch and aim it with the mouse. **E** releases the light at its current angle, and **Q** switches it off while you are aiming. **N** switches between daylight and dusk. Keep a landed fish with **H**, then follow the lanterns at Pine Reach. Use **E** at the grill to place, turn, and serve the fish. **P** saves a local photo and puts the latest shot on the camp's photo board.
+Press **E** at the bow spotlight switch and aim it with the mouse. **E** releases the light at its current angle, and **Q** switches it off while you are aiming. The sky and waterfront lighting follow the saved clock. In solo or as host, **N** advances to the next sunset or morning. Keep a landed fish with **H**, then follow the lanterns at Pine Reach. Use **E** at the grill to place, turn, and serve the fish. **P** saves a local photo and puts the latest shot on the camp's photo board.
 
 Fish from the deck at low speed or from a landing. Press **G** to cycle rigs before casting. Aim at the water and tap **R** to cast. Tap **R** when the float goes under to set the hook. Hold **R** to reel and ease off while the fish pulls line out. Right mouse lifts the rod and the mouse wheel adjusts the drag. Tap **R** when the fish is within net range, then tap **R** again to release it. The journal records species, length, and estimated weight.
 
@@ -67,6 +67,8 @@ Press **4** to set a waypoint for Lamure Beach. The sandy outline follows the On
 
 The surface scans in `godot-cove/deep_river/materials` and the tone-mapped daytime sky use Poly Haven CC0 assets. [Grass](https://polyhaven.com/a/leafy_grass), [asphalt](https://polyhaven.com/a/asphalt_03), [concrete](https://polyhaven.com/a/concrete_floor_02), [brick](https://polyhaven.com/a/brick_wall_02), [wood](https://polyhaven.com/a/brown_planks_04), [sand](https://polyhaven.com/a/coast_sand_01), [daylight panorama](https://polyhaven.com/a/kloofendal_48d_partly_cloudy_puresky).
 
+The Deep River day and night cycle uses the existing daylight panorama for cloud detail. Photographic references for the cycle include Poly Haven's [Qwantani Dawn](https://polyhaven.com/a/qwantani_dawn_puresky), [Qwantani Sunset](https://polyhaven.com/a/qwantani_sunset_puresky), its [outdoor sky photography](https://polyhaven.com/hdris?environment=outdoor&sky_view=open), and [Rogland Clear Night](https://polyhaven.com/a/rogland_clear_night). The sky colours, sun, moon, and stars are calculated from the in-game clock.
+
 The unpaved roads and shoulders use Amal Kumar's two-metre [Gravel Road](https://polyhaven.com/a/gravel_road) scan from Poly Haven (CC0).
 
 Lamure’s pine materials use CC0 assets from Poly Haven and Yughues. [Pine bark](https://polyhaven.com/a/pine_bark), [forest floor](https://polyhaven.com/a/forrest_ground_03), [pine branch textures](https://opengameart.org/content/branches-textures-pack-02).
@@ -77,6 +79,19 @@ Swisha uses a 4 m terrain grid, a raised headpond, and a powerhouse below the co
 First-person hand meshes, skin/normal/ORM textures and finger poses are by DigitalN8m4r3 / Miodrag Sejic and the Godot XR Tools contributors, derived from MakeHuman. The hand assets are CC0; original notices, pinned source revision and the upstream MIT notice are included in `godot-cove/deep_river/hands/`. [Godot XR hand assets](https://github.com/GodotVR/godot-xr-tools/tree/6c6189bdfcdf855052ef1aeb9f3e0ec4c7a7eb60/addons/godot-xr-tools/hands).
 
 Use **Alt+Enter** or **F11** for fullscreen. **Esc** or **F10** releases the cursor so native window controls remain reachable; **Esc > Settings > Maximize window** also fills the desktop with a normal resizable window.
+
+## Environmental audio
+
+Deep River uses edited [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) field recordings under `deep_river/environment_audio/`. The game versions use Freesound's publicly served audio previews. The files were trimmed, filtered, level-matched and encoded as 32 kHz Ogg Vorbis. The beds use 0.8-second loop-seam crossfades. Waterfront lapping and thunder are mono for positional playback.
+
+| Game audio | Field recording |
+| --- | --- |
+| Freshwater lapping and shoreline splash | TRP, small waves on Lake Ontario. The lapping bed is filtered and compressed, and the splash is a faded 0.73-second excerpt from the same recording. [Waves gentle med cu lake water](https://freesound.org/people/TRP/sounds/573191/) |
+| Light rain and rain over water | myLoop, two edited sections of [Rain in Munich Westpark](https://freesound.org/people/myLoop/sounds/849800/). The water mix also supplies the low-level prop wash. |
+| Rain under cover | deadrobotmusic, rain recorded inside a car. [PNW rain perfect loop 114](https://freesound.org/people/deadrobotmusic/sounds/549909/) |
+| Heavy rain | Alex_hears_things, rain during Cyclone Alfred. [Heavy Rain Downpour with Close Water](https://freesound.org/people/Alex_hears_things/sounds/812614/) |
+| Wind | Nox_Sound, [Ambiance Wind Forest Trees Loop 01](https://freesound.org/people/Nox_Sound/sounds/530908/) |
+| Thunder | Dave Welsh, an edited eight-second excerpt from [Thunder Clap OWB KY 441x16](https://freesound.org/people/Dave%20Welsh/sounds/194364/) |
 
 ## Zero Turn controls
 

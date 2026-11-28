@@ -180,6 +180,10 @@ test('pinned refresh, persistent fallback, and queued brief provenance', async t
     assert.equal(rejected.input.commit, third);
     assert.equal(rejected.input.exportPassed, false);
     assert.equal(rejected.published, null);
+    assert.ok(rejected.input.guardFindings.length > 0);
+    await assert.rejects(generation.generate(note, { ...issue, number: 113 }),
+      error => error.code === 'GUARD_REVIEW_REQUIRED');
+    assert.equal(inbox.read(113).captures.length, 1);
     unsafe = false;
     renameSync(upstream, upstream + '.offline');
     const stale = await generation.generate(note, { ...issue, number: 114 });

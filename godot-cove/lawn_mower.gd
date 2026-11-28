@@ -67,6 +67,7 @@ func setup(map: Node3D, parking: Vector3, heading: float, grass_owner: Animatabl
 	global_transform = pose if pose.origin.is_finite() else Transform3D(Basis(Vector3.UP, yaw), parking)
 	update_wheels(0.0, 0.0, 0.0)
 	motor = AudioStreamPlayer3D.new()
+	motor.bus = &"Vehicles"
 	motor.stream = engine_loop()
 	motor.position = Vector3(0, .57, .79)
 	motor.unit_size = 2.2
@@ -77,6 +78,8 @@ func setup(map: Node3D, parking: Vector3, heading: float, grass_owner: Animatabl
 		grass = river.waterfront.park_grass
 		grass_transforms = river.waterfront.grass_transforms
 		index_grass()
+		if river.waterfront.riverside_enabled:
+			grass_trimmed.connect(river.waterfront.trim_riverside_grass.bind(CUT_HEIGHT))
 
 
 func build_model() -> void:
@@ -417,6 +420,8 @@ func regrow_grass(indices: Array) -> void:
 		if not grass_cut[index]:
 			continue
 		grass.multimesh.set_instance_transform(index, grass_transforms[index])
+		if shared_grass == null and river.waterfront.riverside_enabled:
+			river.waterfront.regrow_riverside_grass(index)
 		grass_cut[index] = 0
 	last_cut = Vector3.INF
 

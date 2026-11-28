@@ -42,6 +42,14 @@ enum Marking { NONE, SOLID, BROKEN, HIGHWAY }
 # Packed into vertex alpha for town_street.gdshader. Standard meshes use alpha 1.
 enum RoadSurface { CHAMPLAIN, BROCKHOUSE, CEDAR, YARD_DRIVE, STANDARD }
 
+class RoadVertex:
+	var position: Vector3
+	var color: Color
+	var custom: Color
+	var uv: Vector2
+	var uv2: Vector2
+
+
 class Junction:
 	var center: Vector2
 	var inner: float
@@ -88,12 +96,13 @@ var spans: Array[Span] = []
 var chunks: Dictionary = {}
 var town_paving: Image
 var road_root: Node3D
+var champlain_walk_edges := PackedVector3Array()
 
 
 func build(map: Node3D, data: Dictionary, elevation: Callable, parking_mask: Texture2D,
 		detail_areas: Array[Rect2], asphalt: Texture2D, normal: Texture2D,
 		stone: Texture2D, asphalt_grain: Texture2D, gravel_color: Texture2D, gravel_normal: Texture2D,
-		paving_texture: Texture2D) -> void:
+		paving_texture: Texture2D, checkpoint := Callable()) -> void:
 	ground = elevation
 	close_areas = detail_areas
 	var limits: Array = data.downtown_paving
@@ -146,8 +155,12 @@ func build(map: Node3D, data: Dictionary, elevation: Callable, parking_mask: Tex
 		add_street(streets.size() + 2 + index, map.regional_streets[index], 3.2, RoadSurface.STANDARD, true)
 	find_neighbors()
 	build_junction_grades()
-	for span: Span in spans:
-		build_span(span)
+	for i in spans.size():
+		if checkpoint.is_valid():
+			await checkpoint.call("Building roads", i, spans.size())
+		build_span(spans[i])
+	if checkpoint.is_valid():
+		await checkpoint.call("Installing road surfaces and collisions")
 
 	var network := Node3D.new()
 	network.name = "DeepRiverRoads"
@@ -160,6 +173,8 @@ func build(map: Node3D, data: Dictionary, elevation: Callable, parking_mask: Tex
 	sidewalk.shader = preload("res://champlain_sidewalk.gdshader")
 	sidewalk.set_shader_parameter("concrete_scan", stone)
 	for cell: Vector2i in chunks:
+		if checkpoint.is_valid():
+			await checkpoint.call("Installing road surfaces and collisions")
 		var batch: Dictionary = chunks[cell]
 		var origin := Vector3(cell.x * CHUNK_SIZE, 0.0, cell.y * CHUNK_SIZE)
 		install(network, batch.asphalt, origin, paved, "Asphalt", true)
@@ -185,6 +200,8 @@ func build(map: Node3D, data: Dictionary, elevation: Callable, parking_mask: Tex
 func build_walkways(driveways: RefCounted, concrete: Texture2D, asphalt: Texture2D, terrain: Material) -> Walkways:
 	var walks := Walkways.new()
 	walks.build(road_root, self, driveways, concrete, asphalt, terrain)
+	walks.pedestrian_edges.append_array(champlain_walk_edges)
+	champlain_walk_edges.clear()
 	for span: Span in spans:
 		span.neighbors.clear()
 	spans.clear()
@@ -420,6 +437,10 @@ func build_span(span: Span) -> void:
 		var subdivisions := maxi(1, ceili(span.length / divisions / 1.15)) if close else 1
 		for sub in range(1, subdivisions + 1):
 			rows.append(lerpf(start, finish, float(sub) / subdivisions))
+	var asphalt_vertices: Dictionary[Vector2, RoadVertex] = {}
+	var shoulder_vertices: Dictionary[Vector2, RoadVertex] = {}
+	var previous_cell := Vector2i.ZERO
+	var previous_neighbors: Array[Span] = []
 	for row in range(1, rows.size()):
 		var first := rows[row - 1]
 		var last := rows[row]
@@ -437,10 +458,16 @@ func build_span(span: Span) -> void:
 			if other.bounds.intersects(row_bounds):
 				nearby.append(other)
 
+		# Neighboring rows can reuse vertices when their grading inputs and mesh origin match.
+		if cell != previous_cell or nearby != previous_neighbors or row % 16 == 0:
+			asphalt_vertices.clear()
+			shoulder_vertices.clear()
+			previous_cell = cell
+			previous_neighbors = nearby
 		for col in range(1, columns.size()):
 			var left := columns[col - 1] * span.width
 			var right := columns[col] * span.width
-			emit_strip(batch.asphalt, span, first, last, left, right, nearby, origin, false)
+			emit_strip(batch.asphalt, span, first, last, left, right, nearby, origin, false, asphalt_vertices)
 		var has_shoulder := shoulder_width(span, middle) > .02
 		if has_shoulder or span.street != CHAMPLAIN:
 			# Downtown strips are visual at the unpaved edges of the mask.
@@ -453,9 +480,9 @@ func build_span(span: Span) -> void:
 				var lip := edge + side * .09
 				var outer := edge + side * span.shoulder
 				emit_strip(verge, span, first, last, minf(edge, lip), maxf(edge, lip),
-					nearby, origin, true)
+					nearby, origin, true, shoulder_vertices)
 				emit_strip(verge, span, first, last, minf(lip, outer), maxf(lip, outer),
-					nearby, origin, true)
+					nearby, origin, true, shoulder_vertices)
 		var station := span.station + (first + last) * .5 * span.length
 		if span.street == CHAMPLAIN and station >= CHAMPLAIN_WALK_START and station <= CHAMPLAIN_WALK_END.y:
 			if not batch.has("sidewalk"):
@@ -469,6 +496,11 @@ func emit_champlain_sidewalk(surface: SurfaceTool, span: Span, first: float, las
 		var end := champlain_walk_end(side)
 		if middle >= end or (side < 0.0 and absf(middle - CIVIC_ACCESS.x) < CIVIC_ACCESS.y):
 			continue
+		for fraction: float in [first, last]:
+			var station := span.station + fraction * span.length
+			var offset := champlain_walk_width(station, side) * .5
+			var point := at(span, fraction, span.width * side) + span.left.lerp(span.right, fraction) * side * offset
+			champlain_walk_edges.append(Vector3(point.x, ground.call(point.x, point.y) + .15, point.y))
 		for strip in 4:
 			surface.set_color(Color(1, 0, 0) if strip == 1 else Color.BLACK)
 			var left := strip
@@ -505,7 +537,8 @@ func shoulder_width(span: Span, point: Vector2) -> float:
 
 
 func emit_strip(surface: SurfaceTool, span: Span, first: float, last: float, left: float,
-		right: float, nearby: Array[Span], origin: Vector2, shoulder: bool) -> void:
+		right: float, nearby: Array[Span], origin: Vector2, shoulder: bool,
+		vertices: Dictionary[Vector2, RoadVertex]) -> void:
 	var corners := PackedVector2Array([
 		at(span, first, left), at(span, first, right),
 		at(span, last, right), at(span, last, left)])
@@ -528,7 +561,17 @@ func emit_strip(surface: SurfaceTool, span: Span, first: float, last: float, lef
 			break
 	for polygon: PackedVector2Array in parts:
 		for index: int in Geometry2D.triangulate_polygon(polygon):
-			emit_vertex(surface, span, polygon[index] + origin, nearby, origin, shoulder)
+			var point := polygon[index] + origin
+			var vertex: RoadVertex = vertices.get(point)
+			if vertex == null:
+				vertex = road_vertex(span, point, nearby, origin, shoulder)
+				vertices[point] = vertex
+			if not shoulder:
+				surface.set_custom(0, vertex.custom)
+			surface.set_color(vertex.color)
+			surface.set_uv(vertex.uv)
+			surface.set_uv2(vertex.uv2)
+			surface.add_vertex(vertex.position)
 
 
 func at(span: Span, fraction: float, lateral: float) -> Vector2:
@@ -544,8 +587,8 @@ func span_width_at(span: Span, fraction: float, lateral: float) -> float:
 	return widths.x if lateral < 0.0 else widths.y
 
 
-func emit_vertex(surface: SurfaceTool, span: Span, point: Vector2, nearby: Array[Span],
-		origin: Vector2, shoulder: bool) -> void:
+func road_vertex(span: Span, point: Vector2, nearby: Array[Span], origin: Vector2, shoulder: bool) -> RoadVertex:
+	var vertex := RoadVertex.new()
 	var axis := (span.end - span.start) / span.length
 	var station := span.station + clampf((point - span.start).dot(axis), 0.0, span.length)
 	var lateral := (point - span.start).dot(axis.orthogonal())
@@ -597,18 +640,18 @@ func emit_vertex(surface: SurfaceTool, span: Span, point: Vector2, nearby: Array
 	else:
 		surface_gravel = lerpf(gravel_at(span, point), junction.z, junction.x)
 		var street_wear := fposmod(float(span.street + 19) * .618034, 1.0)
-		surface.set_custom(0, Color(width, verge * (1.0 - junction.x), street_wear, junction.x))
-	surface.set_color(Color(style, edges, surface_gravel,
-		float(span.road_surface) / float(RoadSurface.STANDARD)))
-	surface.set_uv(Vector2(lateral, station))
-	surface.set_uv2(Vector2(shoulder_mix if shoulder else paint * end_blend, transverse))
+		vertex.custom = Color(width, verge * (1.0 - junction.x), street_wear, junction.x)
+	vertex.color = Color(style, edges, surface_gravel, float(span.road_surface) / float(RoadSurface.STANDARD))
+	vertex.uv = Vector2(lateral, station)
+	vertex.uv2 = Vector2(shoulder_mix if shoulder else paint * end_blend, transverse)
 	var height := ground.call(point.x, point.y) as float
 	var road_height := height + lift
 	if not shoulder and junction.x > 0.0:
 		# The shared grade follows the terrain and stays above the rendered ground.
 		var shared_height := maxf(height + .041, lerpf(height, junction.y, .38) + JUNCTION_LIFT)
 		road_height = lerpf(road_height, shared_height, junction.x * (1.0 - maxf(plaza, apron)))
-	surface.add_vertex(Vector3(point.x - origin.x, road_height, point.y - origin.y))
+	vertex.position = Vector3(point.x - origin.x, road_height, point.y - origin.y)
+	return vertex
 
 
 func apron_coverage(point: Vector2) -> float:

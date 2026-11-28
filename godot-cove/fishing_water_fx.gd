@@ -19,6 +19,10 @@ var reel: AudioStreamPlayer
 var drag: AudioStreamPlayer
 var random := RandomNumberGenerator.new()
 var wave_sampler: Callable
+var flow_sampler: Callable
+var water_detail := .5
+var bow_spray: GPUParticles3D
+var bow_style: ParticleProcessMaterial
 
 
 func _ready() -> void:
@@ -29,6 +33,7 @@ func _ready() -> void:
 	var surface := Kit.mesh_at(self, splash_mesh, Vector3.ZERO, overlay())
 	surface.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	sound = AudioStreamPlayer3D.new()
+	sound.bus = &"Water"
 	sound.unit_size = 5.6
 	sound.max_distance = 47.0
 	sound.volume_db = -6.0
@@ -42,6 +47,54 @@ func _ready() -> void:
 		samples[effect] = synthesise(effect)
 	reel.stream = samples.reel
 	drag.stream = samples.drag
+	if DisplayServer.get_name() != "headless":
+		make_bow_spray()
+
+
+func make_bow_spray() -> void:
+	bow_spray = GPUParticles3D.new()
+	bow_spray.name = "BowSpray"
+	bow_spray.emitting = false
+	bow_spray.amount = 42
+	bow_spray.lifetime = .43
+	bow_spray.local_coords = false
+	bow_spray.visibility_aabb = AABB(Vector3(-6, -2, -6), Vector3(12, 6, 12))
+	bow_spray.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	bow_style = ParticleProcessMaterial.new()
+	bow_style.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_BOX
+	bow_style.emission_box_extents = Vector3(.62, .015, .10)
+	bow_style.direction = Vector3(.0, .8, -.6)
+	bow_style.spread = 51.0
+	bow_style.initial_velocity_min = .75
+	bow_style.initial_velocity_max = 2.5
+	bow_style.gravity = Vector3.DOWN * 9.8
+	bow_style.scale_min = .5
+	bow_style.scale_max = 1.35
+	bow_spray.process_material = bow_style
+	var bead := SphereMesh.new()
+	bead.radial_segments = 4
+	bead.rings = 2
+	bead.radius = .024
+	bead.height = .072
+	var paint := Kit.paint(Color(.72, .85, .81, .61))
+	paint.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	paint.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	bead.material = paint
+	bow_spray.draw_pass_1 = bead
+	add_child(bow_spray)
+
+
+func update_bow_spray(boat: Node3D, camera: Vector3, clock: float, speed: float, wind: float) -> void:
+	if bow_spray == null:
+		return
+	var run := smoothstep(1.6, 5.8, speed)
+	var underway: bool = boat.visible and boat.departed and boat.speed > 0.0
+	var near := boat.global_position.distance_squared_to(camera) < 55.0 * 55.0
+	bow_spray.amount_ratio = run * lerpf(.64, 1.0, wind) * water_detail if underway and near else 0.0
+	bow_spray.emitting = bow_spray.amount_ratio > .025
+	if bow_spray.emitting:
+		bow_spray.global_basis = Basis(Vector3.UP, boat.heading)
+		bow_spray.global_position = on_water(boat.to_global(Vector3(0, 0, -2.2 if boat.skiff else -3.2)), clock)
 
 
 func make_float() -> void:
@@ -114,7 +167,9 @@ func overlay() -> StandardMaterial3D:
 
 
 func break_surface(at: Vector3, strength: float, tag := "") -> void:
-	rings.append({"at": at, "age": 0.0, "strength": strength})
+	if rings.size() >= 12:
+		rings.pop_front()
+	rings.append({"at": at, "age": 0.0, "strength": strength, "drift": null})
 	if strength >= .34:
 		for index in roundi(6 + strength * 12):
 			if droplets.size() >= 70:
@@ -142,26 +197,33 @@ func tick(delta: float, clock: float, camera: Vector3) -> void:
 			rings.remove_at(i)
 			continue
 		var at: Vector3 = ripple.at
-		for echo in 2:
+		if at.distance_squared_to(camera) > 48.0 * 48.0:
+			continue
+		if ripple.drift == null:
+			ripple.drift = flow_sampler.call(at, clock) * .36 if flow_sampler.is_valid() else Vector3.ZERO
+		at += ripple.drift * ripple.age
+		var wedges := 12 + roundi(water_detail * 12)
+		for echo in (2 if water_detail > .25 else 1):
 			var age: float = ripple.age - echo * .19
 			if age <= 0:
 				continue
 			var radius: float = .037 + age * (.39 + ripple.strength * .62)
 			var width: float = .026 + .017 * ripple.strength
 			var opacity: float = maxf(0, 1.0 - age / 1.44) * (.18 + ripple.strength * .32 - echo * .085)
-			for wedge in 32:
-				var a := float(wedge) / 32 * TAU
-				var b := float(wedge + 1) / 32 * TAU
-				var direction := Vector3(cos(a), 0, sin(a))
+			var low := on_water(at + Vector3.RIGHT * radius, clock)
+			var outer := on_water(at + Vector3.RIGHT * (radius + width), clock)
+			for wedge in wedges:
+				var a := float(wedge) / wedges * TAU
+				var b := float(wedge + 1) / wedges * TAU
 				var next := Vector3(cos(b), 0, sin(b))
 				var alpha := opacity * (.78 + .22 * sin(a * 5.0 + age * 3.0))
 				splash_mesh.surface_set_color(Color(.72, .88, .84, alpha))
-				var low := on_water(at + direction * radius, clock)
 				var high := on_water(at + next * radius, clock)
-				var outer := on_water(at + direction * (radius + width), clock)
 				var corner := on_water(at + next * (radius + width), clock)
 				for vertex: Vector3 in [low, high, outer, outer, high, corner]:
 					splash_mesh.surface_add_vertex(vertex)
+				low = high
+				outer = corner
 				shell = true
 	for i in range(droplets.size() - 1, -1, -1):
 		var bead: Dictionary = droplets[i]
@@ -171,7 +233,7 @@ func tick(delta: float, clock: float, camera: Vector3) -> void:
 			continue
 		var age := float(bead.age)
 		var center: Vector3 = bead.at + bead.motion * age + Vector3.DOWN * (age * age * 2.9)
-		if center.y < surface_height(center, clock) + .019:
+		if center.distance_squared_to(camera) > 48.0 * 48.0 or center.y < surface_height(center, clock) + .019:
 			continue
 		var face := (camera - center).normalized()
 		var side := face.cross(Vector3.UP).normalized() * float(bead.size)

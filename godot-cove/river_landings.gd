@@ -685,7 +685,8 @@ func aimed_door(eye: Camera3D) -> AnimatableBody3D:
 		if not is_instance_valid(hinge) or hinge.is_queued_for_deletion():
 			continue
 		var offset := hinge.to_global(Vector3(.61, 1.04, .025)) - eye.global_position
-		if offset.length_squared() < 2.9 * 2.9 and (-eye.global_basis.z).dot(offset.normalized()) > .91:
+		if offset.length_squared() < 2.9 * 2.9 and (-eye.global_basis.z).dot(offset.normalized()) > .91 \
+				and preload("res://interaction_sight.gd").clear(eye, eye.global_position + offset, hinge):
 			return hinge
 	return null
 

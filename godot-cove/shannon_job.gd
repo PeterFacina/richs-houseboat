@@ -52,6 +52,7 @@ var guide_timer := 0.0
 var cut_count := 0
 var status := Status.AVAILABLE
 var model := Model.new()
+var desk_idle := preload("res://character_idle.gd").new()
 var speech_age := 0.0
 var monitor_focus: Vector3
 var reminder_index := 0
@@ -116,7 +117,23 @@ func current_day() -> int:
 
 func update_clock(delta: float) -> void:
 	var state: Dictionary = game.campaign.ledger.state
-	state.work_minutes += delta * Routes.MINUTES_PER_SECOND
+	var campaign = game.campaign
+	if campaign.crew.is_guest():
+		if campaign.remote_ship.has("work_minutes"):
+			var target := float(campaign.remote_ship.work_minutes)
+			var current := float(state.work_minutes)
+			if target > current:
+				state.work_minutes = target if target - current > 1.0 else lerpf(current, target, 1.0 - exp(-delta * 18.0))
+		if not campaign.remote_weather.is_empty():
+			state.weather = campaign.remote_weather
+	else:
+		state.work_minutes += delta * Routes.MINUTES_PER_SECOND
+		game.weather.advance(state.weather, state.work_minutes, delta * Routes.MINUTES_PER_SECOND, game.player.global_position)
+		campaign.weather_send_in -= delta
+		if campaign.weather_send_in <= 0.0 or Vector2(state.weather.start, state.weather.lightning) != campaign.weather_sent_epoch:
+			campaign.send_weather()
+	game.weather_fx.update(game, state.weather, maxf(state.work_minutes, campaign.remote_weather_minute), delta)
+	game.river.update_day_cycle(state.work_minutes)
 	var today := current_day()
 	var minute := posmod(floori(state.work_minutes), Routes.MINUTES_PER_DAY)
 	calendar.text = "%s  %02d:%02d" % [Routes.DAYS[today % Routes.DAYS.size()], floori(minute / 60.0), minute % 60]
@@ -407,7 +424,10 @@ func tick(delta: float, can_talk: bool) -> void:
 		var gaze := to_local(game.eye.global_position if looking_at_player else monitor_focus) - Vector3.UP * 1.28
 		var look_yaw := atan2(gaze.x, gaze.z)
 		var mouth := (.35 + .30 * sin(speech_age * 18.0) + .18 * sin(speech_age * 29.0)) if voice.active else 0.0
-		model.pose_at_desk(delta, game.clock, look_yaw, atan2(gaze.y, Vector2(gaze.x, gaze.z).length()),
+		desk_idle.tick(delta, not voice.active, false)
+		var idle := desk_idle.packet()
+		var glance: Vector3 = desk_idle.head(idle, desk_idle.weight(idle))
+		model.pose_at_desk(delta, game.clock, look_yaw + glance.y, atan2(gaze.y, Vector2(gaze.x, gaze.z).length()) - glance.x,
 			looking_at_player, speech_age, mouth)
 	if mowing and distance < 18.0 and not voice.active and encouragement < WORK.size():
 		var threshold := .24 if encouragement == 0 else .68

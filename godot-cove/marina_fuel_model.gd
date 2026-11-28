@@ -150,6 +150,7 @@ func build_nozzle(red: Material, black: Material, steel: Material) -> void:
 
 func sound_at(parent: Node3D, recording: AudioStream, at: Vector3, volume: float) -> AudioStreamPlayer3D:
 	var player := AudioStreamPlayer3D.new()
+	player.bus = &"Vehicles"
 	player.stream = recording
 	player.position = at
 	player.volume_db = volume

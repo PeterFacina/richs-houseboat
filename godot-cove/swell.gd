@@ -1,5 +1,14 @@
 extends RefCounted
 
+const RIVER_WAVES := [
+	Vector4(.178, .123, 1.46, 0.0),
+	Vector4(-.126, .316, 1.82, 1.4),
+	Vector4(.491, -.217, 2.29, 2.6),
+	Vector4(.397, .662, 2.75, 0.0),
+	Vector4(-.798, .762, 3.29, .9),
+	Vector4(.735, .475, 2.85, 2.1),
+]
+
 
 static func height(x: float, z: float, clock: float) -> float:
 	return (
@@ -9,12 +18,21 @@ static func height(x: float, z: float, clock: float) -> float:
 	)
 
 
-# Keep the five wave components in sync with river_wave in water.gdshader.
-static func river_height(x: float, z: float, clock: float) -> float:
-	return (
-		.143 * sin(.178 * x + .123 * z - 1.46 * clock)
-		+ .091 * sin(-.126 * x + .316 * z - 1.82 * clock + 1.4)
-		+ .055 * sin(.491 * x - .217 * z - 2.29 * clock + 2.6)
-		+ .033 * sin(.397 * x + .662 * z - 2.75 * clock)
-		+ .016 * sin(-.798 * x + .762 * z - 3.29 * clock + .9)
-	)
+static func river_amplitudes(wind: float) -> PackedFloat32Array:
+	return PackedFloat32Array([
+		lerpf(.118, .172, wind), lerpf(.066, .089, wind), lerpf(.031, .054, wind),
+		lerpf(.012, .034, wind), lerpf(.006, .018, wind), .082 * wind * wind,
+	])
+
+
+# The same coefficients are uploaded to the mapped water shader.
+static func river_height(point: Vector2, clock: float, amplitudes: PackedFloat32Array) -> float:
+	var total := 0.0
+	for i in RIVER_WAVES.size():
+		var wave: Vector4 = RIVER_WAVES[i]
+		total += amplitudes[i] * sin(point.x * wave.x + point.y * wave.y - wave.z * clock + wave.w)
+	return total
+
+
+static func shore_exposure(clearance: float) -> float:
+	return lerpf(.24, 1.0, smoothstep(0.0, 57.0, clearance))

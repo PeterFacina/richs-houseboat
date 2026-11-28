@@ -1,0 +1,8 @@
+{
+  "pr": 128,
+  "player_facing": true,
+  "bullets": [
+    "Deep River loads faster and shows progress while the world is built.",
+    "Vehicle HUDs show speed and status. Find driving, boating, mowing, and flying controls in the pause menu."
+  ]
+}

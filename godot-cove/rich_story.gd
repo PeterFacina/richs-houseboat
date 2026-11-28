@@ -103,6 +103,7 @@ func setup(owner: Node3D, new_game: bool) -> void:
 	game.eye.add_child(effects)
 	effects.setup()
 	test_sound = AudioStreamPlayer3D.new()
+	test_sound.bus = &"Vehicles"
 	test_sound.stream = preload("res://deep_river/princecraft/catch.wav")
 	test_sound.max_distance = 28.0
 	yard.add_child(test_sound)
