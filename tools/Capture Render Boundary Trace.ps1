@@ -9,7 +9,7 @@ if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administra
 $taskRoot = Split-Path -Parent $PSScriptRoot
 if (-not $OutputDirectory) {
     $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
-    $OutputDirectory = Join-Path $taskRoot "benchmark-results\etl-$stamp"
+    $OutputDirectory = Join-Path $env:LOCALAPPDATA "RichsHouseboat\traces\etl-$stamp"
 }
 $OutputDirectory = [IO.Path]::GetFullPath($OutputDirectory)
 New-Item -ItemType Directory -Force -Path $OutputDirectory | Out-Null
