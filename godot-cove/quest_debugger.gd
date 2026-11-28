@@ -7,12 +7,16 @@ var game: Node3D
 var campaign
 var story
 var original_ledger: Dictionary
+var menu_root: Control
 var panel: PanelContainer
 var quest_picker: OptionButton
 var stage_picker: OptionButton
 var details: RichTextLabel
 var location_toggle: CheckBox
 var session_active := false
+var selection_initialized := false
+var follow_live_progress := true
+var previous_mouse_mode := Input.MOUSE_MODE_CAPTURED
 var selected_quest := 0
 var selected_stage := 0
 
@@ -26,17 +30,17 @@ func setup(owner: Node3D, river_campaign: Node3D) -> void:
 
 
 func build_panel() -> void:
-	var root := Control.new()
-	root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	root.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(root)
+	menu_root = Control.new()
+	menu_root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	menu_root.mouse_filter = Control.MOUSE_FILTER_STOP
+	add_child(menu_root)
 	panel = PanelContainer.new()
 	panel.set_anchors_preset(Control.PRESET_CENTER)
 	panel.position = Vector2(-340, -280)
 	panel.size = Vector2(680, 560)
 	panel.custom_minimum_size = Vector2(680, 560)
 	panel.add_theme_stylebox_override("panel", preload("res://game_menu_theme.gd").box(Color("#152b38f5"), Color("#e0b878"), 10, 18))
-	root.add_child(panel)
+	menu_root.add_child(panel)
 	var body := VBoxContainer.new()
 	body.add_theme_constant_override("separation", 10)
 	panel.add_child(body)
@@ -72,15 +76,18 @@ func build_panel() -> void:
 	add_button(actions, "Reset chain", reset_chain)
 	details = RichTextLabel.new()
 	details.bbcode_enabled = true
-	details.fit_content = true
+	details.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	details.fit_content = false
 	details.scroll_active = true
 	details.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	body.add_child(details)
 	var footer := Label.new()
 	footer.text = "F8 or Esc: close this menu. Test changes last until you leave the game. Host only in multiplayer."
 	footer.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	footer.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	body.add_child(footer)
 	panel.hide()
+	menu_root.hide()
 	populate_quests()
 
 
@@ -105,7 +112,10 @@ func populate_stages() -> void:
 	var quest: Dictionary = Story.QUESTS[selected_quest]
 	for index in quest.steps.size():
 		var objective: Array = quest.steps[index]
-		stage_picker.add_item("%02d · %s" % [index + 1, objective[1]])
+		var stage_title := str(objective[1])
+		if stage_title.length() > 36:
+			stage_title = stage_title.left(33) + "…"
+		stage_picker.add_item("%02d · %s" % [index + 1, stage_title])
 	stage_picker.select(clampi(selected_stage, 0, quest.steps.size() - 1))
 	refresh_details()
 
@@ -113,11 +123,15 @@ func populate_stages() -> void:
 func _quest_selected(index: int) -> void:
 	selected_quest = index
 	selected_stage = 0
+	selection_initialized = true
+	follow_live_progress = false
 	populate_stages()
 
 
 func _stage_selected(index: int) -> void:
 	selected_stage = index
+	selection_initialized = true
+	follow_live_progress = false
 	refresh_details()
 
 
@@ -131,14 +145,24 @@ func begin_session() -> bool:
 	campaign.ledger.state = original_ledger.duplicate(true)
 	campaign.debug_testing = true
 	session_active = true
-	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	return true
 
 
 func close_panel() -> void:
+	if quest_picker.get_popup().visible:
+		quest_picker.get_popup().hide()
+	if stage_picker.get_popup().visible:
+		stage_picker.get_popup().hide()
+	get_viewport().gui_release_focus()
 	panel.hide()
-	if game.is_inside_tree() and DisplayServer.get_name() != "headless":
-		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	menu_root.hide()
+	if game.is_inside_tree():
+		Input.mouse_mode = previous_mouse_mode
+
+
+func can_open() -> bool:
+	return not get_tree().paused and not game.menu_blocks_play() and not game.chart.visible \
+		and not game.fish_guide.visible and not game.teleport_dialog.visible and not game.tennis.active
 
 
 func handle_input(event: InputEvent) -> bool:
@@ -148,16 +172,26 @@ func handle_input(event: InputEvent) -> bool:
 	if key == KEY_F8:
 		if panel.visible:
 			close_panel()
-		else:
+		elif can_open():
 			if begin_session():
-				selected_quest = clampi(int(story.state().get("step", 0)), 0, Story.QUESTS.size() - 1)
-				selected_stage = clampi(int(story.state().get("progress", 0.0)), 0, Story.QUESTS[selected_quest].steps.size() - 1)
+				previous_mouse_mode = Input.mouse_mode
+				if not selection_initialized or follow_live_progress:
+					selected_quest = clampi(int(story.state().get("step", 0)), 0, Story.QUESTS.size() - 1)
+					selected_stage = clampi(int(story.state().get("progress", 0.0)), 0, Story.QUESTS[selected_quest].steps.size() - 1)
+					selection_initialized = true
+				menu_root.show()
 				panel.show()
+				Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 				populate_quests()
 		get_viewport().set_input_as_handled()
 		return true
 	if panel.visible and key == KEY_ESCAPE:
-		close_panel()
+		if quest_picker.get_popup().visible:
+			quest_picker.get_popup().hide()
+		elif stage_picker.get_popup().visible:
+			stage_picker.get_popup().hide()
+		else:
+			close_panel()
 		get_viewport().set_input_as_handled()
 		return true
 	return false
@@ -212,6 +246,7 @@ func prepare(stage_index: int) -> void:
 		saved.launched = true
 	saved.progress = float(stage_index)
 	story.normalize()
+	follow_live_progress = true
 	# Later objectives assume the loaned/restored craft is already at the public launch.
 	# Put the matching craft there as the normal quest actions would before syncing the world.
 	if quest.id == "story_fish" and stage_index > 0:
@@ -240,6 +275,7 @@ func complete_selected() -> void:
 		prepare(selected_definition().steps.size() - 1)
 		story.state().progress = float(selected_definition().target)
 		story.complete_for_debug(campaign.crew.my_id(), selected_definition().id)
+		follow_live_progress = true
 		story.sync_world()
 		campaign.changed(false)
 		refresh_details()
@@ -252,6 +288,7 @@ func skip_selected() -> void:
 		saved.accepted = false
 		saved.progress = 0.0
 		story.normalize()
+		follow_live_progress = true
 		story.sync_world()
 		campaign.changed(false)
 		refresh_details()
@@ -264,6 +301,7 @@ func reset_chain() -> void:
 		saved.version = Story.VERSION
 		saved.managed = true
 		story.normalize()
+		follow_live_progress = true
 		story.sync_world()
 		campaign.changed(false)
 		refresh_details()
