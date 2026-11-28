@@ -76,7 +76,7 @@ func build(hull: PhysicsBody3D, on_blocks: bool) -> void:
 	Kit.box_at(self, Vector3(-.78, 2.94, 3.63), Vector3(.44, .14, .43), aluminum)
 	Kit.box_at(self, Vector3(.82, 2.98, 5.12), Vector3(.21, .20, .26), green)
 	Kit.beam(self, Vector3(.82, 2.93, 5.12), Vector3(.86, 3.59, 5.12), .029, dark)
-	build_aft_deck(timber[1], dark, aluminum)
+	build_aft_deck(dark, aluminum)
 	for side: float in [-1.0, 1.0]:
 		build_rail("port_rail" if side < 0 else "starboard_rail", side, aluminum)
 		for z: float in [-3.54, 6.58]:
@@ -191,10 +191,9 @@ func build_rail(id: String, side: float, alloy: Material) -> void:
 		rail_colliders[id] = shapes
 
 
-func build_aft_deck(wood: Material, dark: Material, alloy: Material) -> void:
-	# Cross-members visibly carry the extended platform between the pontoon ends.
-	Kit.box_at(self, Vector3(0, .69, 8.04), Vector3(BEAM, .12, 2.72), wood)
-	Kit.collider(body, Vector3(0, .67, 8.04), Vector3(BEAM, .16, 2.72))
+func build_aft_deck(dark: Material, alloy: Material) -> void:
+	# The hull's continuous plank deck and collider already cover this full footprint.
+	# Keep only the visible support structure here to avoid a coplanar deck overlay.
 	for z: float in [6.82, 7.60, 8.38, 9.16]:
 		Kit.beam(self, Vector3(-1.39, .48, z), Vector3(1.39, .48, z), .11, dark)
 	for side: float in [-1.0, 1.0]:
