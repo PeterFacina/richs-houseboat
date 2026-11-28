@@ -1,0 +1,7 @@
+{
+  "pr": 153,
+  "player_facing": true,
+  "bullets": [
+    "Improved frame pacing and memory use by sharing identical procedural geometry without changing world detail, visuals, collisions, or gameplay."
+  ]
+}
