@@ -170,7 +170,7 @@ Windows includes WPR and exposes `CPU`, `GPU`, and `DesktopComposition` profiles
 1. Start the live recorder normally with `tools\Run Live Performance Recorder.cmd`. Use `-Renderer mobile` in PowerShell only when intentionally tracing Mobile.
 2. Double-click `tools\Capture Render Boundary Trace.cmd` and approve the Windows administrator prompt. Its exact WPR start command is `wpr -start CPU -start GPU -start DesktopComposition -filemode`.
 3. Keep the trace shorter than 60 seconds. Play until a stutter, press F9 in the game, return to the elevated window and press Enter. This emits `wpr -marker RH_STUTTER_N` and records the wall-clock correlation. Repeat if useful, then type `STOP`.
-4. The exact stop command is `wpr -stop <output>\render-boundary.etl "Richs Houseboat rendering-boundary gameplay stalls"`. The script writes the ETL and `markers.csv` under `%LOCALAPPDATA%\RichsHouseboat\traces\etl-*`. ETL files deliberately remain outside the OneDrive-backed worktree because the first trace disappeared from that directory before decoding; its matching F9 JSON was retained.
+4. The exact stop command is `wpr -stop <output>\render-boundary.etl "Richs Houseboat rendering-boundary gameplay stalls"`. The script immediately renames the result to `render-boundary.etl.trace` and writes `markers.csv` plus `capture.log` under `%LOCALAPPDATA%\RichsHouseboat\traces\etl-*`. Rename it back to `.etl` only when opening it in WPA. Raw `.etl` files disappeared after both initial captures, including one outside OneDrive; the neutral extension preserves the third capture and the log records WPR's exact exit behavior. Both matching F9 JSON files were retained.
 
 Equivalent manual elevated PowerShell commands are:
 

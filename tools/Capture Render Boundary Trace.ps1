@@ -13,8 +13,10 @@ if (-not $OutputDirectory) {
 }
 $OutputDirectory = [IO.Path]::GetFullPath($OutputDirectory)
 New-Item -ItemType Directory -Force -Path $OutputDirectory | Out-Null
-$tracePath = Join-Path $OutputDirectory 'render-boundary.etl'
+$etlPath = Join-Path $OutputDirectory 'render-boundary.etl'
+$tracePath = Join-Path $OutputDirectory 'render-boundary.etl.trace'
 $markerPath = Join-Path $OutputDirectory 'markers.csv'
+$logPath = Join-Path $OutputDirectory 'capture.log'
 'marker,local_time,unix_ms' | Set-Content -LiteralPath $markerPath -Encoding utf8
 
 $status = (& wpr -status 2>&1 | Out-String)
@@ -23,7 +25,7 @@ if ($status -notmatch 'WPR is not recording') {
 }
 
 Write-Host 'Starting CPU, GPU, and Desktop Composition ETW profiles...'
-& wpr -start CPU -start GPU -start DesktopComposition -filemode
+& wpr -start CPU -start GPU -start DesktopComposition -filemode 2>&1 | Tee-Object -LiteralPath $logPath -Append
 if ($LASTEXITCODE -ne 0) {
     throw "WPR failed with exit code $LASTEXITCODE. Confirm this shell is elevated and SeSystemProfilePrivilege is available."
 }
@@ -45,8 +47,11 @@ try {
             Add-Content -LiteralPath $markerPath -Encoding utf8
         Write-Host "Marked $name. Press ENTER after another F9 incident, or type STOP."
     }
-    & wpr -stop $tracePath 'Richs Houseboat rendering-boundary gameplay stalls'
+    & wpr -stop $etlPath 'Richs Houseboat rendering-boundary gameplay stalls' 2>&1 |
+        Tee-Object -LiteralPath $logPath -Append
     if ($LASTEXITCODE -ne 0) { throw "WPR stop failed with exit code $LASTEXITCODE." }
+    if (-not (Test-Path -LiteralPath $etlPath)) { throw 'WPR reported success but did not leave an ETL file.' }
+    Move-Item -LiteralPath $etlPath -Destination $tracePath -Force
     Write-Host "Trace: $tracePath"
     Write-Host "Markers: $markerPath"
 } catch {
