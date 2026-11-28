@@ -71,6 +71,7 @@ var lift_amount := 0.0
 var lifting_peer := 0
 var diver := 0
 var save_elapsed := 0.0
+var debug_testing := false
 var ghost: MeshInstance3D
 var ghost_paint: StandardMaterial3D
 var preview_id := ""
@@ -986,7 +987,7 @@ func tick(delta: float, has_input: bool) -> void:
 	reaper.tick(delta)
 	if not crew.is_guest() and dock >= 0:
 		save_elapsed += delta
-		if save_elapsed >= 30.0:
+		if save_elapsed >= 30.0 and not debug_testing:
 			save_elapsed = 0.0
 			story.save_vehicle_poses()
 			ledger.save_file()
@@ -1064,7 +1065,7 @@ func changed(persist := true) -> void:
 	story.sync_world()
 	if houseboat.restoration_model != null:
 		houseboat.restoration_model.sync_gates(ledger.state.get("boat_gates", {}))
-	if persist and not crew.is_guest():
+	if persist and not crew.is_guest() and not debug_testing:
 		story.save_vehicle_poses()
 		ledger.save_file()
 		if not ledger.error.is_empty():
