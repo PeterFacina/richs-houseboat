@@ -32,6 +32,7 @@ const Regions = preload("res://river_regions.gd")
 const Helicopter = preload("res://river_helicopter.gd")
 const SoloSaves = preload("res://solo_saves.gd")
 const TennisMatch = preload("res://marina_tennis_match.gd")
+const LivePerformanceRecorder = preload("res://live_performance_recorder.gd")
 const CREW_JOURNAL := "user://ottawa_multiplayer_catches.json"
 const BITE_WINDOW := 2.27
 const WINDUP := 0.19
@@ -164,7 +165,8 @@ var pen_drop_pressed := false
 var pen_use_pressed := false
 var tennis_previous_gear := Backpack.NONE
 var ignition_hold := -1.0
-var performance_probe_enabled := OS.get_cmdline_user_args().has("--gameplay-profile")
+var performance_probe_enabled := OS.get_cmdline_user_args().has("--gameplay-profile") \
+	or OS.get_cmdline_user_args().has("--live-performance-recorder")
 var performance_probe_totals := {}
 var performance_probe_maxima := {}
 var performance_probe_ticks := 0
@@ -385,6 +387,10 @@ func _ready() -> void:
 	helicopter = Helicopter.new()
 	add_child(helicopter)
 	helicopter.setup(self)
+	if OS.get_cmdline_user_args().has("--live-performance-recorder"):
+		var recorder := LivePerformanceRecorder.new()
+		add_child(recorder)
+		recorder.setup(self)
 	campaign.story.restore_local()
 	refresh_story_ui()
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE

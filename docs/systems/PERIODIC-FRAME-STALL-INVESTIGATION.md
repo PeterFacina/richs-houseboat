@@ -134,3 +134,13 @@ Compatibility recorded 66 total stalls in baseline runs and 58 with sharing; Mob
 The [baseline](../mesh-resource-evidence/baseline.png) and [shared-mesh](../mesh-resource-evidence/optimized.png) captures show the same camera, geometry, materials, time and weather; visual inspection found no difference outside the FPS counter. The headless gameplay-polish suite passed weather, persistence, camera/teleport, fishing, swimming, boat controls, ENet late join, live replication and guest-authority checks.
 
 This is a meaningful production improvement, not a full resolution. The periodic cadence remains, especially in Compatibility, and the evidence still does not distinguish Godot render-server work from driver buffer management. Further work should target the remaining high-resource procedural families and require the same inventory reduction plus matched tail improvement before expansion.
+
+## Live gameplay incident recorder
+
+Manual playtesting confirms the recurring gameplay stutter remains after box-mesh deduplication. Treat mesh-resource diversity as a contributing cost, not a conclusive root cause. No further production optimization is justified until live incidents identify a specific initiating operation.
+
+Run `tools\Run Live Performance Recorder.cmd` for Compatibility or add `-Renderer mobile` for Vulkan Mobile. During actual play, press **F9 immediately after observing a stutter**. The opt-in recorder retains approximately 600 preceding frames and 300 following frames, then writes an incident JSON file under `benchmark-results/live-<timestamp>`. Repeated F9 presses during the post window extend it and are retained as separate marker timestamps.
+
+Each frame records wall time, render pre/post synchronization duration, post-render wait, physics-step count, Godot process/physics monitors, gameplay section deltas, draw/object/primitive counters, resource and node counts, static/video memory, player and camera movement, game mode, simulation clock, and recorder overhead. A companion CSV samples process CPU/memory/I/O plus total physical-disk throughput on the same Unix-millisecond timeline.
+
+Godot 4.7.2 does not expose per-frame GPU execution duration, driver queue wait reasons, pipeline compilation events, named resource allocation/free events, or per-frame disk attribution in this renderer. Session metadata records these as unavailable. Analysis must identify the first long frame in each incident and treat later multi-step physics frames as catch-up unless their script section cost independently precedes the render wait.
