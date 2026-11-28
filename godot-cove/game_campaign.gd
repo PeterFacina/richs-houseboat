@@ -2292,6 +2292,13 @@ func action_hint() -> String:
 			"Look at a level spot within the plot  •  Q rotate"
 	if dive.active:
 		return dive.status_text()
+	if game.aboard() and not game.driving and houseboat == game.vessel \
+			and houseboat.restoration_model != null:
+		var gate := houseboat.restoration_model.gate_focus(game.eye)
+		if not gate.is_empty():
+			return "E  Open %s gate" % ("bow" if gate == "bow_gate" else "stern") \
+				if not houseboat.restoration_model.gate_open.get(gate, false) else \
+				"E  Close %s gate" % ("bow" if gate == "bow_gate" else "stern")
 	var story_hint := story.hint(false)
 	if not story_hint.is_empty():
 		return story_hint

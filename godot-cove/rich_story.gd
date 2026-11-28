@@ -35,8 +35,6 @@ const QUESTS := [
 		"steps": [["bench", "Pick up Rich’s welder and welding wire at the workbench."],
 			["port_rail", "Equip the welder and hold E on the port railing."],
 			["starboard_rail", "Weld the starboard railing."],
-			["bow_gate", "Weld the bow boarding gate and close the front railing gap."],
-			["stern_gate", "Weld the stern boarding gate."],
 			["checkin", "Return the welder to Rich."]]},
 	{"id": "story_engine", "title": "Dead in the Water", "cash": 18, "target": 5.0,
 		"text": "Bring my wrench. The marina’s got plugs and a starter kit. If you find a ten mil socket in there, it’s mine now.",
@@ -140,7 +138,7 @@ func normalize() -> void:
 
 
 func restore_required_parts(saved: Dictionary) -> void:
-	var requirements := {"pontoons": 1, "port_rail": 2, "starboard_rail": 2, "bow_gate": 2, "stern_gate": 2, "engine": 3,
+	var requirements := {"pontoons": 1, "port_rail": 2, "starboard_rail": 2, "engine": 3,
 		"wiring": 4, "battery": 4, "cabin_lights": 4, "nav_lights": 4, "fuel_system": 5}
 	for id: String in Parts.COMPONENTS:
 		if int(saved.step) > int(requirements[id]):

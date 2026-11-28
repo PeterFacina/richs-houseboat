@@ -194,7 +194,7 @@ func build_rail(id: String, side: float, alloy: Material) -> void:
 func build_aft_deck(wood: Material, dark: Material, alloy: Material) -> void:
 	# Cross-members visibly carry the extended platform between the pontoon ends.
 	Kit.box_at(self, Vector3(0, .69, 8.04), Vector3(BEAM, .12, 2.72), wood)
-	Kit.collider(body, Vector3(0, .69, 8.04), Vector3(BEAM, .16, 2.72))
+	Kit.collider(body, Vector3(0, .67, 8.04), Vector3(BEAM, .16, 2.72))
 	for z: float in [6.82, 7.60, 8.38, 9.16]:
 		Kit.beam(self, Vector3(-1.39, .48, z), Vector3(1.39, .48, z), .11, dark)
 	for side: float in [-1.0, 1.0]:
@@ -270,7 +270,7 @@ func set_gate_open(id: String, open: bool, animate := true) -> void:
 	if not gate_pivots.has(id):
 		return
 	var pair: Array = gate_pivots[id]
-	var fixed: bool = gate_repaired.get(id, false)
+	var fixed: bool = gate_repaired.get(id, true)
 	var hinge: Node3D = pair[1] if fixed else pair[0]
 	var changed: bool = bool(gate_open.get(id, false)) != open
 	gate_open[id] = open
@@ -294,7 +294,7 @@ func sync_gates(states: Dictionary) -> void:
 
 func gate_focus(camera: Camera3D) -> String:
 	for id: String in ["bow_gate", "stern_gate"]:
-		if not gate_repaired.get(id, false):
+		if not gate_repaired.get(id, true):
 			continue
 		var point := to_global(Vector3(0, 1.52, BOW + .13 if id == "bow_gate" else STERN - .15))
 		var ray := point - camera.global_position
@@ -392,8 +392,9 @@ func apply_state(state: Dictionary) -> void:
 	for id: String in rail_colliders:
 		for shape: CollisionShape3D in rail_colliders[id]:
 			shape.set_deferred("disabled", not Parts.repaired(state, id))
+	var saved_gate_state: Dictionary = state.get("boat_gate_repaired", {})
 	for id: String in gate_pivots:
-		gate_repaired[id] = Parts.repaired(state, id)
+		gate_repaired[id] = saved_gate_state.get(id, true) == true
 		var pair: Array = gate_pivots[id]
 		(pair[0] as Node3D).visible = not gate_repaired[id]
 		(pair[1] as Node3D).visible = gate_repaired[id]
