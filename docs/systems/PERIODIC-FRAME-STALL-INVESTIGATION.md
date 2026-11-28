@@ -192,6 +192,14 @@ Open the ETL in Windows Performance Analyzer and align `RH_STUTTER_N` with the F
 
 GPUView is optional if WPA exposes the required queues. If it is required, install only the **Windows Performance Toolkit** feature from the matching Windows ADK, then run its `Log.cmd` from an administrator command prompt immediately before the reproduction and run it again within 30–60 seconds to create `Merged.etl`. PresentMon is also optional; when available, target the actual Godot process and record QPC time so its per-present CPU busy/wait, GPU time and display latency can be aligned with ETW.
 
+### Capture-pipeline validation status
+
+Do not request another manual gameplay capture until `tools\Test Render Trace Pipeline.ps1` passes end to end. The automated test starts CPU/GPU/Desktop Composition tracing, emits a marker, stops WPR, checks size and SHA-256, renames the trace, parses it with explicit `tracerpt -l`, and verifies that both the retained trace and non-empty CSV survive. Every native command and exit code is written before the result JSON.
+
+The two manual WPR attempts did not satisfy that test. Both saved the F9 JSON and marker CSV, and the first ETL was briefly observed at 3,145,728 bytes, but the raw ETLs subsequently disappeared. The second attempt used `%LOCALAPPDATA%`, ruling out OneDrive as the common explanation. Neither attempt logged WPR's stop output, so the exact deletion actor is unproven; do not attribute it to OneDrive, Defender or the game. Non-elevated automated probes fail before trace creation with `0xc5585011` for GPU and `0x80070005` for Desktop Composition. The full pipeline therefore remains unvalidated and no ETW conclusion is claimed.
+
+PresentMon 2.6.0 was evaluated as the fallback using Intel's signed portable x64 release (valid Intel Authenticode signature; SHA-256 `B2A706BC6AD475749E3B7E3409263AA1E6906D45BDCF993F6DBC0F660188F1AF`). Its automated five-second capture also fails to start with access denied: PresentMon requires elevation or membership in **Performance Log Users** on this computer. Once privilege is available, its CSV can distinguish CPU busy/wait, time in Present, GPU latency/time/busy/wait, display latency, displayed duration and present mode. It cannot provide CPU thread stacks, named render-server functions, arbitrary resource operations or full DWM/GPU packet timelines, so it is a useful boundary classifier but not a replacement for WPR/GPUView.
+
 ### VSync and frame-cap controls
 
 The recorder launcher accepts isolated diagnostic controls and records their effective values in session metadata. It does not change project defaults:
