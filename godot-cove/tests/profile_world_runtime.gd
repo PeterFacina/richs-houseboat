@@ -80,8 +80,10 @@ func profile() -> void:
 		print_architecture_inventory(game)
 	for frame in 120:
 		await process_frame
-	if OS.get_cmdline_user_args().has("--mesh-inventory"):
+	if OS.get_cmdline_user_args().has("--mesh-inventory-only"):
 		print_mesh_inventory(game)
+		quit()
+		return
 	for argument in OS.get_cmdline_user_args():
 		if argument.begins_with("--capture="):
 			var capture_path := argument.trim_prefix("--capture=")
@@ -128,6 +130,8 @@ func profile() -> void:
 		quit()
 		return
 	await sample(game, variant + "_live")
+	if OS.get_cmdline_user_args().has("--mesh-inventory"):
+		print_mesh_inventory(game)
 	if OS.get_cmdline_user_args().has("--regionalization-ab"):
 		remove_outside_region(game)
 		for frame in 60:
@@ -192,10 +196,11 @@ func override_geometry_materials(game: Node3D) -> int:
 
 func print_mesh_inventory(game: Node3D) -> void:
 	var mesh_use := {}
+	var buckets := {}
 	var enabled_geometry := 0
 	var enabled_mesh_instances := 0
 	var enabled_multimeshes := 0
-	var estimated_triangles := 0
+	var referenced_surfaces := 0
 	for node in game.find_children("*", "GeometryInstance3D", true, false):
 		var geometry := node as GeometryInstance3D
 		if not geometry.visible or not geometry.is_visible_in_tree():
@@ -215,7 +220,15 @@ func print_mesh_inventory(game: Node3D) -> void:
 			continue
 		var rid := mesh.get_rid()
 		mesh_use[rid] = int(mesh_use.get(rid, 0)) + 1
-		estimated_triangles += mesh.get_faces().size() / 3 * multiplier
+		var bucket := mesh_inventory_bucket(game, geometry)
+		if not buckets.has(bucket):
+			buckets[bucket] = {"geometry": 0, "multimeshes": 0, "instances": 0, "meshes": {}}
+		var entry: Dictionary = buckets[bucket]
+		entry.geometry += 1
+		entry.multimeshes += 1 if geometry is MultiMeshInstance3D else 0
+		entry.instances += multiplier
+		entry.meshes[rid] = true
+		referenced_surfaces += mesh.get_surface_count()
 	var single_use_meshes := 0
 	for uses in mesh_use.values():
 		if uses == 1:
@@ -223,7 +236,29 @@ func print_mesh_inventory(game: Node3D) -> void:
 	print("PROFILE_MESH_INVENTORY enabled_geometry=", enabled_geometry,
 		" mesh_instances=", enabled_mesh_instances, " multimeshes=", enabled_multimeshes,
 		" unique_mesh_resources=", mesh_use.size(), " single_use_mesh_resources=", single_use_meshes,
-		" estimated_triangles=", estimated_triangles)
+		" referenced_surfaces=", referenced_surfaces)
+	var ranking: Array = []
+	for bucket in buckets:
+		var entry: Dictionary = buckets[bucket]
+		ranking.append({"name": bucket, "geometry": entry.geometry, "multimeshes": entry.multimeshes,
+			"instances": entry.instances, "unique_meshes": entry.meshes.size()})
+	ranking.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		return a.unique_meshes > b.unique_meshes)
+	for index in mini(20, ranking.size()):
+		var entry: Dictionary = ranking[index]
+		print("PROFILE_MESH_BUCKET rank=", index + 1, " name=", entry.name,
+			" unique_meshes=", entry.unique_meshes, " geometry=", entry.geometry,
+			" multimeshes=", entry.multimeshes, " instances=", entry.instances)
+
+
+func mesh_inventory_bucket(game: Node3D, geometry: GeometryInstance3D) -> String:
+	var current: Node = geometry
+	var path: Array[String] = [current.name]
+	while current.get_parent() != null and current.get_parent() != game and current.get_parent() != game.river:
+		current = current.get_parent()
+		path.push_front(current.name)
+	var scope := "river" if current.get_parent() == game.river else "game"
+	return scope + "/" + "/".join(path.slice(0, mini(2, path.size())))
 
 
 func focused_performance(game: Node3D, variant: String) -> void:
@@ -488,6 +523,7 @@ func sample(game: Node3D, label: String) -> void:
 	if game.river.world_grass != null:
 		game.river.world_grass.reset_profile()
 	var frame_ms: Array[float] = []
+	var stall_count := 0
 	var process_ms: Array[float] = []
 	var physics_ms: Array[float] = []
 	var draw_calls: Array[float] = []
@@ -498,6 +534,8 @@ func sample(game: Node3D, label: String) -> void:
 		await process_frame
 		var now := Time.get_ticks_usec()
 		frame_ms.append(float(now - previous) / 1000.0)
+		if frame_ms[-1] >= 33.33:
+			stall_count += 1
 		previous = now
 		process_ms.append(Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0)
 		physics_ms.append(Performance.get_monitor(Performance.TIME_PHYSICS_PROCESS) * 1000.0)
@@ -518,6 +556,7 @@ func sample(game: Node3D, label: String) -> void:
 	print("PROFILE_RESULT label=", label, " frame_median_ms=", frame_ms[150], " frame_p95_ms=", frame_ms[285],
 		" frame_p99_ms=", frame_ms[297], " frame_worst_ms=", frame_ms[-1],
 		" fps_1pct_low=", one_percent_low_fps,
+		" stalls_33ms=", stall_count,
 		" fps_median=", 1000.0 / frame_ms[150], " process_median_ms=", process_ms[150],
 		" process_p95_ms=", process_ms[285], " process_p99_ms=", process_ms[297],
 		" physics_median_ms=", physics_ms[150], " physics_p95_ms=", physics_ms[285],
