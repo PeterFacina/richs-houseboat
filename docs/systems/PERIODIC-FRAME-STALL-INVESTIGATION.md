@@ -102,42 +102,9 @@ The root cause class is excessive independently allocated/submitted mesh buffers
 
 Production work should now inventory the procedural builders that emit single-use meshes, then test spatially bounded reuse or combination on the largest contributors. Any candidate must retain geographic accuracy and culling granularity, and must be compared in three fresh-process full-world runs. No production mesh merge is included in this diagnostic commit.
 
-## Production box-mesh deduplication
-
-The full-world inventory reports 18,982 enabled geometry nodes, 9,275 unique mesh resources and 9,232 single-use mesh resources. The largest coarse owners are Deep River roads (1,528 unique resources), Public Works (1,420), Deep River buildings (835), Deep River marina (802) and River Campaign (799). Deeper ownership attributes 595 to Champlain streetscape, 432 to street-name signs, 274 to floating docks, and repeated sets of 70 to each Public Works bay.
-
-A narrow street-sign primitive cache was rejected and reverted. Three Compatibility pairs showed no repeatable p99 or stall-frequency improvement, demonstrating that removing a few hundred resources is below the useful threshold in this world.
-
-The accepted prototype instead caches immutable `BoxMesh` resources by exact dimensions in the shared `scenery.gd` constructor. Each node retains its own transform, material override, visibility, shadows and parent; collision shapes are untouched. `--no-box-mesh-cache` provides a profiler-only fresh-process baseline. This reduces unique mesh resources from 9,275 to 4,493 (51.6%) and single-use resources from 9,232 to 3,687 (60.1%) without changing geometry-node or surface counts.
-
-Three alternating fresh-process runs per condition at 1280 × 720 produced these median-of-run results:
-
-| Renderer / metric | Baseline | Shared boxes | Change |
-| --- | ---: | ---: | ---: |
-| Compatibility median | 16.62 ms | 13.79 ms | −17.0% |
-| Compatibility p95 | 63.96 ms | 55.76 ms | −12.8% |
-| Compatibility p99 | 91.45 ms | 82.95 ms | −9.3% |
-| Compatibility worst | 104.84 ms | 89.75 ms | −14.4% |
-| Compatibility 1% low | 9.99 FPS | 11.61 FPS | +16.2% |
-| Compatibility >33 ms stalls | 22/run | 19/run | −13.6% |
-| Compatibility RAM | 1003.98 MB | 990.49 MB | −13.49 MB |
-| Mobile median | 9.67 ms | 6.70 ms | −30.7% |
-| Mobile p95 | 35.00 ms | 27.96 ms | −20.1% |
-| Mobile p99 | 62.53 ms | 50.03 ms | −20.0% |
-| Mobile worst | 73.82 ms | 73.90 ms | neutral |
-| Mobile 1% low | 15.38 FPS | 15.92 FPS | +3.5% |
-| Mobile >33 ms stalls | 16/run | 10/run | −37.5% |
-| Mobile RAM | 1095.63 MB | 1070.11 MB | −25.52 MB |
-
-Compatibility recorded 66 total stalls in baseline runs and 58 with sharing; Mobile recorded 46 and 31. Draw calls and primitive counts were unchanged apart from normal frame-state variation. Median startup changed from 53.22 to 52.88 seconds in Compatibility and 62.98 to 61.59 seconds in Mobile. Compatibility's coarse VRAM monitor varied upward by about 13 MB while Mobile fell about 3.6 MB; these renderer counters are recorded but not treated as reliable allocation proof.
-
-The [baseline](../mesh-resource-evidence/baseline.png) and [shared-mesh](../mesh-resource-evidence/optimized.png) captures show the same camera, geometry, materials, time and weather; visual inspection found no difference outside the FPS counter. The headless gameplay-polish suite passed weather, persistence, camera/teleport, fishing, swimming, boat controls, ENet late join, live replication and guest-authority checks.
-
-This is a meaningful production improvement, not a full resolution. The periodic cadence remains, especially in Compatibility, and the evidence still does not distinguish Godot render-server work from driver buffer management. Further work should target the remaining high-resource procedural families and require the same inventory reduction plus matched tail improvement before expansion.
-
 ## Live gameplay incident recorder
 
-Manual playtesting confirms the recurring gameplay stutter remains after box-mesh deduplication. Treat mesh-resource diversity as a contributing cost, not a conclusive root cause. No further production optimization is justified until live incidents identify a specific initiating operation.
+Manual playtesting of the separately reviewed box-mesh prototype confirms the recurring gameplay stutter remains. Treat mesh-resource diversity as a contributing cost, not a conclusive root cause. No further production optimization is justified until live incidents identify a specific initiating operation. The production cache and its benchmark evidence now live exclusively in draft PR #153.
 
 Run `tools\Run Live Performance Recorder.cmd` for Compatibility or add `-Renderer mobile` for Vulkan Mobile. During actual play, press **F9 immediately after observing a stutter**. The opt-in recorder retains approximately 600 preceding frames and 300 following frames, then writes an incident JSON file under `benchmark-results/live-<timestamp>`. Repeated F9 presses during the post window extend it and are retained as separate marker timestamps.
 

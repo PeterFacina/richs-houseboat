@@ -2,6 +2,6 @@
   "pr": 152,
   "player_facing": true,
   "bullets": [
-    "Improved frame pacing and memory use by sharing identical procedural geometry without changing world detail, visuals, collisions, or gameplay."
+    "Added opt-in performance capture tools for diagnosing recurring frame stalls without changing normal graphics or gameplay."
   ]
 }
