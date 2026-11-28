@@ -1,0 +1,7 @@
+{
+  "pr": 152,
+  "player_facing": true,
+  "bullets": [
+    "Added opt-in performance capture tools for diagnosing recurring frame stalls without changing normal graphics or gameplay."
+  ]
+}
