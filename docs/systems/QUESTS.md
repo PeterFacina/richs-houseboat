@@ -10,10 +10,10 @@
 | --- | --- | --- |
 | Gone Fishing | Borrow Rich's Princecraft and rod, land three fish and return the tied boat | `story_fish` |
 | New Legs | Borrow the GMC Envoy, follow the road arrows to Cal’s workshop toward Mackey, then deliver and install the pontoons and return the loan | `story_parts` |
-| Safety Third | Borrow the welder, repair both railings and return the tool | `story_repair` |
+| Safety Third | Borrow the welder, repair both railings, then return the tool | `story_repair` |
 | Dead in the Water | Collect the starter kit and plugs, repair and test the outboard, then return the wrench | `story_engine` |
 | Let There Be Light | Repair the wiring, battery and lights, then return the wire strippers | `story_electrical` |
-| Running on Empty | Buy and collect fuel, refuel and complete the launch check | `story_fuel` |
+| Running on Empty | Buy and collect fuel, connect it at the aft deck tank, and complete the launch check | `story_fuel` |
 | Maiden Voyage | Launch, take Rich fishing, land a fish and return to the yard | `story_voyage` |
 | Rich's Retirement Plan | Sign over the houseboat | `story_retire` |
 

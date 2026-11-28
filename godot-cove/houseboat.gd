@@ -131,7 +131,7 @@ func helm_anchor() -> Vector3:
 
 
 func fuel_tank_mount() -> Vector3:
-	return Vector3(-.27, .36, 1.49) if skiff else Vector3(-1.07, .75, -1.69)
+	return Vector3(-.27, .36, 1.49) if skiff else (Vector3(-.92, .91, 8.15) if restoration_design else Vector3(-1.07, .75, -1.69))
 
 
 func build_controls() -> void:
@@ -201,7 +201,7 @@ func fit_mooring() -> void:
 			["Bow", "Stern"], Vector3(.82, .56, -1.28))
 		return
 	var bow := -3.28 if restoration_design else -2.85
-	var stern := 6.57 if restoration_design else 3.03
+	var stern := 8.95 if restoration_design else 3.03
 	var bow_inset := 1.09 if restoration_design else .72
 	var stern_inset := .91 if restoration_design else .82
 	var bow_edge := 1.54 if restoration_design else 1.04
@@ -237,7 +237,7 @@ func berth_at(at: Vector3, yaw: float) -> void:
 func waterline(at: Vector3, yaw: float) -> PackedVector2Array:
 	var beam := launch_half_beam()
 	var bow := 2.45 if skiff else 3.82
-	var stern := 2.43 if skiff else 7.05
+	var stern := 2.43 if skiff else (9.72 if restoration_design else 7.05)
 	return world_outline(at, yaw, [Vector2(0, -bow), Vector2(beam * .82, -bow * .69),
 			Vector2(beam, -bow * .35), Vector2(beam, stern * .85), Vector2(.31, stern),
 			Vector2(-.31, stern), Vector2(-beam, stern * .85), Vector2(-beam, -bow * .35),
@@ -255,7 +255,7 @@ func can_place(at: Vector3, yaw: float) -> bool:
 	var forward := Vector3(-sin(yaw), 0, -cos(yaw))
 	var side := forward.cross(Vector3.UP)
 	var fore := 2.18 if skiff else 3.35
-	var aft := 2.35 if skiff else 6.65
+	var aft := 2.35 if skiff else (9.10 if restoration_design else 6.65)
 	var beam := .945 if skiff else 1.39
 	return in_channel(at) and in_channel(at + forward * fore) and in_channel(at - forward * aft) \
 		and in_channel(at + side * beam) and in_channel(at - side * beam) \
@@ -266,7 +266,7 @@ func supports_deck(world: Vector3) -> bool:
 	var local := to_local(world)
 	if skiff:
 		return absf(local.x) < 1.03 and local.z > -2.28 and local.z < 2.05 and local.y > .19 and local.y < 2.26
-	return absf(local.x) < 1.52 and local.z > -3.65 and local.z < 6.6 and local.y > .25 and local.y < 2.9
+	return absf(local.x) < 1.52 and local.z > -3.65 and local.z < (9.35 if restoration_design else 6.6) and local.y > .25 and local.y < 2.9
 
 
 func sail(delta: float, clock: float, driving: bool, rudder: float) -> void:
@@ -494,10 +494,10 @@ func sail_river(delta: float, clock: float) -> void:
 	var port := sample(center - right * 1.21 * beam, clock)
 	var starboard := sample(center + right * 1.21 * beam, clock)
 	var bow := sample(center + fore * 2.78 * length, clock)
-	var stern := sample(center - fore * (2.61 if skiff else 5.35) * length, clock)
+	var stern := sample(center - fore * (2.61 if skiff else (7.70 if restoration_design else 5.35)) * length, clock)
 	foil_lift = lerpf(foil_lift, smoothstep(4.8, 9.6, speed) if foil else 0.0, 1.0 - exp(-delta * 1.8))
 	var ride := Vector3((port + starboard + bow + stern) * .25 * minf(1.0, wave_response),
-		clampf(atan2(bow - stern, 5.39 if skiff else 8.13) * wave_response, -.093, .093)
+		clampf(atan2(bow - stern, 5.39 if skiff else (9.42 if restoration_design else 8.13)) * wave_response, -.093, .093)
 			+ smoothstep(1.05, top_speed, absf(speed)) * .027,
 		clampf((atan2(starboard - port, 2.42) + motor.steering * steer_force * turn_heel) * wave_response, -.145, .145))
 	wave_pose = wave_pose.lerp(ride, 1.0 - exp(-delta * 6.7))

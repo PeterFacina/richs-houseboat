@@ -5,7 +5,7 @@ const Parts = preload("res://houseboat_restoration.gd")
 const DECK_HEIGHT := .75
 const BEAM := 3.02
 const BOW := -3.72
-const STERN := 6.77
+const STERN := 9.45
 
 var variants: Dictionary = {}
 var cabin_lamp: OmniLight3D
@@ -14,6 +14,11 @@ var deck_canopy: Node3D
 var body: PhysicsBody3D
 var dry := false
 var rail_colliders: Dictionary = {}
+var gate_pivots: Dictionary = {}
+var gate_colliders: Dictionary = {}
+var gate_tweens: Dictionary = {}
+var gate_repaired: Dictionary = {}
+var gate_open: Dictionary = {}
 
 
 func build(hull: PhysicsBody3D, on_blocks: bool) -> void:
@@ -71,10 +76,13 @@ func build(hull: PhysicsBody3D, on_blocks: bool) -> void:
 	Kit.box_at(self, Vector3(-.78, 2.94, 3.63), Vector3(.44, .14, .43), aluminum)
 	Kit.box_at(self, Vector3(.82, 2.98, 5.12), Vector3(.21, .20, .26), green)
 	Kit.beam(self, Vector3(.82, 2.93, 5.12), Vector3(.86, 3.59, 5.12), .029, dark)
+	build_aft_deck(timber[1], dark, aluminum)
 	for side: float in [-1.0, 1.0]:
 		build_rail("port_rail" if side < 0 else "starboard_rail", side, aluminum)
 		for z: float in [-3.54, 6.58]:
 			Kit.box_at(self, Vector3(side * 1.22, .79, z), Vector3(.21, .072, .085), dark)
+	build_gate("bow_gate", BOW + .13, aluminum, dark)
+	build_gate("stern_gate", STERN - .15, aluminum, dark)
 	var tag := Label3D.new()
 	tag.text = "RICH’S"
 	tag.font_size = 40
@@ -138,7 +146,7 @@ func build_pontoons() -> void:
 		for side: float in [-1.0, 1.0]:
 			var x := side * 1.01
 			var offset := .0 if fixed else side * .11
-			cylinder(root, Vector3(x + offset, .062, 1.62), .441, 9.31, 10, paint).rotation.x = PI * .5
+			cylinder(root, Vector3(x + offset, .062, 2.66), .441, 11.4, 10, paint).rotation.x = PI * .5
 			var taper := CylinderMesh.new()
 			taper.top_radius = .19
 			taper.bottom_radius = .44
@@ -146,31 +154,32 @@ func build_pontoons() -> void:
 			taper.radial_segments = 10
 			taper.rings = 0
 			Kit.mesh_at(root, taper, Vector3(x + offset, .062, -3.35), paint).rotation.x = -PI * .5
-			for z: float in [-2.65, .7, 4.5, 6.09]:
+			Kit.mesh_at(root, taper, Vector3(x + offset, .062, 8.68), paint).rotation.x = PI * .5
+			for z: float in [-2.65, .7, 4.5, 6.09, 7.14, 8.28]:
 				cylinder(root, Vector3(x + offset, .062, z), .449, .039, 10, seams).rotation.x = PI * .5
 			if not fixed:
 				Kit.box_at(root, Vector3(x + offset + side * .359, .12, -1.90),
 					Vector3(.088, .27, .92), seams).rotation.z = side * .27
 		if fixed:
 			for x: float in [-1.01, 1.01]:
-				Kit.collider(body, Vector3(x, .06, 1.44), Vector3(.67, .70, 9.68))
+				Kit.collider(body, Vector3(x, .06, 2.66), Vector3(.67, .70, 11.7))
 
 
 func build_rail(id: String, side: float, alloy: Material) -> void:
 	var x := side * 1.44
 	for fixed: bool in [false, true]:
 		var root := variant(id, fixed)
-		for z: float in [-3.59, -1.77, 6.18, 6.65]:
+		for z: float in [-3.59, -1.77, 6.18, 6.65, 9.30]:
 			var post := Kit.box_at(root, Vector3(x, 1.16, z), Vector3(.054, .82, .054), alloy)
 			if not fixed and z < 0.0:
 				post.rotation.z = -side * .29
-		for span: Vector2 in [Vector2(-3.59, -1.77), Vector2(6.18, 6.65)]:
+		for span: Vector2 in [Vector2(-3.59, -1.77), Vector2(6.18, 9.30)]:
 			Kit.beam(root, Vector3(x, 1.55, span.x),
 				Vector3(x + (0.0 if fixed else .24 * side), 1.55 if fixed else 1.19, span.y), .055, alloy)
 			if fixed:
 				Kit.beam(root, Vector3(x, 1.13, span.x), Vector3(x, 1.13, span.y), .035, alloy)
 	Kit.beam(self, Vector3(x, 1.55, -3.59), Vector3(side * .62, 1.55, -3.59), .05, alloy)
-	for span: Vector2 in [Vector2(-3.57, -1.8), Vector2(6.16, 6.64)]:
+	for span: Vector2 in [Vector2(-3.57, -1.8), Vector2(6.16, 9.32)]:
 		var barrier := CollisionShape3D.new()
 		var shape := BoxShape3D.new()
 		shape.size = Vector3(.07, .82, span.y - span.x)
@@ -180,6 +189,118 @@ func build_rail(id: String, side: float, alloy: Material) -> void:
 		var shapes: Array = rail_colliders.get(id, [])
 		shapes.append(barrier)
 		rail_colliders[id] = shapes
+
+
+func build_aft_deck(wood: Material, dark: Material, alloy: Material) -> void:
+	# Cross-members visibly carry the extended platform between the pontoon ends.
+	Kit.box_at(self, Vector3(0, .69, 8.04), Vector3(BEAM, .12, 2.72), wood)
+	Kit.collider(body, Vector3(0, .67, 8.04), Vector3(BEAM, .16, 2.72))
+	for z: float in [6.82, 7.60, 8.38, 9.16]:
+		Kit.beam(self, Vector3(-1.39, .48, z), Vector3(1.39, .48, z), .11, dark)
+	for side: float in [-1.0, 1.0]:
+		Kit.beam(self, Vector3(side * 1.23, .48, 6.75), Vector3(side * 1.23, .48, 9.28), .11, dark)
+		var spot := SpotLight3D.new()
+		spot.name = "AftDeckSpotlightPort" if side < 0.0 else "AftDeckSpotlightStarboard"
+		spot.position = Vector3(side * .83, 2.86, 5.91)
+		spot.rotation.x = -PI * .5
+		spot.light_color = Color("#f7dfb4")
+		spot.light_energy = .72
+		spot.spot_range = 5.2
+		spot.spot_angle = 46.0
+		spot.shadow_enabled = false
+		add_child(spot)
+	# The physical tank is built at the port mount; keep the grill at starboard.
+	var bbq := Node3D.new()
+	bbq.name = "AftBarbecue"
+	add_child(bbq)
+	var black := Kit.paint(Color("#303436"), .58, .30)
+	var enamel := Kit.paint(Color("#643d32"), .48, .24)
+	for x: float in [.52, 1.15]:
+		Kit.beam(bbq, Vector3(x, .75, 8.28), Vector3(x, 1.12, 8.28), .045, dark)
+	Kit.box_at(bbq, Vector3(.84, 1.13, 8.28), Vector3(.88, .17, .70), black)
+	Kit.collider(body, Vector3(.84, 1.06, 8.28), Vector3(.88, .62, .70))
+	Kit.box_at(bbq, Vector3(.84, 1.30, 8.28), Vector3(.82, .17, .64), enamel)
+	Kit.box_at(bbq, Vector3(.84, 1.40, 8.28), Vector3(.75, .018, .56), dark)
+	for z: float in [8.08, 8.25, 8.42, 8.59]:
+		Kit.beam(bbq, Vector3(.48, 1.42, z), Vector3(1.20, 1.42, z), .014, alloy)
+	var handle := Kit.beam(bbq, Vector3(.48, 1.51, 7.96), Vector3(1.20, 1.51, 7.96), .025, alloy)
+	handle.name = "BarbecueHandle"
+	for x: float in [.52, 1.16]:
+		var wheel := TorusMesh.new()
+		wheel.inner_radius = .045
+		wheel.outer_radius = .059
+		wheel.rings = 8
+		wheel.ring_segments = 8
+		Kit.mesh_at(bbq, wheel, Vector3(x, .86, 8.28), black).rotation.x = PI / 2.0
+
+
+func build_gate(id: String, z: float, alloy: Material, dark: Material) -> void:
+	var damaged := variant(id, false)
+	var fixed := variant(id, true)
+	for root: Node3D in [damaged, fixed]:
+		var hinge := Node3D.new()
+		hinge.name = id.capitalize() + "Hinge"
+		hinge.position = Vector3(-.62, 1.02, z)
+		root.add_child(hinge)
+		for y: float in [.10, .68]:
+			Kit.box_at(hinge, Vector3(0, y, 0), Vector3(.07, .11, .12), alloy)
+		for y: float in [.18, .79]:
+			Kit.beam(hinge, Vector3(.035, y, .015), Vector3(1.21, y, .015), .043, alloy)
+		for x: float in [.10, .42, .74, 1.06, 1.19]:
+			Kit.beam(hinge, Vector3(x, .18, 0), Vector3(x, .79, 0), .035, alloy)
+		Kit.box_at(hinge, Vector3(1.14, .48, -.05), Vector3(.14, .21, .13), dark)
+		if not root == fixed:
+			hinge.rotation.z = -.42
+		gate_pivots[id] = hinge
+		if root == fixed:
+			var collision := CollisionShape3D.new()
+			var shape := BoxShape3D.new()
+			shape.size = Vector3(1.22, .82, .09)
+			collision.shape = shape
+			collision.position = Vector3(0, 1.43, z)
+			collision.disabled = true
+			body.add_child(collision)
+			gate_colliders[id] = [collision]
+	gate_pivots[id] = [damaged.get_child(0), fixed.get_child(0)]
+	gate_repaired[id] = false
+	gate_open[id] = false
+
+
+func set_gate_open(id: String, open: bool, animate := true) -> void:
+	if not gate_pivots.has(id):
+		return
+	var pair: Array = gate_pivots[id]
+	var fixed: bool = gate_repaired.get(id, true)
+	var hinge: Node3D = pair[1] if fixed else pair[0]
+	var changed: bool = bool(gate_open.get(id, false)) != open
+	gate_open[id] = open
+	var target := (PI * .5) if open else 0.0
+	if changed and gate_tweens.has(id):
+		(gate_tweens[id] as Tween).kill()
+	if changed and animate and is_inside_tree():
+		var tween := create_tween()
+		tween.tween_property(hinge, "rotation:y", target, .32).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+		gate_tweens[id] = tween
+	elif changed:
+		hinge.rotation.y = target
+	for collision: CollisionShape3D in gate_colliders[id]:
+		collision.set_deferred("disabled", open or not fixed)
+
+
+func sync_gates(states: Dictionary) -> void:
+	for id: String in gate_pivots:
+		set_gate_open(id, states.get(id, false) == true, false)
+
+
+func gate_focus(camera: Camera3D) -> String:
+	for id: String in ["bow_gate", "stern_gate"]:
+		if not gate_repaired.get(id, true):
+			continue
+		var point := to_global(Vector3(0, 1.52, BOW + .13 if id == "bow_gate" else STERN - .15))
+		var ray := point - camera.global_position
+		if ray.length_squared() <= 3.2 * 3.2 and ray.normalized().dot(-camera.global_basis.z) > .91:
+			return id
+	return ""
 
 
 func build_electrical(cream: Material, dark: Material) -> void:
@@ -271,6 +392,13 @@ func apply_state(state: Dictionary) -> void:
 	for id: String in rail_colliders:
 		for shape: CollisionShape3D in rail_colliders[id]:
 			shape.set_deferred("disabled", not Parts.repaired(state, id))
+	var saved_gate_state: Dictionary = state.get("boat_gate_repaired", {})
+	for id: String in gate_pivots:
+		gate_repaired[id] = saved_gate_state.get(id, true) == true
+		var pair: Array = gate_pivots[id]
+		(pair[0] as Node3D).visible = not gate_repaired[id]
+		(pair[1] as Node3D).visible = gate_repaired[id]
+		set_gate_open(id, gate_open.get(id, false), false)
 	cabin_lamp.visible = Parts.repaired(state, "battery") and Parts.repaired(state, "wiring")
 	variants.nav_lights[1].visible = Parts.repaired(state, "nav_lights") and cabin_lamp.visible
 	panels.visible = Parts.upgrade_installed(state, "solar")

@@ -55,7 +55,7 @@ const QUESTS := [
 	{"id": "story_fuel", "title": "Running on Empty", "cash": 16, "target": 4.0,
 		"text": "The red cans at the marina are mine. Fourteen bucks for enough fuel to get us out there. Check the whole lot over before we shove off.",
 		"steps": [["fuel_pickup", "Collect the fuel can at the marina reserve. $14 crew cash."],
-			["fuel_system", "Hold E at the tank on the front deck to connect the hose and refuel."],
+			["fuel_system", "Hold E at the tank on the aft deck to connect the hose and refuel."],
 			["final_check", "Check the launch list at the yard workbench."],
 			["checkin", "Return the fuel can and tell Rich the boat is ready."]]},
 	{"id": "story_voyage", "title": "Maiden Voyage", "cash": 28, "target": 6.0,

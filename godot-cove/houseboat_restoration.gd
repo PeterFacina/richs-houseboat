@@ -10,7 +10,7 @@ const COMPONENTS := {
 	"battery": {"name": "Battery", "part": "12 V battery", "tool": "strippers", "time": 3.5, "at": Vector3(1.16, 1.05, -.62)},
 	"cabin_lights": {"name": "Cabin lights", "part": "Cabin lamp", "tool": "strippers", "time": 2.5, "at": Vector3(.45, 2.63, 1.98)},
 	"nav_lights": {"name": "Navigation lights", "part": "Navigation lamps", "tool": "strippers", "time": 2.5, "at": Vector3(1.37, 1.55, -1.84)},
-	"fuel_system": {"name": "Fuel system", "part": "Fuel and hose", "tool": "", "time": 3.0, "at": Vector3(-1.04, 1.10, -1.69)},
+	"fuel_system": {"name": "Fuel system", "part": "Fuel and hose", "tool": "", "time": 3.0, "at": Vector3(-.92, 1.10, 8.15)},
 }
 
 const TOOLS := {

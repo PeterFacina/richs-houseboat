@@ -133,6 +133,8 @@ func setup(game_world: Node3D, new_game: bool) -> void:
 	crew.rich_heard.connect(rich.play)
 	rich.spoken.connect(share_rich_line)
 	story.setup(self, new_game)
+	if houseboat.restoration_model != null:
+		houseboat.restoration_model.sync_gates(ledger.state.get("boat_gates", {}))
 	add_child(reaper)
 	reaper.setup(game, self)
 	add_child(dive)
@@ -338,6 +340,12 @@ func run_shortcuts(has_input: bool) -> void:
 
 
 func local_interact() -> bool:
+	if game.aboard() and not game.driving and houseboat == game.vessel \
+			and houseboat.restoration_model != null:
+		var gate := houseboat.restoration_model.gate_focus(game.eye)
+		if not gate.is_empty():
+			request("houseboat_gate", gate)
+			return true
 	if game.properties.interact(): return true
 	if game.helicopter.interact(): return true
 	if story.interact(): return true
@@ -1054,6 +1062,8 @@ func receive_result(text: String, at_site: int, to_boat: bool) -> void:
 func changed(persist := true) -> void:
 	houseboat.set_modern_design(ledger.state.get("modern_houseboat", false))
 	story.sync_world()
+	if houseboat.restoration_model != null:
+		houseboat.restoration_model.sync_gates(ledger.state.get("boat_gates", {}))
 	if persist and not crew.is_guest():
 		story.save_vehicle_poses()
 		ledger.save_file()
@@ -1213,6 +1223,17 @@ func perform(peer: int, action: String, value: Variant) -> void:
 		return
 	var place := actor_site(person)
 	match action:
+		"houseboat_gate":
+			if person.onboard and game.vessel == houseboat and houseboat.restoration_model != null \
+					and value is String and value in ["bow_gate", "stern_gate"] \
+					and houseboat.restoration_model.gate_repaired.get(value, false):
+				var gate_at := Vector3(0, 1.43, -3.59 if value == "bow_gate" else 9.30)
+				if person.at.distance_to(houseboat.to_global(gate_at)) <= 3.5:
+					var gates: Dictionary = ledger.state.get("boat_gates", {"bow_gate": false, "stern_gate": false})
+					gates[value] = not gates.get(value, false)
+					ledger.state["boat_gates"] = gates
+					changed()
+					tell(peer, "Boarding gate opened." if gates[value] else "Boarding gate latched.")
 		"rich_lost":
 			if person.onboard and game.vessel == rich.hull:
 				rich.react("lost", rich.hull.to_local(person.at) + Vector3.UP * 1.57)
@@ -2271,6 +2292,13 @@ func action_hint() -> String:
 			"Look at a level spot within the plot  •  Q rotate"
 	if dive.active:
 		return dive.status_text()
+	if game.aboard() and not game.driving and houseboat == game.vessel \
+			and houseboat.restoration_model != null:
+		var gate := houseboat.restoration_model.gate_focus(game.eye)
+		if not gate.is_empty():
+			return "E  Open %s gate" % ("bow" if gate == "bow_gate" else "stern") \
+				if not houseboat.restoration_model.gate_open.get(gate, false) else \
+				"E  Close %s gate" % ("bow" if gate == "bow_gate" else "stern")
 	var story_hint := story.hint(false)
 	if not story_hint.is_empty():
 		return story_hint
