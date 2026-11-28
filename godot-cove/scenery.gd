@@ -8,6 +8,7 @@ const ISLANDS = [
 
 var noise := FastNoiseLite.new()
 var rng := RandomNumberGenerator.new()
+static var box_mesh_cache: Dictionary = {}
 
 
 static func paint(color: Color, roughness := 0.8, metal := 0.0) -> StandardMaterial3D:
@@ -28,8 +29,16 @@ static func mesh_at(parent: Node3D, mesh: Mesh, at: Vector3, material: Material)
 
 
 static func box_at(parent: Node3D, at: Vector3, size: Vector3, material: Material) -> MeshInstance3D:
-	var mesh := BoxMesh.new()
-	mesh.size = size
+	var mesh: BoxMesh
+	if OS.get_cmdline_user_args().has("--no-box-mesh-cache"):
+		mesh = BoxMesh.new()
+		mesh.size = size
+	else:
+		if not box_mesh_cache.has(size):
+			var cached := BoxMesh.new()
+			cached.size = size
+			box_mesh_cache[size] = cached
+		mesh = box_mesh_cache[size]
 	return mesh_at(parent, mesh, at, material)
 
 
